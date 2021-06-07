@@ -1,0 +1,18 @@
+May 13 2021
+
+The mode was (not so much is anyore..) decent at nulling the input neurons w inhibition, 
+but is absoulte crap at the route-cause: it divergese to flat, all units identical.
+It appears that rci (and, by extension, w_rci) degenerates ito flat before rce. 
+Wait .. w_rci is not updated! It's ones - diag matrix, scaled. 
+Yeah that might not be a good regularization... 
+Also, with time rce becomes flat; starts out diverse enough. 
+Ok, apparently the problem is that, in w_rc, weights corresponding to the input go to zero, while weights corresponding to output seem to saturate.  
+This is definitey not the behavior we want, and is likely due to a combination of the different scales of the input->rc weights and the output->rc weights.  
+wrc_update is simple hebbian outer-product of rc activation and concatenated ll & l2.
+(aka only local information)
+passgate update is similarly hebbian outer-product between in, out, and rc.  
+
+Well,  what do we want?  
+'rc' stands for route-cause: they should route (multiply) input to output (causes) conditional on both.  
+Thus, it would seem that they need faster dynamics than the object neurons. 
+But also one-hot dynamics?  Does this need to be iterated? Or does the w_rci matrix need to update too? Needs to be an asymmetry relative to the out neurons. 
