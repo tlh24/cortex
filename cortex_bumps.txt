@@ -16,3 +16,68 @@ Well,  what do we want?
 'rc' stands for route-cause: they should route (multiply) input to output (causes) conditional on both.  
 Thus, it would seem that they need faster dynamics than the object neurons. 
 But also one-hot dynamics?  Does this need to be iterated? Or does the w_rci matrix need to update too? Needs to be an asymmetry relative to the out neurons. 
+
+June 9 2021
+
+Testing the very simplified model with four input patterns, and only positive generator synapses, yields a network that (usually) predicts well (sometimes NaNs creep in there) -- but it's not sparse.  
+One output neuron always takes care of the dominant mode of the data vector, the DC component i guess; it doesn't make sense to combat this, since the data is not independent! 
+Should the network be whitening the data?  
+In biology, sensory input is very typically whitened, often at the receptors themselves, due to adaptation. In ANN, this term is taken care of with a bias term (1.0).. 
+
+On the one-hot four-pattern task, 
+With dynamic inhibition: error mean 0.0570 / std 0.0146 rep 0.0471 std 0.0079
+Without dynamic inhibition: error mean 0.0572 / std 0.0192 rep 0.0621 / 0.0201
+
+So, the dynamic inhibition seems to be doing something 'useful'. 
+But ... why is it not driving the error to zero? 
+There are only four patterns, this should be possible.
+
+OK so -- supplying the true information to l2 results in zero error, 
+but only if the cube learning rule is turned off. 
+If the true information is not supplied, and the learning rule is linear, then the error mean 0.0184 / std 0.0095 
+This is with symmetric learning rates on the forward and reverse matrices. 
+
+Making the backward learning slower than the forward makes the error greater. 
+Making the forward learning slower than the backward makes the error less: 
+tensor(0.0100) tensor(0.0096)
+Making the inhibition learning faster than the forward makes error worse. 
+Making the inhibition learning slower than forward makes error worse, too
+tensor(0.0191) tensor(0.0099)
+Increasing the backward learning to 0.013 slightly degrades performance
+tensor(0.0122) tensor(0.0107)
+
+If we extend the training time to 30k samples, Usually it solves the task exactly. 
+tensor(0.0037) tensor(0.0063)
+but sometimes it doesn't ...
+If we increase the learning rates to 0.008 (forward) 0.008 (inhib) 0.014 (backward), it's again worse -- seems to occasinoally fail (?)
+
+This netowrk, which can usually solve the four-patter none-hot, cannot accurately solve the free pattern: 
+tensor(0.0606) tensor(0.0065)
+Why is this?? 
+
+Can we solve it with linear algebra? 
+Yes, clearly we can solve the linear section ('gen') not the inverse section ('invgen') -- this results in (unsurprsinigly) half the error: 
+tensor(0.0352) tensor(0.0098)
+@ 10k steps. 
+Increasing the number of steps to 20k does not improve it much:
+tensor(0.0293) tensor(0.0032)
+it just reduces the variance. 
+'Cheating' by supplying g2 to l2 pushes the error to zero, as it should. 
+tensor(0.0009) tensor(0.0005)
+further reducing the learning rate to 0.003 on forward weights @ 10k increases error: 
+tensor(0.0532) tensor(0.0090)
+same learning rates @ 20k: 
+tensor(0.0218) tensor(0.0083)
+@ 30k: 
+tensor(0.0294) tensor(0.0061)
+
+Ok will stick with 0.005 / 0.005 / 0.01 @ 10k. 
+
+Increasing the input size to 16 (from 8) slightly reduces the error: 
+tensor(0.0275) tensor(0.0052)
+This makes sense as it's easier to estimate the causes with more predictors. 
+
+It does seem .. for this linear problem .. that disabling inhibition improves things. 
+tensor(0.0284) tensor(0.0095)
+
+I guess now should think about multiple layers & further nonlinearities? 

@@ -64,9 +64,9 @@ w_b = torch.zeros(6, 4) # let hebb fill these in.
 w_l2i = torch.zeros(4, 4)
 l2a = torch.zeros(4)
 
-indata = [[0, 0], [0, 1], [1, 0], [1,1]]
+indata = [[0,0], [0,1], [1,0], [1,1]]
 
-for i in range(10000): # shouldn't need more than 10k for such a simple problem.
+for i in range(10000): # realistically, need far fewer than 10k...
 	j = i % 4
 	ind = indata[j]; 
 	l1e_ = [ind[0], ind[0]^1, ind[1], ind[1]^1, ind[0]^ind[1], (ind[0]^ind[1])^1]
