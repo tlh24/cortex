@@ -7,7 +7,7 @@ import pdb
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
-# test solutions to the XOR problem using modified hopfield networks.  
+# 1-layer neural network, feedback alignment + hebbian 
 
 def inhib_update(w_, l, li, lr):
 	# this function approximates competitive inhibition: 
@@ -66,7 +66,7 @@ def hebb_update(w_, inp, outp, outpavg, lr):
 
 # the data generator
 insize = 8
-w_gen = torch.mul(torch.rand(insize, 4), 1.0/math.sqrt(3.0 * (insize/8.0))); 
+outsize = 8
 #for i in range(10):
 	#g2 = torch.clamp(torch.randn(4), 0.0, 1.0)
 	#gen = torch.matmul(w_gen, g2)
@@ -77,12 +77,13 @@ w_gen = torch.mul(torch.rand(insize, 4), 1.0/math.sqrt(3.0 * (insize/8.0)));
 error = torch.zeros(10)
 	
 for k in range(10): 
-	w_f = torch.mul(torch.rand(4, insize), math.sqrt(1.0 / insize))
-	w_b = torch.zeros(insize, 5) # let hebb fill these in. One extra for bias. 
-	w_l2i = torch.zeros(4, 4)
-	l2a = torch.ones(4)
+	w_gen = torch.mul(torch.randn(insize, 4), 1.0/math.sqrt(3.0*(insize/8.0))); 
+	w_f = torch.mul(torch.rand(outsize, insize), math.sqrt(1.0 / insize))
+	w_b = torch.zeros(insize, outsize+1) # let hebb fill these in. One extra for bias. 
+	w_l2i = torch.zeros(outsize, outsize)
+	l2a = torch.ones(outsize)
 	err = 0.0
-	l2u5 = torch.ones(5)
+	l2u5 = torch.ones(outsize+1)
 
 	for i in range(10000):
 		g2 = torch.clamp(torch.randn(4), 0.0, 1.0)
@@ -94,25 +95,25 @@ for k in range(10):
 				g2 = torch.tensor([0.0, 0.0, 1.0, 0.0])
 			if i % 4 == 3:
 				g2 = torch.tensor([0.0, 0.0, 0.0, 1.0])
-		# the four-pattern task should be exactly solveable -- why is it not? 
+		# the four-pattern task is exactly solveable if we give the network enough time. 
 		gen = torch.clamp(torch.matmul(w_gen, g2), 0.0, 1.5)
 		#invgen = 1.0 - gen
 		#catgen = torch.cat((gen, invgen))
 		
 		l1e = gen
 		l2e = torch.clamp(torch.matmul(w_f, l1e), 0.0, 3.0)
-		l2i = torch.clamp(torch.matmul(w_l2i, l2e), 0.0, 4.0)
+		l2li = torch.clamp(torch.matmul(w_l2i, l2e), 0.0, 4.0)
 		# l2u = torch.clamp(l2e - l2i, 0.0, 2.0) # allowing l2u to go negative impoves convergence, but it's not necessary.  Improvement is about 0.7 std.
-		l2u = l2e - l2i
-		#l2u = g2 # debug -- no, error is still not zero!
+		l2u = l2e - l2li
+		#l2u = g2 # debug. with the linear learning rule, this drives error to zero. 
 		l2a = l2a * 0.99 + l2u * 0.01
 		
-		l2u5[0:4] = l2u # include a bias term
+		l2u5[0:outsize] = l2u # include a bias term
 		l1i = torch.clamp(torch.matmul(w_b, l2u5), 0.0, 2.5)
 		l1u = l1e - l1i
 		
 		w_f = hebb_update(w_f, l1u, l2u, l2a, 0.005)
-		#w_l2i = inhib_update(w_l2i, l2u, l2i, 0.005)
+		w_l2i = inhib_update(w_l2i, l2u, l2li, 0.005)
 		
 		w_b = hebb_update(w_b, l2u5, l1u, torch.ones(l1u.size(0)), 0.01)
 		

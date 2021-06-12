@@ -49,9 +49,9 @@ tensor(0.0122) tensor(0.0107)
 If we extend the training time to 30k samples, Usually it solves the task exactly. 
 tensor(0.0037) tensor(0.0063)
 but sometimes it doesn't ...
-If we increase the learning rates to 0.008 (forward) 0.008 (inhib) 0.014 (backward), it's again worse -- seems to occasinoally fail (?)
+If we increase the learning rates to 0.008 (forward) 0.008 (inhib) 0.014 (backward), it's again worse -- seems to occasionally fail (?)
 
-This netowrk, which can usually solve the four-patter none-hot, cannot accurately solve the free pattern: 
+This network, which can usually solve the four-pattern one-hot, cannot accurately solve the free pattern: 
 tensor(0.0606) tensor(0.0065)
 Why is this?? 
 
@@ -75,9 +75,18 @@ Ok will stick with 0.005 / 0.005 / 0.01 @ 10k.
 
 Increasing the input size to 16 (from 8) slightly reduces the error: 
 tensor(0.0275) tensor(0.0052)
-This makes sense as it's easier to estimate the causes with more predictors. 
+This makes sense as it's easier to estimate the 4 causes with more predictors. 
 
 It does seem .. for this linear problem .. that disabling inhibition improves things. 
 tensor(0.0284) tensor(0.0095)
+
+What about changing the dimensionality of the output layer? 
+size 6, 
+tensor(0.0279) tensor(0.0076)
+size 4 (same as generator)
+tensor(0.0340) tensor(0.0091)
+(of course then the network is doing much less compression..
+zero compression should be perfect: nope!
+tensor(0.0244) tensor(0.0055)
 
 I guess now should think about multiple layers & further nonlinearities? 
