@@ -112,7 +112,7 @@ for k in range(1):
 		l1e = g1
 		l1u = l1e * 0.5 # init? 
 		
-		for k in range(10):
+		for k in range(5):
 			l2e = torch.clamp(torch.matmul(w_f2, l1e), 0.0, 1.0)
 			l2li = torch.clamp(torch.matmul(w_l2i, l2u), 0.0, 1.0) # async
 			l2u = l2e - l2li - l2i 
