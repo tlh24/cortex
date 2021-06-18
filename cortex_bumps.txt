@@ -90,3 +90,22 @@ zero compression should be perfect: nope!
 tensor(0.0244) tensor(0.0055)
 
 I guess now should think about multiple layers & further nonlinearities? 
+
+
+June 18 2021
+
+Fiddled around with the 2-axis task. 
+With noise, we can reliably get solutions -- good!  I was discouraged last night. 
+Notably, the other forms of homeostasis (slow homeostasis) don't work; they cause weight instabilities.  
+This may be the cause of the problem with the other tasks.  
+Still using the cubic hebbian learning rule on this binary task, 
+since that worked so well for the XOR task.  
+Also still using asymmetric learning rules, as discovered in the vectoral learning task; solutions are sensitive to these learning rates.  Doubling them breaks the network!  (And it does learn slowly already.. though I'bve not explored this extensively..)
+
+This shows clearly how important small, interpretable, comprehensible tasks are.  The 2-axis task, I can solve easily 'by hand'. 
+We should continue this development avenue with small numbers of inputs and outputs, while also testing on larger equivalent tasks! 
+
+Note: linear hebbian learning rule does not work on this task. 
+Note: inhibition is not required to solve the task, but it does not seem to effect the solution either. 
+@ noise level 0.025, it does sometimes fail!  But this seems to be a sweet spot c.f. 0.05 or 0.002. 
+Depends on the initialization..

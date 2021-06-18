@@ -39,8 +39,8 @@ def hebb_update(w_, inp, outp, outpavg, lr):
 	#dw2 = torch.outer(add, torch.ones(inp.size(0)))
 	#dw3 = torch.outer(add2, torch.ones(inp.size(0)))
 	#w_ = torch.add(w_, dw2)
-	#w_ = torch.add(w_, dw3)
-	return torch.mul(w_, dw)
+	#w_ = torch.add(w_, dw3) ## TBD this hmoeostasis doesn't work, causes instability!!!
+	return torch.clamp(torch.mul(w_, dw), -2, 6)
 
 def inhib_update(w_, l, li, lr):
 	# this function approximates competitive inhibition: 
@@ -68,11 +68,6 @@ def inhib_update(w_, l, li, lr):
 	dw = torch.outer(scale, one)
 	return torch.clamp(torch.mul(w_, dw), -1.0, 1.0)
 
-w_f = torch.mul(torch.rand(2, 6), math.sqrt(2.0 / 6.0))
-w_b = torch.zeros(6, 3) # let hebb fill these in. 
-w_l2i = torch.zeros(2, 2)
-l2a = torch.ones(2) * 0.5
-l2u5 = torch.ones(3)
 noise_level = 0.025
 print("noise level", noise_level)
 
@@ -92,6 +87,11 @@ if False:
 torch.set_printoptions(sci_mode=False, linewidth=140)
 err = 0.0
 for k in range(10): 
+	w_f = torch.mul(torch.rand(2, 6), math.sqrt(2.0 / 6.0))
+	w_b = torch.zeros(6, 3) # let hebb fill these in. 
+	w_l2i = torch.zeros(2, 2)
+	l2a = torch.ones(2) * 0.5
+	l2u5 = torch.ones(3)
 	for i in range(10000): # realistically, need far fewer than 10k...
 		j = i % 4
 		ind = indata[j]; 
@@ -127,11 +127,12 @@ for k in range(10):
 	
 	print("error:", err)
 	
-	print("l1e", l1e)
-	print("l1i", l1i)
-	print("l1u", l1u)
-	print("l2u", l2u)
-	print("l2a", l2a)
-	print("w_f", w_f)
-	print("w_b", w_b)
-	print(" ")
+	if False:
+		print("l1e", l1e)
+		print("l1i", l1i)
+		print("l1u", l1u)
+		print("l2u", l2u)
+		print("l2a", l2a)
+		print("w_f", w_f)
+		print("w_b", w_b)
+		print(" ")
