@@ -140,20 +140,19 @@ class PGnet(nn.Module):
 		l2 = self.l2
 		l1i = self.l1i
 		rc = rcin.detach().to(gdevice)
-		with torch.no_grad():
-			for k in range(1):
-				self.fpg.update_rc(rc) 
-				self.rpg.update_rc(rc)
-				# l2 = self.l2softmax(self.fpg.forward(inp))
-				l2 = torch.clamp(self.fpg.forward(inp), -0.1, 1.0)
-				# pdb.set_trace()
-				l2 = torch.squeeze(torch.matmul(self.l2blurweight, l2[:,:,None]))
-				l1i = self.rpg.forward(l2)
-				l1i = torch.clamp(l1i, 0.0, 1.0)
+		for k in range(1):
+			self.fpg.update_rc(rc) 
+			self.rpg.update_rc(rc)
+			# l2 = self.l2softmax(self.fpg.forward(inp))
+			l2 = torch.clamp(self.fpg.forward(inp), -0.1, 1.0)
+			# pdb.set_trace()
+			l2 = torch.squeeze(torch.matmul(self.l2blurweight, l2[:,:,None]))
+			l1i = self.rpg.forward(l2)
+			l1i = torch.clamp(l1i, 0.0, 1.0)
 				
 		# now run once to update the weights with the equilibriated activities. 
-		l2 = l2.detach() # might not be necessary..
-		l1i = l1i.detach()
+		#l2 = l2.detach() # might not be necessary..
+		#l1i = l1i.detach()
 		
 		self.fpg.update_rc(rc) 
 		self.rpg.update_rc(rc)
