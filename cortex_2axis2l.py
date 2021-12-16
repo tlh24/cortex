@@ -83,7 +83,7 @@ if False:
 	w_b[4,:] = torch.tensor([ 1, 1, 0])
 	w_b[5,:] = torch.tensor([-1,-1, 1])
 
-torch.set_printoptions(sci_mode=False, linewidth=140)
+torch.set_printoptions(sci_mode=False, linewidth=160)
 err = 0.0
 N = 100
 for k in range(1): 
@@ -95,7 +95,7 @@ for k in range(1):
 	
 	w_f3 = torch.mul(torch.rand(2, 4), math.sqrt(2.0 / 6.0))
 	w_b3 = torch.zeros(4, 3)
-	w_l3i = torch.zeros(2,2)
+	w_l3i = torch.zeros(2, 2)
 	l3a = torch.ones(2) * 0.5
 	l3u5 = torch.ones(3)
 	

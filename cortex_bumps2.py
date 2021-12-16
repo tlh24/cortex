@@ -258,7 +258,7 @@ def animate(data, axs):
 #test_inhib_update()
 
 vis = render(obj_)
-fig,axs = plt.subplots(2,2, figsize=(18,12))
+fig,axs = plt.subplots(2,2, figsize=(16,9))
 ani = animation.FuncAnimation(fig, animate, step, interval=10, repeat=True, fargs=(axs,))
 plt.show()
 
