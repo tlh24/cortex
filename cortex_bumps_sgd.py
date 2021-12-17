@@ -52,6 +52,12 @@ def random_weights3(a, b, c):
 def random_weights(rows, cols):
 	return torch.clamp(torch.mul(torch.randn(batches, rows, cols), math.sqrt(2.0/cols)), -1.0, 1.0)
 
+def imshow_(t, fname):
+	t = t.detach().cpu()
+	plt.imshow(t)
+	plt.savefig(fname)
+	plt.close()
+
 class PassGate(nn.Module): 
 	def __init__(self, out_dim, in_dim, rc_dim):
 		super().__init__()
@@ -77,8 +83,8 @@ class PGnet(nn.Module):
 		self.pgrelu = torch.nn.LeakyReLU(0.2)
 		self.pgsoftmax = torch.nn.Softmax(dim=0)
 		# self.pgctrl = torch.nn.Parameter(data = random_weights(41+16, 14), requires_grad=True)
-		self.l2 = torch.zeros(batches, 16)
-		self.l1i = torch.zeros(batches, 41)
+		self.l2 = torch.zeros(batches, 16).to(gdevice)
+		self.l1i = torch.zeros(batches, 41).to(gdevice)
 		self.l2softmax = torch.nn.Softmax(dim=0)
 		self.rcblurweight = torch.zeros((batches,14,14))
 		for k in range(14):
@@ -100,33 +106,24 @@ class PGnet(nn.Module):
 		# this of course is prone to positive feedback instability! 
 		l2 = self.l2
 		l1i = self.l1i
-		with torch.no_grad():
-			for k in range(5):
-				rc = self.pgrelu(self.pgctrl(torch.cat([inp, l2, inp-l1i])))
-				# rc = self.pgsoftmax(rc)
-				rc = torch.clamp(rc, -0.1, 1.0)
-				rc = torch.matmul(self.rcblurweight, rc)
-				self.fpg.update_rc(rc) 
-				self.rpg.update_rc(rc)
-				# l2 = self.l2softmax(self.fpg.forward(inp))
-				l2 = torch.clamp(self.fpg.forward(inp), -0.1, 1.0)
-				l2 = torch.matmul(self.l2blurweight, l2)
-				l1i = self.rpg.forward(l2)
-				l1i = torch.clamp(l1i, 0.0, 1.0) 
-				
-		# now run once to update the weights with the equilibriated activities. 
-		l2 = l2.detach() # might not be necessary..
-		l1i = l1i.detach()
-		
-		rc = self.pgrelu(self.pgctrl(torch.cat([inp, l2, inp-l1i])))
-		rc = self.pgsoftmax(rc)
-		# rc = torch.clamp(rc, -0.1, 1.0)
-		self.fpg.update_rc(rc) 
-		self.rpg.update_rc(rc)
-		l2 = torch.clamp(self.fpg.forward(inp), -0.1, 1.0)
-		# l2 = self.l2softmax(self.fpg.forward(inp))
-		l1i = self.rpg.forward(l2)
-		l1i = torch.clamp(l1i, 0.0, 1.0)
+		# with torch.no_grad():
+		for k in range(2):
+			rcin = torch.cat((inp, l2, inp-l1i),dim=1)
+			rc = self.pgrelu(self.pgctrl(rcin))
+			# rc = self.pgsoftmax(rc)
+			rc = torch.clamp(rc, -0.1, 1.0)
+			# imshow_(rc,'rc_before.png')
+			for b in range(2):
+				rc = torch.squeeze(torch.matmul(self.rcblurweight, rc[:,:,None]))
+			# imshow_(rc,'rc_after.png')
+			self.fpg.update_rc(rc) 
+			self.rpg.update_rc(rc)
+			# l2 = self.l2softmax(self.fpg.forward(inp))
+			l2 = torch.clamp(self.fpg.forward(inp), -0.1, 1.0)
+			for b in range(2):
+				l2 = torch.squeeze(torch.matmul(self.l2blurweight, l2[:,:,None]))
+			l1i = self.rpg.forward(l2)
+			l1i = torch.clamp(l1i, -0.2, 1.0) 
 		
 		self.l2 = l2.detach()
 		self.l1i = l1i.detach()
@@ -202,16 +199,21 @@ def new_obj(ignore):
 	scl = 1.0
 	if torch.randn(1) < 0.0:
 		scl = -1.0
-	position = 20.5 * scl
+	position = 26.0 * scl
 	velocity = (1.75 + torch.randn(1) * 0.35) * scl * -1.0
 	width = 5.0 + torch.randn(1) * 2.0
 	return(position, velocity, width)
+
+def random_seed(b):
+	torch.manual_seed((os.getpid() * int(time.time())) % 123456789 + b)
+	return b
 
 def move_batch(input_objs):
 	input_objs = pool.map(move, input_objs)
 	for ind,ob in enumerate(input_objs):
 		(pos, vel, w) = ob
-		if pos < -22 or pos > 22:
+		# allow the objects to move more fully "off-screen" to avoid edge effects. 
+		if pos < -27 or pos > 27:
 			input_objs[ind] = new_obj(0)
 	return input_objs
 
@@ -245,17 +247,18 @@ pgn = PGnet()
 pgn.to(device=gdevice)
 optimizer = optim.AdamW(pgn.parameters(), lr = 2e-4, betas=(0.9, 0.99), weight_decay=1e-3)
 mseloss = torch.nn.MSELoss()
+pool.map(random_seed, range(batches))
 obj_ = pool.map(new_obj, range(batches))
-monitor_every = 1e4
-monitor_view = 10
+monitor_every = 2e5
+monitor_view = 20
 
 while True:
 	vis = render_batch(obj_)
 	obj_ = move_batch(obj_)
 	vis = vis.to(device=gdevice)
 	pgn.zero_grad()
-	rc = obj_to_rc_batch(obj_)
-	(pred,l2) = pgn.forward_clamp_rc(vis, rc)
+	# rc = obj_to_rc_batch(obj_)
+	(pred, l2, rc) = pgn.forward(vis)
 	loss = mseloss(pred, vis)
 	loss.backward()
 	optimizer.step()
@@ -322,13 +325,4 @@ while True:
 	
 	# yes!  the one-layer network can absolutely output one-hot location activations. 
 	
-# next test would be to see if, given both l2 and rcdes, the pg net can output l1i. 
-# Need to do that above.. 
 
-# yes, that seems to work as well, to a very high fidelity 
-# -- can predict l1 reliably with rc one-hot encoding. 
-# however however, it does not seem to set l2 to a static representation. 
-# will need to penalize (?) to get this behavior ? 
-
-# Dec 16 2021 
-# let's try one update step instead of five for improving continuity / smoothness in L2 representation.
