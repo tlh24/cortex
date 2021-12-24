@@ -129,3 +129,27 @@ Also what works: clamping the RC activation, but propagating the gradients fully
 If anything, this seems to work better than blocking the gradients. 
 Works: error is ~ 5e-4 after 60k steps w batches of 8. 
 Next, need to try propagating the gradients through all, including RC. 
+
+++ Running the network twice, with no gradient-stop, and smoothing the activations of rc and l2 seems to further improve the performance of the network, without significantly slowing execution. 
+batch size = 16.
+slowloss ~ 2e-4 at 140k iterations. 
+GPU load is only 2% when rc size = 14..
+
+++ Trying to increase the size of the rc layer, see how that changes things. 
+++ need to add a better form of logging -- eg print out gifs every 20k iterations or so. 
+-- Huh, even with this very small network, am using an inordinate ammount of vram - 8gb!  what??!! 
+-- Increasing rc size to 32 did not slow computation at all. GPU usage si now 3%, from 2%. 
+
+Dec 22 2021
+
+Tried a few things: 
+-- clamping the PG weights to be [-0.001 1.0]
+-- adding a ReLU to the matmul(w_, rc)
+This revealed something interesting: 
+the network has sufficient capacity to represent all stimuli just in the RC layer; 
+(green); no l2 activation (black) is required!  
+Black / l2, in this case, is all high / on. 
+This is consistent with there being only 41 vision sensors, and the spatial frequency of the stimuli being well below f_s / 2 -- so, in practice, there are less than 16 independent degrees of variation in the data. 
+Thus, even though this experiment 'failed', it revealed something useful:
+we can't expect the network to generalize well if it doesn't need to. 
+Loss gradually bottoms out to 6e-5 at 4e6 steps. 

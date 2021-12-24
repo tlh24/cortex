@@ -13,10 +13,15 @@ import time
 
 import math
 from math import sqrt
+from math import cos
 import numpy as np
+from numpy.random import randn
+from numpy.random import rand
 import matplotlib.pyplot as plt
 import pdb
-from multiprocessing import Pool
+import numba
+from numba import jit
+#from multiprocessing import Pool
 
 import torch
 
@@ -25,7 +30,8 @@ from torch.nn import init
 from torch.nn import functional as F
 from torch.autograd import Function
 
-batches = 16
+batches = 64
+nrc = 16 # 
 
 torch.set_default_tensor_type('torch.FloatTensor')
 # torch.set_default_tensor_type('torch.cuda.FloatTensor')
@@ -43,6 +49,16 @@ def check_memory():
 		
 def clamp(num, min_value, max_value):
    return max(min(num, max_value), min_value)
+
+def timing(f):
+	def wrap(*args, **kwargs):
+		time1 = time.time()
+		ret = f(*args, **kwargs)
+		time2 = time.time()
+		print('{:s} function took {:.3f} ms'.format(f.__name__, (time2-time1)*1000.0))
+
+		return ret
+	return wrap
 
 
 def random_weights3(a, b, c):
@@ -63,11 +79,16 @@ class PassGate(nn.Module):
 		super().__init__()
 		self.w_ = torch.nn.Parameter(data = random_weights3(out_dim, in_dim, rc_dim), requires_grad=True)
 		self.b_ = torch.nn.Parameter(data = torch.zeros(batches, out_dim), requires_grad=True)
+		self.relu = torch.nn.LeakyReLU(0.2)
 		
 	def update_rc(self, rc):
-		self.w_.data = torch.clamp(self.w_, -1.0, 1.0)
+		self.w_.data = torch.clamp(self.w_, -0.001, 1.0)
+		# w_ is out x in x rc; so to do broadcast / batched mm, 
+		# need to make rc batch x 1 x rc x 1
+		# to yield a batch x out x in x 1
 		rc = rc[:, None, :, None] # batch wise reduction
-		self.w2 = torch.squeeze(torch.matmul(self.w_, rc))
+		# adding relu allows RC to 'shut off' segments of dendrites (weights). 
+		self.w2 = self.relu(torch.squeeze(torch.matmul(self.w_, rc)))
 	
 	def forward(self, inp):
 		inp = inp[:,:,None] # so we do a reduction 
@@ -77,56 +98,63 @@ class PassGate(nn.Module):
 class PGnet(nn.Module):
 	def __init__(self):
 		super().__init__()
-		self.fpg = PassGate(16, 41, 14)
-		self.rpg = PassGate(41, 16, 14)
-		self.pgctrl = torch.nn.Linear(41+16+41, 14)
+		self.fpg = PassGate(16, 41, nrc)
+		self.rpg = PassGate(41, 16, nrc)
+		self.pgctrl = torch.nn.Linear(41+16+41, nrc)
 		self.pgrelu = torch.nn.LeakyReLU(0.2)
 		self.pgsoftmax = torch.nn.Softmax(dim=0)
-		# self.pgctrl = torch.nn.Parameter(data = random_weights(41+16, 14), requires_grad=True)
+		# self.pgctrl = torch.nn.Parameter(data = random_weights(41+16, nrc), requires_grad=True)
+		self.rc = torch.zeros(batches, nrc).to(gdevice)
 		self.l2 = torch.zeros(batches, 16).to(gdevice)
 		self.l1i = torch.zeros(batches, 41).to(gdevice)
 		self.l2softmax = torch.nn.Softmax(dim=0)
-		self.rcblurweight = torch.zeros((batches,14,14))
-		for k in range(14):
-			self.rcblurweight[:,k,k] = 0.85
+		self.rcblurweight = torch.zeros((batches,nrc,nrc))
+		for k in range(nrc):
+			self.rcblurweight[:,k,k] = 0.8
 		for k in range(13):
-			self.rcblurweight[:,k,k+1] = 0.075
-			self.rcblurweight[:,k+1,k] = 0.075
+			self.rcblurweight[:,k,k+1] = 0.1
+			self.rcblurweight[:,k+1,k] = 0.1
 		self.rcblurweight = self.rcblurweight.to(gdevice)
 		self.l2blurweight = torch.zeros((batches,16,16))
 		for k in range(16):
-			self.l2blurweight[:,k,k] = 0.85
+			self.l2blurweight[:,k,k] = 0.8
 		for k in range(15):
-			self.l2blurweight[:,k,k+1] = 0.075
-			self.l2blurweight[:,k+1,k] = 0.075
+			self.l2blurweight[:,k,k+1] = 0.1
+			self.l2blurweight[:,k+1,k] = 0.1
 		self.l2blurweight = self.l2blurweight.to(gdevice)
 		
 	def forward(self, inp):
 		# run the network for several steps to reach equilibrium
 		# this of course is prone to positive feedback instability! 
-		l2 = self.l2
+		l2old = self.l2
 		l1i = self.l1i
+		rcold = self.rc
 		# with torch.no_grad():
-		for k in range(2):
-			rcin = torch.cat((inp, l2, inp-l1i),dim=1)
+		for k in range(1):
+			rcin = torch.cat((inp, l2old, inp-l1i),dim=1)
 			rc = self.pgrelu(self.pgctrl(rcin))
+			rc = 0.4*rc + 0.6*rcold
 			# rc = self.pgsoftmax(rc)
-			rc = torch.clamp(rc, -0.1, 1.0)
+			rc = torch.clamp(rc, -0.2, 1.0)
 			# imshow_(rc,'rc_before.png')
-			for b in range(2):
+			for b in range(3):
 				rc = torch.squeeze(torch.matmul(self.rcblurweight, rc[:,:,None]))
 			# imshow_(rc,'rc_after.png')
 			self.fpg.update_rc(rc) 
 			self.rpg.update_rc(rc)
 			# l2 = self.l2softmax(self.fpg.forward(inp))
-			l2 = torch.clamp(self.fpg.forward(inp), -0.1, 1.0)
+			l2 = self.fpg.forward(inp) * 0.10 + 0.9 * l2old
+			l2 = torch.clamp(l2, -0.2, 1.0)
+			# imshow_(l2,'l2_before.png')
 			for b in range(2):
 				l2 = torch.squeeze(torch.matmul(self.l2blurweight, l2[:,:,None]))
+			# imshow_(l2,'l2_after.png')
 			l1i = self.rpg.forward(l2)
 			l1i = torch.clamp(l1i, -0.2, 1.0) 
 		
 		self.l2 = l2.detach()
 		self.l1i = l1i.detach()
+		self.rc = rc.detach()
 		
 		return(l1i, l2.detach(), rc.detach())
 	
@@ -171,57 +199,58 @@ class PGnet(nn.Module):
 # objects are cosine bumps that move through the field 
 # with a fixed velocity. 
 
-obj_ = (-10.0, 1.0, 5.0) # position, veclocity, width.
-
-def render(input_obj):
-	vis = np.zeros(41); 
-	(position, velocity, width) = input_obj; 
-	for j in range(-20,21):
-		val = 0.0
-		if j >= position - width and j <= position + width:
-			val = (math.cos((j-position) / width * math.pi) + 1.0)/2.0 
-		vis[j+20] = val
-	return torch.from_numpy(vis).to(torch.float)
-
+# this is a real bottleneck.. use JIT
+@jit(nopython=True)
 def render_batch(input_objs):
-	output = torch.zeros(batches, 41)
-	for ind,res in enumerate(pool.map(render, input_objs)):
-		output[ind, :] = res
-	return output
+	output = np.zeros((batches, 41))
+	for i in range(batches):
+		position = input_objs[i, 0]
+		velocity = input_objs[i, 1]
+		width = input_objs[i, 2]
+		mod = input_objs[i, 3]
+		for j in range(-20,21):
+			val = 0.0
+			if j >= position - width and j <= position + width:
+				val = (np.cos((j-position) / width * 3.1415926) + 1.0)/2.0 
+				val = val * ((np.sin((j-position) / mod * 3.1415926) * 0.25) + 0.75)
+			output[i,j+20] = val
+	return output # torch.from_numpy(output).to(torch.float)
 
-def move(input_obj):
-	(position, velocity, width) = input_obj; 
-	# can kinda do whatever we want here, 
-	# but let's keep it simple for now. 
-	return (position + velocity, velocity, width)
-
-def new_obj(ignore):
+@jit(nopython=True)
+def new_obj():
 	scl = 1.0
-	if torch.randn(1) < 0.0:
+	if randn() < 0.0:
 		scl = -1.0
 	position = 26.0 * scl
-	velocity = (1.75 + torch.randn(1) * 0.35) * scl * -1.0
-	width = 5.0 + torch.randn(1) * 2.0
-	return(position, velocity, width)
+	velocity = (1.75 + randn() * 0.35) * scl * -1.0
+	width = 7.0 + randn() * 2.0
+	mod = (rand(1)[0] + 1) * 2.25
+	return np.asarray([position, velocity, width, mod])
 
 def random_seed(b):
 	torch.manual_seed((os.getpid() * int(time.time())) % 123456789 + b)
 	return b
 
+@jit(nopython=True)
 def move_batch(input_objs):
-	input_objs = pool.map(move, input_objs)
-	for ind,ob in enumerate(input_objs):
-		(pos, vel, w) = ob
+	for i in range(batches):
+		pos = input_objs[i, 0]
+		velocity = input_objs[i, 1]
+		width = input_objs[i, 2]
+		mod = input_objs[i, 3]
+		pos += velocity
 		# allow the objects to move more fully "off-screen" to avoid edge effects. 
 		if pos < -27 or pos > 27:
-			input_objs[ind] = new_obj(0)
+			input_objs[i,:] = new_obj()
+		else:
+			input_objs[i,:] = np.array((pos, velocity, width, mod))
 	return input_objs
 
 def obj_to_rc(obj_):
 	# convert the object position to a one-hot RC activation.
 	(pos,vel,width) = obj_
 	# make the desired one-hot location. 
-	rcdes = torch.zeros(14); 
+	rcdes = torch.zeros(nrc); 
 	rci = ((pos + 20) / 40.0) * 13.0
 	rci = clamp(rci, 0.0, 13.001)
 	rcil = int(math.floor(rci))
@@ -232,8 +261,8 @@ def obj_to_rc(obj_):
 	return rcdes
 
 def obj_to_rc_batch(input_objs):
-	output = torch.zeros(batches, 14)
-	for ind,res in enumerate(pool.map(obj_to_rc, input_objs)):
+	output = torch.zeros(batches, nrc)
+	for ind,res in enumerate(map(obj_to_rc, input_objs)):
 		output[ind, :] = res
 	return output
 
@@ -241,27 +270,39 @@ k = 0
 slowloss = 0.0
 last_update = time.time()
 
-pool = Pool(batches) #defaults to number of available CPU's
+# pool = Pool(batches) #defaults to number of available CPU's
 
 pgn = PGnet()
 pgn.to(device=gdevice)
-optimizer = optim.AdamW(pgn.parameters(), lr = 2e-4, betas=(0.9, 0.99), weight_decay=1e-3)
+optimizer = optim.AdamW(pgn.parameters(), lr = 1e-4, betas=(0.9, 0.99), weight_decay=2e-3)
 mseloss = torch.nn.MSELoss()
-pool.map(random_seed, range(batches))
-obj_ = pool.map(new_obj, range(batches))
-monitor_every = 2e5
-monitor_view = 20
+random_seed(123043)
+obj_ = np.zeros((batches, 4))
+for k in range(batches):
+	obj_[k, :] = new_obj()
+monitor_every = 1e6
+monitor_view = 80
 
 while True:
+	t1 = time.time()
 	vis = render_batch(obj_)
+	vis = torch.from_numpy(vis).to(torch.float)
+	t1a = time.time()
 	obj_ = move_batch(obj_)
+	t1b = time.time()
 	vis = vis.to(device=gdevice)
+	t2 = time.time()
 	pgn.zero_grad()
+	t3 = time.time()
 	# rc = obj_to_rc_batch(obj_)
 	(pred, l2, rc) = pgn.forward(vis)
+	t4 = time.time()
 	loss = mseloss(pred, vis)
+	t5 = time.time()
 	loss.backward()
+	t6 = time.time()
 	optimizer.step()
+	t7 = time.time()
 	
 	pred2 = pred.detach(); 
 	
@@ -269,14 +310,16 @@ while True:
 		# be careful to detach the loss!  otherwise the gradient graph grows endlessly! 
 	if k % 200 == 0 : 
 		upd = time.time() - last_update
-		print(f'{k} loss: {loss}; slowloss {slowloss} time {upd}')
+		print(f'{k} loss: {loss:.3e}; slowloss {slowloss:.3e} time {upd} / {upd/200}')
+		print(f'\trender {(t1a-t1):.3e}; move {(t1b-t1a):.3e}; to_device {(t2-t1b):.3e}; zero_grad {(t3-t2):.3e}; forward {(t4-t3):.3e}; loss {(t5-t4):.3e}; backward {(t6-t5):.3e}; optimizer {(t7-t6):.3e}')
 		last_update = time.time()
+		gc.collect()
 		
 	if k % monitor_every < monitor_view and k % monitor_every >= 0: 
 		plt.plot(range(41), vis[0,:].cpu().detach().numpy(), 'b')
 		plt.plot(range(41), pred[0,:].cpu().detach().numpy(), 'r')
 		plt.plot(range(16), l2[0,:].cpu().numpy(), 'k')
-		plt.plot(range(14), rc[0,:].cpu().numpy(), 'g')
+		plt.plot(range(nrc), rc[0,:].cpu().numpy(), 'g')
 		plt.show()
 	if k % monitor_every == monitor_view:
 		print(pgn.forward_weights())
@@ -286,7 +329,7 @@ while True:
 # break the problem down: 
 # see if the rc network can generate a one-hot output from l1 and l2. 
 rcnet = nn.Sequential(
-	nn.Linear(41+16, 14), 
+	nn.Linear(41+16, nrc), 
 	nn.LeakyReLU(0.2))
 
 optimizer = optim.AdamW(rcnet.parameters(), lr=1e-4, betas=(0.9, 0.999), weight_decay=2e-4)
@@ -314,8 +357,8 @@ while True:
 	if k % 100000 == 0:
 		plt.plot(range(41), l1.cpu().detach().numpy(), 'b')
 		plt.plot(range(16), l2.cpu().detach().numpy(), 'k')
-		plt.plot(range(14), rcdes.cpu().numpy(), 'r')
-		plt.plot(range(14), pred.detach().cpu().numpy(), 'g')
+		plt.plot(range(nrc), rcdes.cpu().numpy(), 'r')
+		plt.plot(range(nrc), pred.detach().cpu().numpy(), 'g')
 		plt.show()
 		
 	obj_ = move(obj_)
