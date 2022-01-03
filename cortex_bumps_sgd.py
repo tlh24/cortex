@@ -31,7 +31,8 @@ from torch.nn import functional as F
 from torch.autograd import Function
 
 batches = 64
-nrc = 16 # 
+nrc = 8 # 
+nl2 = 4
 
 torch.set_default_tensor_type('torch.FloatTensor')
 # torch.set_default_tensor_type('torch.cuda.FloatTensor')
@@ -82,13 +83,13 @@ class PassGate(nn.Module):
 		self.relu = torch.nn.LeakyReLU(0.2)
 		
 	def update_rc(self, rc):
-		self.w_.data = torch.clamp(self.w_, -0.001, 1.0)
+		self.w_.data = torch.clamp(self.w_, -1.0, 1.0)
 		# w_ is out x in x rc; so to do broadcast / batched mm, 
 		# need to make rc batch x 1 x rc x 1
 		# to yield a batch x out x in x 1
 		rc = rc[:, None, :, None] # batch wise reduction
 		# adding relu allows RC to 'shut off' segments of dendrites (weights). 
-		self.w2 = self.relu(torch.squeeze(torch.matmul(self.w_, rc)))
+		self.w2 = (torch.squeeze(torch.matmul(self.w_, rc)))
 	
 	def forward(self, inp):
 		inp = inp[:,:,None] # so we do a reduction 
@@ -98,27 +99,27 @@ class PassGate(nn.Module):
 class PGnet(nn.Module):
 	def __init__(self):
 		super().__init__()
-		self.fpg = PassGate(16, 41, nrc)
-		self.rpg = PassGate(41, 16, nrc)
-		self.pgctrl = torch.nn.Linear(41+16+41, nrc)
+		self.fpg = PassGate(nl2, 41, nrc)
+		self.rpg = PassGate(41, nl2, nrc)
+		self.pgctrl = torch.nn.Linear(41+nl2+41, nrc)
 		self.pgrelu = torch.nn.LeakyReLU(0.2)
 		self.pgsoftmax = torch.nn.Softmax(dim=0)
 		# self.pgctrl = torch.nn.Parameter(data = random_weights(41+16, nrc), requires_grad=True)
 		self.rc = torch.zeros(batches, nrc).to(gdevice)
-		self.l2 = torch.zeros(batches, 16).to(gdevice)
+		self.l2 = torch.zeros(batches, nl2).to(gdevice)
 		self.l1i = torch.zeros(batches, 41).to(gdevice)
 		self.l2softmax = torch.nn.Softmax(dim=0)
 		self.rcblurweight = torch.zeros((batches,nrc,nrc))
 		for k in range(nrc):
 			self.rcblurweight[:,k,k] = 0.8
-		for k in range(13):
+		for k in range(nrc-1):
 			self.rcblurweight[:,k,k+1] = 0.1
 			self.rcblurweight[:,k+1,k] = 0.1
 		self.rcblurweight = self.rcblurweight.to(gdevice)
-		self.l2blurweight = torch.zeros((batches,16,16))
-		for k in range(16):
+		self.l2blurweight = torch.zeros((batches,nl2,nl2))
+		for k in range(nl2):
 			self.l2blurweight[:,k,k] = 0.8
-		for k in range(15):
+		for k in range(nl2-1):
 			self.l2blurweight[:,k,k+1] = 0.1
 			self.l2blurweight[:,k+1,k] = 0.1
 		self.l2blurweight = self.l2blurweight.to(gdevice)
@@ -130,7 +131,7 @@ class PGnet(nn.Module):
 		l1i = self.l1i
 		rcold = self.rc
 		# with torch.no_grad():
-		for k in range(1):
+		for k in range(2):
 			rcin = torch.cat((inp, l2old, inp-l1i),dim=1)
 			rc = self.pgrelu(self.pgctrl(rcin))
 			rc = 0.4*rc + 0.6*rcold
@@ -280,7 +281,7 @@ random_seed(123043)
 obj_ = np.zeros((batches, 4))
 for k in range(batches):
 	obj_[k, :] = new_obj()
-monitor_every = 1e6
+monitor_every = 4e6
 monitor_view = 80
 
 while True:
@@ -318,7 +319,7 @@ while True:
 	if k % monitor_every < monitor_view and k % monitor_every >= 0: 
 		plt.plot(range(41), vis[0,:].cpu().detach().numpy(), 'b')
 		plt.plot(range(41), pred[0,:].cpu().detach().numpy(), 'r')
-		plt.plot(range(16), l2[0,:].cpu().numpy(), 'k')
+		plt.plot(range(nl2), l2[0,:].cpu().numpy(), 'k')
 		plt.plot(range(nrc), rc[0,:].cpu().numpy(), 'g')
 		plt.show()
 	if k % monitor_every == monitor_view:
@@ -329,7 +330,7 @@ while True:
 # break the problem down: 
 # see if the rc network can generate a one-hot output from l1 and l2. 
 rcnet = nn.Sequential(
-	nn.Linear(41+16, nrc), 
+	nn.Linear(41+nl2, nrc), 
 	nn.LeakyReLU(0.2))
 
 optimizer = optim.AdamW(rcnet.parameters(), lr=1e-4, betas=(0.9, 0.999), weight_decay=2e-4)
@@ -356,7 +357,7 @@ while True:
 		last_update = time.time()
 	if k % 100000 == 0:
 		plt.plot(range(41), l1.cpu().detach().numpy(), 'b')
-		plt.plot(range(16), l2.cpu().detach().numpy(), 'k')
+		plt.plot(range(nl2), l2.cpu().detach().numpy(), 'k')
 		plt.plot(range(nrc), rcdes.cpu().numpy(), 'r')
 		plt.plot(range(nrc), pred.detach().cpu().numpy(), 'g')
 		plt.show()

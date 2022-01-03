@@ -153,3 +153,41 @@ This is consistent with there being only 41 vision sensors, and the spatial freq
 Thus, even though this experiment 'failed', it revealed something useful:
 we can't expect the network to generalize well if it doesn't need to. 
 Loss gradually bottoms out to 6e-5 at 4e6 steps. 
+
+Dec 30 2021
+
+Tried dramatically decreasing the network size -- 4 l2 units, 8 rc units. 
+Keeping the weight clamps resulted in L2 staying high all the time (near 1). 
+Trying now with weights clamped to [-1 .. 1]
+... 
+This did not change L2, it's still always high. 
+Try removing the ReLU when forming w2 from w_ and rc. 
+
+Dec 31 2021
+
+4 l2, 8 rc seems to be working (unrestricted..)
+Let's try making the objects move faster so the contextual window is shorter! 
+(Might need to add explicit set / reset..)
+Increasing the velocity by 2.5x: 
+velocity = (1.75 + randn() * 0.35) * scl * -2.5
+
+Jan 1 2022
+That seemed to make things worse!  prediction was more accurate and 'smoother' with the orginal speed.  
+What if we increase the iterations? 
+	from one to two. 
+		obviously this is a good bit slower... 
+
+Other idea: add dynamics to the synapses (or dendrites) themselves. 
+
+Jan 2 2022
+
+I've run the network for a long time now -- 
+20440800 loss: 1.763e-03; (20e6 steps!)
+And it does seem to be representing the 1D field with something that appears to be a shifter in the RC network, and something that appears to be more constant, in the l2 network. 
+This is with two passes through the network in forward(self, inp)
+And also spatial bluring on both l2 (2 passes) and rc (3 passes). 
+
+I think, per 1999 Schmidhuber Feature extraction through Lococode, that we need to ammend the network such that the objective function forces sparse or factorial coding. 
+Factorial coding is definitely what we want here ...
+If we need to implement their rather complicated objective function modification, then so be it. 
+First, I think, we need to replicate the 5 x 5 bar experiment, both with SGD and with their fancy modifications. 
