@@ -281,8 +281,8 @@ random_seed(123043)
 obj_ = np.zeros((batches, 4))
 for k in range(batches):
 	obj_[k, :] = new_obj()
-monitor_every = 4e6
-monitor_view = 80
+monitor_every = 1e5
+monitor_view = 40
 
 while True:
 	t1 = time.time()

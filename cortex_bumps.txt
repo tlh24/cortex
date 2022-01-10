@@ -191,3 +191,12 @@ I think, per 1999 Schmidhuber Feature extraction through Lococode, that we need 
 Factorial coding is definitely what we want here ...
 If we need to implement their rather complicated objective function modification, then so be it. 
 First, I think, we need to replicate the 5 x 5 bar experiment, both with SGD and with their fancy modifications. 
+
+Options: 
+-- Change the objective function to improve source separation. 
+	-- Problem: there is no guarantee that things will be topological; indeed it may be asking too much to assume that the arrived-at representation is topological... 
+		-- Schmidhuber result did not find topological mappings
+			It also hasn't been cited that much. 
+		-- Well the cortex seems to do this just fine ... need to replicate some special sauce there! 
+-- Add to the network additional layers that can un-permute the arbitrary mappings found by SGD
+	-- Also consistent with above.  
