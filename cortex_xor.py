@@ -7,6 +7,9 @@ import pdb
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
+print_dw = False
+fixed_init = False
+
 # test solutions to the XOR problem using modified hopfield networks.  
 
 def inhib_update(w_, l, li, lr):
@@ -23,8 +26,11 @@ def inhib_update(w_, l, li, lr):
 	dw2 = torch.outer(torch.pow(l, 2.0), torch.ones(l.size(0))) # this does!
 	# it also forces the diagonal to zero. 
 	dw2 = dw - dw2
-	dw2 = torch.clamp(dw2, -0.01, 0.1)
+	dw2 = torch.clamp(dw2, -0.005, 0.1) # adjust this to change sparsity
 	dw2 = torch.mul(dw2, lr)
+	if print_dw:
+		print('inhib')
+		print(dw2)
 	w_ = torch.add(w_, dw2)
 	# checked: this is needed for sparsity. 
 	# surprisingly, adding weight down-scaling makes them *larger* - ? 
@@ -45,7 +51,9 @@ def hebb_update(w_, inp, outp, outpavg, lr):
 	dw2 = torch.clamp(dw, -1.0, 1.0)
 	dw = torch.mul(torch.pow(torch.mul(dw2, 3.0), 3.0), lr)
 	# the cube nonlinearity seems to work better than straight hebbian, it pretty reliably converges.
-	#dw = torch.mul(dw2, lr)
+	if print_dw:
+		print('hebb')
+		print(dw)
 	w_ = torch.add(w_, dw)
 	# also perform scaling. 
 	scale = torch.clamp(outp, 1.5, 1e6)
@@ -58,33 +66,48 @@ def hebb_update(w_, inp, outp, outpavg, lr):
 	dw = torch.outer(scale, torch.ones(inp.size(0)))
 	return torch.mul(w_, dw)
 
+def initialize_weights_fix(r, c): # dim0, dim1
+	a = torch.arange(-0.5, 0.5, 1.0/(r*c))
+	w = torch.reshape(a, (c, r)) # jax code is right-multiply
+	w = torch.transpose(w, 0, 1)
+	return w
+
 w_f = torch.mul(torch.rand(4, 6), math.sqrt(2.0 / 6.0))
 w_b = torch.zeros(6, 4) # let hebb fill these in. 
 w_l2i = torch.zeros(4, 4)
+if fixed_init: 
+	w_f = initialize_weights_fix(4, 6)
+	w_b = initialize_weights_fix(6, 4)
+	w_l2i = initialize_weights_fix(4, 4)
+
 l1a = torch.zeros(6)
 l2a = torch.zeros(4)
 
 indata = [[0,0], [0,1], [1,0], [1,1]]
 
-for i in range(1000): # realistically, need far fewer than 10k...
+N = 400
+if fixed_init or print_dw: 
+	N == 4
+
+for i in range(N): 
 	j = i % 4
 	ind = indata[j]; 
 	l1e_ = [ind[0], ind[0]^1, ind[1], ind[1]^1, ind[0]^ind[1], (ind[0]^ind[1])^1]
 	l1e = torch.tensor(l1e_).to(torch.float)
 
 	l2e = torch.clamp(torch.matmul(w_f, l1e), 0.0, 2.5)
-	l2i = torch.clamp(torch.matmul(w_l2i, l2e), 0.0, 6.0)
+	l2i = torch.clamp(torch.matmul(w_l2i, l2e), 0.0, 5.0)
 	l2u = l2e - l2i
 	l2a = l2a * 0.99 + l2u * 0.01
 	
-	l1i = torch.clamp(torch.matmul(w_b, l2u), 0.0, 2.5)
+	l1i = torch.clamp(torch.matmul(w_b, l2u), 0.0, 5.0)
 	l1u = l1e - l1i
 	l1a = l1a * 0.99 + l1u * 0.01
 	
 	# update forward weight based on inhibited l1 state. 
 	# e.g. at equilibrium, will be zero. 
 	w_f = hebb_update(w_f, l1u, l2u, l2a, 0.02)
-	w_l2i = inhib_update(w_l2i, l2u, l2i, 0.02)
+	w_l2i = inhib_update(w_l2i, l2u, l2i, 0.04)
 	# this inhibition is not quite strong enough -- it selects sparse winners, 
 	# but does not force them to be perfectly sparse (4 patterns, in this case..)
 	# humm .. ? 
@@ -92,16 +115,32 @@ for i in range(1000): # realistically, need far fewer than 10k...
 	# similarly, update reverse weight .. 
 	w_b = hebb_update(w_b, l2u, l1u, l1a, 0.02)
 	
-	if (i % 97) == 0: 
-		print("l1e", l1e)
-		print("l1i", l1i)
-		print("l1a", l1a)
-		print("l2u", l2u)
-		print("l2i", l2i)
-		print("  ")
+	#if (i % 97) == 0: 
+	print("l1e", l1e)
+	print("l1a", l1a)
+	print("l1i", l1i)
+	print("l1u", l1u)
+	print('----------')
+	print("l2e", l2e)
+	print("l2a", l2a)
+	print("l2i", l2i)
+	print("l2u", l2u)
+	print("  ")
 	
-	
-#im = plt.imshow(w_l2i.numpy())
-#plt.colorbar(im)
-#plt.show()
+if False: 
+	fig,axs = plt.subplots(1,3, figsize=(16,8))
+	im = axs[0].imshow(w_f.numpy())
+	plt.colorbar(im, ax=axs[0])
+	axs[0].set_title('w_f')
+
+	im = axs[1].imshow(w_b.numpy())
+	plt.colorbar(im, ax=axs[1])
+	axs[1].set_title('w_b')
+
+	im = axs[2].imshow(w_l2i.numpy())
+	plt.colorbar(im, ax=axs[2])
+	axs[2].set_title('w_l2i')
+
+	fig.tight_layout()
+	plt.show()
 	
