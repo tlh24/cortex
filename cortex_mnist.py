@@ -65,10 +65,10 @@ def hebb_update(w_, inp, outp, outpavg, lr):
 	scale = torch.clamp(outp, 1.0, 1e6)
 	scale = torch.sub(scale, 1.0)
 	scale = torch.exp(torch.mul(scale, -0.06)) 
-	scale2 = torch.clamp(outp, 0.0, 0.1) # turning this back on.
-	scale2 = torch.sub(0.1, scale2) # if outpavg is zero, this is 0.06
-	scale2 = torch.exp(torch.mul(scale2, 0.002)) # then e^0.012 ~= 1.012
-	scale = scale * scale2 # so if the output is too low, scale it up. 
+	#scale2 = torch.clamp(outp, 0.0, 0.1) # turning this back on.
+	#scale2 = torch.sub(0.1, scale2) # if outpavg is zero, this is 0.06
+	#scale2 = torch.exp(torch.mul(scale2, 0.002)) # then e^0.012 ~= 1.012
+	#scale = scale * scale2 # so if the output is too low, scale it up. 
 	dw = torch.outer(scale, torch.ones(inp.size(0)))
 	w_ = torch.mul(w_, dw)
 	w_ = clamp(w_, -0.02, 0.15)
@@ -133,7 +133,7 @@ if animate:
 initialized = False
 im = [ [0]*3 for i in range(4)]
 cbar = [ [0]*3 for i in range(4)]
-
+lr = 0.002 # if the learning rate is too high, it goes chaoitc
 for k in range(10): 
 	#mnist = enumerate(train_loader)
 	for i in range(N): 
@@ -155,17 +155,17 @@ for k in range(10):
 		
 		l1u = l1e - l1i; 
 		l2u = l2s - l2i; 
-		l2a = l2a * 0.99 + l2u * 0.01
+		l2a = l2a * 0.99 + l2s * 0.01
 		l3u = l3s; 
 		l3a = l3a * 0.99 + l3u * 0.01
 		
-		w_f1 = hebb_update(w_f1, l1u, l2s, l2a, 0.002)
-		w_f2 = hebb_update(w_f2, l2u, l3u, l3a, 0.002)
-		w_b2 = hebb_update(w_b2, l3u, l2u, ones(128), 0.002)
-		w_b1 = hebb_update(w_b1, l2s, l1u, ones(28*28), 0.002)
+		w_f1 = hebb_update(w_f1, l1u, l2s, l2a, lr)
+		w_f2 = hebb_update(w_f2, l2u, l3u, l3a, lr)
+		w_b2 = hebb_update(w_b2, l3u, l2u, ones(128), lr)
+		w_b1 = hebb_update(w_b1, l2s, l1u, ones(28*28), lr)
 		
-		w_l2i = inhib_update(w_l2i, l2u, l2li, 0.002)
-		w_l3i = inhib_update(w_l3i, l3u, l3li, 0.002)
+		#w_l2i = inhib_update(w_l2i, l2u, l2li, lr)
+		#w_l3i = inhib_update(w_l3i, l3u, l3li, lr)
 		
 		# these are images; too complicated to write to stdout. 
 		def plot_tensor(r, c, v, name, lo, hi):
