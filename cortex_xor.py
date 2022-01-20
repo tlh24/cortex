@@ -42,7 +42,7 @@ def inhib_update(w_, l, li, lr):
 	return torch.mul(w_, dw)
 
 
-def hebb_update(w_, inp, outp, outpavg, lr):
+def hebb_update(w_, inp, outp, lr):
 	dw = torch.outer(outp, inp) 
 	# note: dw needs to be both positive and negative.  
 	# I tried clamping to [0 1] so as to feed into a power nonlinearity, 
@@ -98,36 +98,29 @@ for i in range(N):
 	l2e = torch.clamp(torch.matmul(w_f, l1e), 0.0, 2.5)
 	l2i = torch.clamp(torch.matmul(w_l2i, l2e), 0.0, 5.0)
 	l2u = l2e - l2i
-	l2a = l2a * 0.99 + l2u * 0.01
 	
 	l1i = torch.clamp(torch.matmul(w_b, l2u), 0.0, 5.0)
 	l1u = l1e - l1i
-	l1a = l1a * 0.99 + l1u * 0.01
 	
 	# update forward weight based on inhibited l1 state. 
 	# e.g. at equilibrium, will be zero. 
-	w_f = hebb_update(w_f, l1u, l2u, l2a, 0.02)
+	w_f = hebb_update(w_f, l1u, l2u, 0.02)
 	w_l2i = inhib_update(w_l2i, l2u, l2i, 0.04)
-	# this inhibition is not quite strong enough -- it selects sparse winners, 
-	# but does not force them to be perfectly sparse (4 patterns, in this case..)
-	# humm .. ? 
-	# basically, the hebbian update (+) exactly counteracts the inhibition (-), and they reach equilibrium. Maybe just allow the inhibition to get larger ?! 
+	# this *usually* works, until it doesn't (due to weight initializations, suppose)
 	# similarly, update reverse weight .. 
-	w_b = hebb_update(w_b, l2u, l1u, l1a, 0.02)
+	w_b = hebb_update(w_b, l2u, l1u, 0.02)
 	
 	#if (i % 97) == 0: 
 	print("l1e", l1e)
-	print("l1a", l1a)
 	print("l1i", l1i)
 	print("l1u", l1u)
 	print('----------')
 	print("l2e", l2e)
-	print("l2a", l2a)
 	print("l2i", l2i)
 	print("l2u", l2u)
 	print("  ")
 	
-if False: 
+if True: 
 	fig,axs = plt.subplots(1,3, figsize=(16,8))
 	im = axs[0].imshow(w_f.numpy())
 	plt.colorbar(im, ax=axs[0])

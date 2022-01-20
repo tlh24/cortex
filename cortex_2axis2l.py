@@ -6,8 +6,7 @@ import random
 import pdb
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-
-# test solutions to a two-axis problem using modified hopfield networks.  
+ 
 
 def hebb_update(w_, inp, outp, outpavg, lr):
 # 	pdb.set_trace()
@@ -21,25 +20,30 @@ def hebb_update(w_, inp, outp, outpavg, lr):
 	# the cube nonlinearity seems to work better than straight hebbian, it pretty reliably converges.
 	#dw = torch.mul(dw2, lr)
 	w_ = torch.add(w_, dw)
-	# also perform scaling. 
+	# fast maximum scaling. 
 	scale = torch.clamp(outp, 2.0, 1e6)
 	scale = torch.sub(scale, 2.0)
 	scale = torch.exp(torch.mul(scale, -0.04)) 
+	one = torch.ones(w_.size(1))
+	dw = torch.outer(scale, one)
+	w_ = torch.mul(w_, dw)
+	
 		# slow minimum homeostasis
 	#add = torch.clamp(outpavg, -0.06, 0.06)
 	#add = torch.sub(0.06, add)
 	#add = torch.exp(torch.mul(add, 0.05)) - 1.0
-		## slow maximum homeostasis
-	#add2 = torch.clamp(outpavg, 0.7, 3)
-	#add2 = torch.sub(add2, 0.7) 
-	#add2 = torch.exp(torch.mul(add2, -0.02)) - 1.0
-	
-	dw = torch.outer(scale, torch.ones(inp.size(0))) # this gets stuck if there are negative weights! 
+		## slow maximum scaling
+	scale2 = torch.clamp(outpavg, 0.7, 3)
+	scale2 = torch.sub(scale2, 0.7) 
+	scale2 = torch.exp(torch.mul(scale2, -0.02))
+	dw2 = torch.outer(scale2, one)
+	w_ = torch.mul(w_, dw2)
+	 
 	#dw2 = torch.outer(add, torch.ones(inp.size(0)))
 	#dw3 = torch.outer(add2, torch.ones(inp.size(0)))
 	#w_ = torch.add(w_, dw2)
 	#w_ = torch.add(w_, dw3) ## TBD this homeostasis doesn't work, causes instability!!!
-	return torch.clamp(torch.mul(w_, dw), -2, 6)
+	return torch.clamp(w_, -1, 1)
 
 def inhib_update(w_, l, li, lr):
 	# this function approximates competitive inhibition: 
@@ -67,7 +71,7 @@ def inhib_update(w_, l, li, lr):
 	dw = torch.outer(scale, one)
 	return torch.clamp(torch.mul(w_, dw), -1.0, 1.0)
 
-noise_level = 0.025
+noise_level = 0.0025
 print("noise level", noise_level)
 
 indata = [[0,0,0], [1,0,1], [0,1,1], [1,1,1]] 
@@ -88,18 +92,18 @@ err = 0.0
 N = 100
 for k in range(1): 
 	w_f2 = torch.mul(torch.rand(4, 6), math.sqrt(2.0 / 6.0))
-	w_b2 = torch.zeros(6, 5) # let hebb fill these in. 
+	w_b2 = torch.zeros(6, 4) # let hebb fill these in. 
 	w_l2i = torch.zeros(4, 4)
 	l2a = torch.ones(4) * 0.5
 	l2u5 = torch.ones(5)
 	
-	w_f3 = torch.mul(torch.rand(2, 4), math.sqrt(2.0 / 6.0))
+	w_f3 = torch.mul(torch.rand(3, 4), math.sqrt(2.0 / 6.0))
 	w_b3 = torch.zeros(4, 3)
-	w_l3i = torch.zeros(2, 2)
-	l3a = torch.ones(2) * 0.5
+	w_l3i = torch.zeros(3, 3)
+	l3a = torch.ones(3) * 0.5
 	l3u5 = torch.ones(3)
 	
-	for i in range(N): # realistically, need far fewer than 10k...
+	for i in range(N): 
 		j = i % 4
 		ind = indata[j]; 
 		l1e_ = [ind[0], ind[0]^1, ind[1], ind[1]^1, ind[2], ind[2]^1]

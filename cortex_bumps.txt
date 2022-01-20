@@ -200,3 +200,11 @@ Options:
 		-- Well the cortex seems to do this just fine ... need to replicate some special sauce there! 
 -- Add to the network additional layers that can un-permute the arbitrary mappings found by SGD
 	-- Also consistent with above.  
+
+Jan 20 2022
+Spent yesterday trying to get MNIST working via the simplivied feedback path. 
+It works, sorta -- but is prone to instability, possibly chaotic instability. 
+Dialing it back & trying a stimuli with a known distribution : just a bunch of gaussian bumps
+It's still very unstable. 
+But, l1e activations don't seem to decay to zero (at least)
+(This problem should be trivially solvable with PCA)
