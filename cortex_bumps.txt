@@ -202,9 +202,23 @@ Options:
 	-- Also consistent with above.  
 
 Jan 20 2022
-Spent yesterday trying to get MNIST working via the simplivied feedback path. 
+Spent yesterday trying to get MNIST working via the simplified feedback path. 
 It works, sorta -- but is prone to instability, possibly chaotic instability. 
 Dialing it back & trying a stimuli with a known distribution : just a bunch of gaussian bumps
 It's still very unstable. 
 But, l1e activations don't seem to decay to zero (at least)
 (This problem should be trivially solvable with PCA)
+
+Alright, it's working better -- but I can't be sure about the inhibition though. 
+It takes a long time to wind up, and once it is wound up, it seems unstable / diverges. hm. 
+
+Two current problems: 
+-- The inhibition is sensitive to tuning / it does not completely abolish correlational structure in the sequence. 
+-- Learning rate very much depends on the number of inputs, which determines the strength of the resulting activation. 
+	While the first layer seems to have a broad plateau of stability, the second layer does not; it likes to either go to all-on E or all off E (input)
+	Meanwhile, there are still modulations to S. 
+	
+Todo presently: 
+	** Test & verify the function of inhibition to approximate the inverse covaraince matrix. 
+	Might need multiple steps.. 
+	** Make sure learning rate scaling makes sense no matter the input - output size of a neuron
