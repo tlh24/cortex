@@ -19,11 +19,11 @@ def hebb_update(w_, inp, outp, outpavg, lr):
 	# but this resulted in the weights all coverging to ~1. 
 	# negative hebbian updates are necessary. 
 	dw2 = clamp(dw, -1.0, 1.0)
-	dw = torch.pow(dw2 * 3.0, 3.0)
+	dw = torch.pow(dw2 * 3.0, 3.0) # cube is essential
 	ltp = clamp(dw, 0.0, 1.0) # make ltp / ltd asymmetrc
 	ltd = clamp(dw, -1.0, 0.0) # to keep weights from going to zero
 	# lr = lr / math.pow(inp.size(0), 0.75)
-	dw = ltp*lr + ltd*lr*1.5
+	dw = ltp*lr + ltd*lr*2.0
 	# the cube nonlinearity seems to work better than straight hebbian, it pretty reliably converges.
 	if print_dw:
 		print('hebb')
@@ -148,8 +148,8 @@ test_loader = torch.utils.data.DataLoader(
                                torchvision.transforms.ToTensor()
                              ])),
   batch_size=batch_size, shuffle=True, pin_memory=True)
-HID1 = 256
-HID2 = 64
+HID1 = 128
+HID2 = 32
 
 # note: these are uniform random numbers, so they average to 0.5
 # unform would need the square root. 
@@ -173,7 +173,7 @@ if animate:
 initialized = False
 im = [ [0]*3 for i in range(5)]
 cbar = [ [0]*3 for i in range(5)]
-lr = 0.0004 # if the learning rate is too high, it goes chaoitc
+lr = 0.0002 # if the learning rate is too high, it goes chaoitc
 for k in range(25): 
 	mnist = enumerate(train_loader)
 	for i in range(N): 
@@ -186,7 +186,14 @@ for k in range(25):
 		l2e = clamp(w_f1 @ l1e, -0.5, 2.5) + torch.randn(HID1) * 0.025 
 		l2li = clamp(w_l2i @ l2e, 0.0, 5.0)
 		l2s = l2e - l2li # sparsified
-		l1i = clamp(w_b1 @ l2s, -0.5, 1.0) 
+		l1i = clamp(w_b1 @ l2s, 0.0, 1.0) 
+		err = l1e - l1i
+		
+		# iterate .. ?  gradient-boosting? 
+		l2e = clamp(w_f1 @ (l1e + 0.5*err), -0.5, 2.5) + torch.randn(HID1) * 0.025 
+		l2li = clamp(w_l2i @ l2e, 0.0, 5.0)
+		l2s = l2e - l2li # sparsified
+		l1i = clamp(w_b1 @ l2s, 0.0, 1.0) 
 									  
 		l3e = clamp(w_f2 @ l2e, 0.0, 2.5) + torch.randn(HID2) * 0.025 
 		l3li = clamp(w_l3i @ l3e, 0.0, 5.0)
@@ -204,8 +211,8 @@ for k in range(25):
 		w_b2 = hebb_update(w_b2, l3u, l2u, ones(HID1), lr)
 		w_b1 = hebb_update(w_b1, l2s, l1u, ones(28*28), lr)
 		
-		w_l2i = inhib_update(w_l2i, l2s, l2li, lr*1.0)
-		w_l3i = inhib_update(w_l3i, l3s, l3li, lr*1.0)
+		#w_l2i = inhib_update(w_l2i, l2s, l2li, lr*1.0)
+		#w_l3i = inhib_update(w_l3i, l3s, l3li, lr*1.0)
 		
 		# these are images; too complicated to write to stdout. 
 		def plot_tensor(r, c, v, name, lo, hi):
@@ -217,6 +224,8 @@ for k in range(25):
 				v = torch.reshape(v, (8,16))
 			if v.shape[0] == 64:
 				v = torch.reshape(v, (8,8))
+			if v.shape[0] == 32:
+				v = torch.reshape(v, (8,4))
 			if v.shape[0] == 10:
 				v = torch.reshape(v, (2,5))
 			if not initialized:

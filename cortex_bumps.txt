@@ -222,3 +222,16 @@ Todo presently:
 	** Test & verify the function of inhibition to approximate the inverse covaraince matrix. 
 	Might need multiple steps.. 
 	** Make sure learning rate scaling makes sense no matter the input - output size of a neuron
+	
+Jan 21 2022
+OK, the inhibition is decidedly not working the way we expect or want -- it does not reliably converge to the desired number of of underlying factors. 
+(However, in combination with the feedforward hebbian rule, it might ...)
+Nonetheless, keeping the inhibition in the network generally seems to improve network function. 
+
+The first layer now is broadly stable, it just tends to have low-activity tuning artifacts, due to the nonlinearity in the hebbian rule: infrequent strong LTP compensates for frequent small LTD.  
+Might be able to tune a meta-parameter to correct for this. 
+	In the brain, I suspect this is additionally handled with space: synapses cluster together on dendrites, which spatially organize (maybe???) to allow for the nonlinear interactions suporting local filter maintenance / removal of non spatially concordant info.
+
+Need to tackle the problem of learning rate depending on the number of inputs. 
+	In the brain: most neurons of a given class have about the same number of synapses? 
+	
