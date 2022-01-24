@@ -234,4 +234,5 @@ Might be able to tune a meta-parameter to correct for this.
 
 Need to tackle the problem of learning rate depending on the number of inputs. 
 	In the brain: most neurons of a given class have about the same number of synapses? 
-	
+Can't you just scale the learning rate by the 1/(number of inputs)? 
+This would allow equivalent steps to the resulting activity. 
