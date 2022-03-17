@@ -1,4 +1,4 @@
-May 13 2021
+﻿May 13 2021
 
 The mode was (not so much is anyore..) decent at nulling the input neurons w inhibition, 
 but is absoulte crap at the route-cause: it divergese to flat, all units identical.
@@ -236,3 +236,100 @@ Need to tackle the problem of learning rate depending on the number of inputs.
 	In the brain: most neurons of a given class have about the same number of synapses? 
 Can't you just scale the learning rate by the 1/(number of inputs)? 
 This would allow equivalent steps to the resulting activity. 
+
+March 11 2022
+
+Been awhile ... eh wells.  
+In further pondering of the task, it seems unreasonable or difficult to force invariance transformations, such as translations, to adopt a one-hot encoding.  
+In the case of a 32x32 input, 32x32 output, and one-hot 1D translation vector, this requires storage of a full 32MB translation tensor.  Quite insane.  
+
+Instead, we know we have ~ 86e9 neurons, of which 19-23e9 neurons are in the neocortex.  
+Allegedly the cortex contains about 1.5e14 synapses (150 trillion) .. I don't know why i seem to recall there being 100 trillion synapses in the brain. 
+This equates to 7500 synapses / neuron, which is maybe in the right ballpark. 
+Obviously there are a good number in the cerebellum, thalamus, hippocampus, etc.
+Meanwhile, the cerebellum allegedly has 70 billion neurons (this doesnt add up?) 
+
+Anyway, if we have a naive shifter architecture, there are 1k input neurons, 1k output neurons, 32 translation neurons, and 32M three-part synapses, which equates to 15k synapses / neuron.  
+The problem is that the number of synapses scales as the third power of the input dimensionality, which clearly doesn't work
+n synapses per neuron = (n * n) * (n * n) * n / (2*n*n +n) ~= n^3
+Yeah, not ok. 
+
+In comparison, using activity rather than space to encode location, you need like one operation to shift things around, and only a handful of synapses. 
+	That said, learning in the dumb af expansion above is easy, whereas learning with activity = location is ???
+
+March 15 2022
+Some shower thoughts today:
+-- Conjunctive features = signals that co-occur, and hence are easy to extract with nonlinear, Hebbian synapses.  This is done.
+	-- This is similar to a linear "AND" gate -- signals co-occur commonly. Patches ala Olshausen. 
+	-- The reason why we can't do anything else with conjunctive extraction on the second layer is that there are no more easily accessible statistics. (??)
+	-- Discriminative learning does have purchase on these problems; it will push apart clusters with different labels & build up discrimination (=classification) in this way.  We don't have this luxury with unsupervised learning.
+		Maybe we do have it with self-supervised learning?
+		It certainly seems to work with GANs (very well) / VAEs (pretty well)
+-- Need an equivalent to the "OR" gate, which can 'destroy' information ala a max-pooling layer. OR = invariance; ignore the patterns of variation within a weight matrix.
+	Thinking: in a biological neuron, everything in the set of inputs that create a spike can be considered to be in the invariant set.
+		This of course is nonlinear and sorta additive: two inputs that are both in the projection set will add sub-linearly
+		-- A normal ReLU artificial neuron has a threshold hyperplane which divides up the set, and planes parallel to this division are invariant. (and planes on the left side are straight ignored!)
+	In MNIST, when you train with augmented data (small translations and rotations), you explicitly 'teach' the network that these patterns of variation don't matter.
+	-- This could be done in a different way, though: if you move your eyes around, one assumption is that the world has not changed, and hence that the observed patterns of variation you can OR over.
+		The other idea is that the patterns of variation can be well explained by oculomotor behavior, head motion, or self motion.
+		-- Want generated behavior to "explain away" factors of variation of the sensory input,
+			And for motor-generated factors to train up a more general purpose extractor in the case of non-self-generated behavior.
+			"Self supervised" in this sense, or at least "scientifically (experiments) supervised"
+
+A priori, how do we know that certain axes are irrelevant?
+	If we do know, then can move the discrimination plane in a perceptron to be parallel to these axes.
+		There is the added complexity of inhibition & plastic inhibitory synapses; originally I was thinking of using these as purely sparsifying, but that proved to be non-essential.  They can of course effect the invariant planes (dramatically!)
+	Without supervisory signals, there is no way to know what is irrelevant!? 
+		Other than things that do-not co-occur (manifold learning)
+	With supervision (eg. knowing all the digits in a given class), it becomes easier to know dimensions to be irrelevant, and to OR over them.
+What if we approach it a different way?
+	In a given digit, dark pixels say in the middle of the image can curve to the left or right or up; these depend of course on what digit the image is part of.  From the data, you can infer that completely random instances of dark patches do not co-occur; they tend to have higher level structure.  
+	Why does the cortex_mnist.py not sparsely extract these features?  
+	It should be possible just with the basic thresholding nonlinearity, right? 
+		This would only implicitly start “oring” irrelevant dimensions.  But that should be OK. 
+	The problem is that -- when there is an “or” of irrelevant dimensions, **we don’t know which one to recreate.**
+		In the trivial sense, we have multiple translations or variations of the same digit. 
+		If you know that one patch is active, then you can update your prior that neighboring patches are also active, conditional on these patches, and or conditional on higher-level features, hypothetically with a high degree of sparsity.  
+	Then, with BTSP and-or STDP, you can ‘store’ the linkages (causes) of the activations, and thereby store information like location in a scene.  
+		I would think that nonlinear interaction of synapses in dendrites to be a critical element of this algorithm. 
+
+March 17 2022
+For the AND circuit, i guess log-transform?  but then have to exponentiate..
+really want:
+	weight * AND ( outer ( input_vector ))
+or even:
+	weight * AND ( outer ( outer (input_vector), input_vector) )
+In the shape task, just a single outer product should suffice:
+the number of terms in individual AND expressions is two.
+but more broadly, we need something with more expressive power,
+something that allows arbitrary number of elements into the expressions.
+(i'm thinking this mostly spatially, in terms of dendritic trees..)
+but maybe for now we just stick with outer()..
+
+If we want to "reasonably" approximate biophysics:
+1 -- Expand the input vector length N by sampling, with replacement, Np times.
+2 -- Take a given input vector and project through a random Npx3 matrix into 3d space.
+3 -- Do the 1 & 2 for the next layer, size M and Mp.
+4 -- These are the locations of the synapses. Run a partnering algorithm over the location to set up the presence - possibility matrix.
+	(It's not all-to-all, but might be close in a sparse sense)
+5 -- When simuulating, record the location as well as post-synaptic cell identity of each presynaptic potential.
+6 -- Convolve the PSPs with a spatial (temporal) filter; if the 'membrane potential' exceeds some threshold (how is this adapted or learned??), then emit a dendritic spike.
+7 -- Forward the local dendritic membrane potential to the soma / SIZ for the "OR" operation.
+
+THe aspect which most impresses me is that the biological realizaton is smoothly sloppy: there is a continuum of sets of synapses which may interact nonlinearly, due to spatial location.
+To accurately emulate this, would need to do a maybe 2d projection of sparse sampling w replacement of the presynaptic neurons, convolve this with a gaussian filter (discretized?), threshold.
+	The convolution of course can be precomputed based on location and represented as a matrix-vector product (i think)
+
+Maybe a way to emulate this sort of phenomena is to use hashing:
+Np is hashed into Mp buckets.
+nonlinear thresholding operates over the buckets (and learning also operates over the buckets?!)
+This doesn't offer a continuum, but it might work well enough for binary-type problems.
+For more spatial problems we can do the embedding and pre-bake a convolution matrix.
+	You still need continuous variables tp project into..
+		The convolution may help with generalization, I think!
+
+Well, anyway, start with outer, maybe move to hashing, then maybe 2d
+Need to make sure learning works.
+And inhibition / inversion is nonobvious / has not be fully understood quite yet.
+	Maybe it's easy when we have negative weights .. ?
+
