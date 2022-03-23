@@ -333,3 +333,92 @@ Need to make sure learning works.
 And inhibition / inversion is nonobvious / has not be fully understood quite yet.
 	Maybe it's easy when we have negative weights .. ?
 
+March 17 2022
+
+Thinking we might need a learnable bias here -- for the hidden variables (3),
+you need their complement (boolean NOT) for conjunctive learning,
+When learning starts, the magnitude of the hidden variables are small,
+so the magnitude of the naive complements are large,
+which skews the learning.
+What if we just invert the signals and allow for negative weights?
+No, negative weights did not work well in the past..
+from this experience, staying with positive reals is better. (and biologically realistic..)
+The other option is to modulate the inverse based on 2x the moving average.
+So if the average is @ target, 0.5, then the inverse is the boolean NOT
+If the average is lower, say 0.1, then the inverse is 0.2
+	Maybe this is where plastic inhibition comes in
+		It means that generally inverse variables are only local
+		(GABA neurons usually don't have long axons)
+		which is consistent with biology at least..
+
+Ok ... that maybe works.  But the forward weights seem to be getting stuck!
+Let's check.
+Yes, definitely getting stuck. This is a primary problem.
+Also a problem: hebbian learning rule from cortex_mist strongly favors sparse representations.
+	The backwards network works perfectly.
+	The weight matrix is not sparse, though.. it ideally should be only a few terms, but is about 20% full.
+	Maybe this is ok?
+		Changing the scaling on the cube nonlinearity does not seem to change much ...
+		it learns the same statistics.
+	Yet, when i write it out by hand, I don't need all these terms.
+		It doesn't help that I haven't eliminated the 2x redundancy in the second outer() application.
+Observation:
+	Clearly, the bins are unnecessary.
+	If a AND-product is on, then it can instantly sum, and we don't need ddendritic bins.
+Other thought:
+	In biology the weights are before the AND; here we have the weights after.
+	Either one might be workable.
+	Right now after seems to be sufficient: just make it work!
+---
+Wonder if even the most trivial gating (e.g. which dendrite has residual calcium -> enable LTP/LTD) might be sufficient for forward and reverse credit-assignment?
+
+March 21 2022
+Spent most of the day looking over Baldwin effect 1992 and Symmetry / Simplicity in evolved structures,
+Then about an hour working on cortex_andor.py
+Enabled supervision, and in this case - when the network is taught to encode the 8 different images in 3 bits, it seems to work just fine.
+This experiment did uncover the fact that it's sensitive to the learning rate.
+So, need to make sure that supervised learning works before proceeding to unsupervised learning.
+Now running unsupervised, and the second layer has a strong tendency to get stuck in encoding schemes (= forward weight matrices) that poorly represent the data / poorly encode the space.
+Clearly, need to think about this more, and possibly consider how 'errors' and 'reinforcement' is propagated around this (rather simple) two-layer network.
+Will rest on it!
+	Aside: with the supervised task, as time goes on the backward weights tend to sparsify = reverse projection is simpler hence more likely to be getting at the true structure of the data (?!)
+
+March 22 2022.
+So many twos!
+Ok, need to work on the 'stuck' effect.
+Supervised: yes it works, very quickly.
+Unsupervised: seems to depend on the noise level; lower noise slows learning and gives more time for better codes?
+
+OK, so reducing the problem to just two images (both in the upper left hand side) does not cause convergence.
+it *should* just be a one-bit task, super duper easy.
+	(the backward pass is still good, obviously)
+Right .. it does seem to work just fine, with alternating presentations.
+
+Ugh, the system is very sensitive to parameters.
+For example, it doesn't work well if the allowable negative weights are clamped to
+	0.25
+	or
+	0.0025
+	but it works if it's clamped to
+	0.025
+	why??
+		This is not necessarily a good sign;
+		Might need to think about symmetries
+			perhaps some levels of clamp allow escape w noise?
+
+Reparameterized the network, to allow for 4 bits of hidden state ..
+Seems to solve the 4-symbol task (sometimes .. hmm)
+What about 8-symbol?
+Still seems to get stuck!
+
+What about adding push-pull capability?
+E.g. the forward regresses toward the 'n' variable (with negation)
+If there is strong residual error, you can push the weights in the opposite direction from the positive hebbian term:
+just reverse the error term, and complement the hidden state.
+-- This doesn't provide much more information, alas.
+The problem is that if a unit is 'off', you can't turn it more off. Hah!
+
+Definitely the problem is gettign stuck in local minima -- when iterating through data presentations, the + dw exactly counterbalances the - dw.
+At least, with identical ordering of the stimulus.
+
+Another problem: the system is not long-term stable, it seems to degenerate to a two-state represenation.  Hm.

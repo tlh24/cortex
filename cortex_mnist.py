@@ -256,7 +256,8 @@ for k in range(25):
 				cmap_name = 'PuRd' # purple-red
 				if lo == -1*hi:
 					cmap_name = 'seismic'
-				data = np.random.rand(v.shape[0], v.shape[1]) * (hi-lo) + lo
+				data = np.linspace(lo, hi, v.shape[0] * v.shape[1])
+				data = np.reshape(data, (v.shape[0], v.shape[1]))
 				im[r][c] = axs[r,c].imshow(data, cmap = cmap_name)
 				cbar[r][c] = plt.colorbar(im[r][c], ax=axs[r,c])
 			im[r][c].set_data(v.numpy())
