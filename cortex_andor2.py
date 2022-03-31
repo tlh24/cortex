@@ -37,7 +37,7 @@ def test_stim():
 
 # test_stim()
 
-def hebb_update(w_, inp, outp, outpavg, lr):
+def hebb_update(w_, inp, outp, outpavg, outplt, lr):
 	#dw = torch.outer(torch.pow(outp, 3), inp) # move the nonlinearity to the output
 	dw = torch.outer(outp, inp)
 	# note: dw needs to be both positive and negative.
@@ -50,9 +50,12 @@ def hebb_update(w_, inp, outp, outpavg, lr):
 	ltp = clamp(dw, 0.0, 2.0) # make ltp / ltd asymmetrc
 	ltd = clamp(dw, -2.0, 0.0) # to keep weights from going to zero
 	lr = lr / math.pow(inp.size(0), 0.35)
+	dw = ltp*lr + ltd*lr
 	dw = ltp*lr + ltd*1.0*lr*(0.9+outer(outpavg*1.5, ones(inp.size(0))))
+		# e.g. neurons with high average rates have more ltd
 		# above rule effective at encouraging sparsity
 		# but this doesn't work for disentanglement...
+		# seems useful in general though.
 	#dw = ltp*lr*0.8 + ltd*lr*1.2
 	# the cube nonlinearity seems to work better than straight hebbian, it pretty reliably converges.
 	if print_dw:
@@ -60,9 +63,8 @@ def hebb_update(w_, inp, outp, outpavg, lr):
 		print(dw)
 	w_ = torch.add(w_, dw)
 	# also perform down scaling.
-	scale = torch.clamp(outp, 0.5, 1e6)
-	scale = torch.sub(scale, 0.5)
-	scale = torch.exp(torch.mul(scale, -0.08))
+	scale = torch.clamp(outplt, 0.0, 1e6)
+	scale = torch.exp(torch.mul(scale, -0.005))
 	# upscaling makes the learning unstable!
 	dws = torch.outer(scale, torch.ones(inp.size(0)))
 	w_ = torch.mul(w_, dws)
@@ -228,12 +230,13 @@ im = [ [0]*plot_cols for i in range(plot_rows)]
 cbar = [ [0]*plot_cols for i in range(plot_rows)]
 l2 = zeros(P)
 l2a = zeros(P)
+l2lt = zeros(P)
 l1ua = zeros(9)
 supervised = False
-N = 1e6
+N = 2e4
 
 for i in range(int(N)):
-	anneal = 1.0 - float(i) / float(2e5)
+	anneal = 1.0 - float(i) / float(N/2.0)
 	anneal = 0.0 if anneal < 0.0 else anneal
 	q = i % 4
 	st, sx, sy = (int(q/4)%2, q%2, int(q/2)%2)
@@ -242,10 +245,10 @@ for i in range(int(N)):
 	l1e = reshape(l1e, (9,))
 	l1o = outerupt2(l1e)
 
-	noiz = torch.randn(K) * ( 0.03 if supervised else 0.1 )
+	noiz = torch.randn(K) * ( 0.03 if supervised else 0.1 ) * anneal
 	l2d = w_f @ l1o + noiz
 	l2 = torch.sum(reshape(l2d, (P, KP)), 1)
-	l2a = 0.996 * l2a + 0.004 * l2
+	l2a = 0.995 * l2a + 0.005 * l2
 	if supervised:
 		# 'gentile' supervised learning of the forward weights.
 		l2t = zeros(P)
@@ -255,34 +258,42 @@ for i in range(int(N)):
 		l2 = 0.05 * l2 + 0.95 * l2t
 		l2a = ones(P) * 0.5
 		l2s = repvec(l2, KP) - l2d
-	l2 = clamp(l2, 0.0, 1.5)
-	l2p = clamp(2.0*l2a - l2, 0.0, 1.5)
+	l2 = clamp(l2, 0.0, 1.1)
+	l2p = clamp(2.0*l2a - l2, 0.0, 1.1)
 	l2n = torch.cat((l2, l2p), 0)
+	l2lt = 0.99*l2lt + 0.05*(l2 - 0.5) # leaky integral.
 	# we need at least three multiplicative terms for revese (alas)
 	# or we need two layers
 	# yet in biology the basal dendrites have far fewer synapses...
 	l2o = outerupt3(l2n)
 	l1i = w_b @ l2o
-	l1i = torch.clamp(l1i, 0.0, 1.5)
+	l1i = torch.clamp(l1i, 0.0, 1.1)
 
 	l1u = l1e - l1i
 	l1ua = 0.996 * l1ua + 0.004 * l1u
 
 	# I think we need to 'boost' it to encourage a better latent representation.
 	# ala the up-down-up-down algorithm in contrastive divergence
-	l1o = outerupt2(clamp(l1e - 0.4*l1i, 0.0, 1.5))
+	l1o = outerupt2(clamp(l1e - 0.33*l1i, 0.0, 1.1))
 	l2d = w_f @ l1o + noiz
+	l2 = torch.sum(reshape(l2d, (P, KP)), 1)
+	l2 = clamp(l2, 0.0, 1.1)
+	l2p = clamp(2.0*l2a - l2, 0.0, 1.1)
+	l2n = torch.cat((l2, l2p), 0)
+	l2o = outerupt3(l2n)
 
 	l1uo = outerupt2(l1u)
 	l1eo = outerupt2(l1e)
 
 	# def hebb_update(w_, inp, outp, outpavg, lr):
 	if supervised:
-		w_f, dwf = hebb_update(w_f, l1eo, l2s, repvec(l2a,KP), lr*1.0)
+		w_f, dwf = hebb_update(w_f, l1eo, l2s, \
+			repvec(l2a,KP), repvec(l2lt,KP), lr*1.0)
 	else:
-		w_f, dwf = hebb_update(w_f, l1uo, l2d, repvec(l2a,KP), lr*2.0)
+		w_f, dwf = hebb_update(w_f, l1uo, l2d, \
+			repvec(l2a,KP), repvec(l2lt,KP), lr*2.0)
 
-	w_b, dwb = hebb_update(w_b, l2o, l1u, 0.5*ones(9), lr*1.0)
+	w_b, dwb = hebb_update(w_b, l2o, l1u, 0.5*ones(9), zeros(9), lr*1.0)
 
 	if not animate:
 		fig, axs = plt.subplots(plot_rows, plot_cols, figsize=figsize)
@@ -293,7 +304,8 @@ for i in range(int(N)):
 		plot_tensor(3, 0, l1eo, 'l1eo', -1.0, 1.0)
 
 		plot_tensor(0, 1, l2d, 'l2d' , 0.0, 1.0)
-		plot_tensor(1, 1, l2a, 'l2a', 0.0, 1.0)
+		plot_tensor(1, 1, torch.stack((l2,l2a,l2lt))-0.5, \
+			'l2,l2a,l2lt-0.5', -0.5, 0.5)
 		plot_tensor(2, 1, l2o, 'l2o', 0.0, 1.0)
 		plot_tensor(3, 1, l1ua, 'l1ua', -1.0, 1.0)
 
