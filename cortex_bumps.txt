@@ -421,4 +421,56 @@ The problem is that if a unit is 'off', you can't turn it more off. Hah!
 Definitely the problem is gettign stuck in local minima -- when iterating through data presentations, the + dw exactly counterbalances the - dw.
 At least, with identical ordering of the stimulus.
 
-Another problem: the system is not long-term stable, it seems to degenerate to a two-state represenation.  Hm.
+Another problem: the system is not long-term stable, it seems to degenerate to a two-state represenation.  Hm. One thing at a time, now.
+
+March 23 2022
+
+Ok, trying to figure out this metastable / stuck problem.
+<didn’t make it far, apparently.. 
+think I need to just implement biology hah>
+
+March 27 2022
+
+Woke up this morning with a pretty clear idea of what needs to happen at the company / what the pitch needs to be: 
+
+1. How do you ‘solve’ arbitrarily hard problems, perhaps problems with difficult scaling properties, e.g. large or unbounded action / perception dimensionality?  
+1.1 RL works to some degree, and has ‘solved’ tasks like Atari (Agent 57, etc).  This is a very significant advancement.  But the action space is small (a few buttons), and the perception space is constrained (8 colors, limited resolution, 2D sprite world, simple game mechanics, etc). 
+1.2 Humans obviously can solve these problems, and most importantly they become very effective at solving them. 
+1.3 How? 
+2. One avenue is that humans factorize distributions in both perceptual and motor domains.  Perception is perhaps most obvious: we factorize objects into attributes; the flip side of this process is the ‘binding’ problem, whereby atrtibutes are bound into hierarchies of objects.  THese attributes include important details like pose, lighting, etc.  (Details that Hinton’s Capsule nets / GLOM model try to get at..)
+2.1 A deeper philosophical question is *why* the world tends to be readily factorizable into low-dimension components, almost universally (but see: our brain; and also see, gene regulatory networks)
+2.2 Motor is sorta the opposite direction: the brain factorizes patterns of output over the space of muscles and their synergies.  
+2.3 Of course there are a lot of additional details to both problems .. 
+2.4 ... but an element that can readily solve both action and perception problems is a memory that can be indexed either by “output” or “input” (e.g. auto-associator, old idea here), and, most importantly -- to counter the curse of dimensionality and the aforementioned factorizable nature of the physical world -- the “output” addressing is factorized / disentangled. 
+2.4.1 This in turn allows low-power learning algorithms (like RL) to have enough leverage to do things like fast-mapping (in dogs) and interacton with the physcial world... and maybe even language / grammar?  
+3. Very well, so we need a self-factorizing auto-associator.  I propose this is what the cortex is doing in mammals. 
+3.1 And probably plenty of other things... but still. 
+3.2 What is the cortex, then?  Laminar structure, with some columnar structure, notable input (layer 4) assocaition (1, 2-3) output (5 & 6); each layer has ~80% excitatory neurons and 20% inhibitory neurons.  The inhibitory neurons have a great number of specializations, both morphologically, electrochemically, and gene-expression wise.  Three major classes: PV, SST, VIP.  Exitatory neurons in contrast are of fewer classes and firing properties (at least, to my limited knowledge).  The excitatory neurons project, the inhibitory neurons generally do not, though there are exceptions here. 
+3.3  Strong motifs in the cortex: 
+3.3.1  E-I balance.  Most neurons, of both polarities, are in a constant state of push-pull, where usually excitatory and inhibitory input balances
+3.3.2  Hebbian or local-type plasticity: synaptic ‘weight’ or coupling changes happen based on almost-entirely local changes, with modulation from retrograde signals, neuromodulators, iternal signaling pathways, etc. 
+3.3.2.1  Some of these pre & post changes are very quick, so called behavioral timescale plasticity.  
+3.3.3 Dales law: neurons generally emit one primary neurotransmitter; glutamate or GABA.  This of course has exceptions but is a useful starting heuristic. 
+3.3.4 Highly nonlinear membranes, inclusive the dendrites.  Some (many?) dendrites have dendritic spikes / plateau potentials, which can change the way signals are transmitted to the soma / spike initiation zone.  
+3.3.5 1k - 10k synapses per neuron, roughly.  Most synapses have about the same ‘weight’, and the distribution of these weights is not agreed upon but does not have the resolution of 32-bit or even 16-bit floating point numbers.
+3.3.5.1 Yet synapses certainly have more state! 
+3.3.6 (Most obvious) The same rough cytoarchitecture throughout, with specializations say in auditory cortex (faster firing rates / high resolution timing information?) or in striate cortex (axons, e.g. -- probably to represent long-distance spatial relationships?)
+3.3.7 Speaking of timing, there is a preponderance of spike-timing dependent plasticity.  Though the degree to which this exists, and how it works in the overall function of the cortex, is not agreed on.  STDP likely depends on much more than just pre-post timing; dpre-post-pre and post-pre-post triplets have their own changes. 
+3.3.8 Prediction *seems* to be a common motif, particularly for sensory encoding. This has obvious utility for animals interacting with the world (or simulating it, in the case of cognition)
+3.3.9 most feedback is local and low-order (in the poles and zeros sense).  Homeostatic effects are ubiquitous in biology; it’s just a good way to build a system. 
+(.....)
+4. OK, how to synthesize all these disparate details?  
+4.1 It’s a feedback control system that tries to compress and predict (aka represent) the “input data” (say vision). 
+4.2 Compression is via factorization, per above, to fight the curse of dimensionality. 
+4.3 Factorization allows for comprehension, interaction, and manipulation. 
+4.4 This is learned in a wholly *unsupervised way*
+4.4.1 This is yet an unsolved problem in machine learning!  
+4.4.2 Sure, self-supervised transformers seem to get at it, albeit indirectly, and they are sample / data / energy inefficient. 
+4.3 Yet transformers have a key to the puzzle: they multiply activities, not just weights by activities.  Hinton pointed this out (as I’m sure other people have earlier).  The remarkably impressive Nvidia StyleGAN 1 & 2 also relies on activity-activity multiplication.  
+4.4 Activity-activity or activity-weight-activity multiplication is possible if not easy in a biological neural network; indeed many of the nonlinear dendritic effects (spikes) and morphology (inhibitory synapses on the spine neck) directly support this. 
+4.5 I propose that (this is not unique) dendrites act as both activity-weight products (linearly summing the dot product between incoming activities and synaptic weighs) and activity-weight-activity products (taking the morphology-aware product of activity*weight groups, and (possibly nonlinearly) summing that to the soma.  
+4.5.1 Probably this offers a continuum: as the connections grow, their nonlinear summation / multiplication increases. 
+4.5.2 The seemingly random encoding possibly works as a hashing function, which has been shown to be super effective in eg super-resolution and NERF training. (of course the effect is partly the adroit mapping to hardware.)
+4.6  Put these things together: it should be possible to make a feedback control system (E-I balance) that uses only local learning (biologically plausible), a continuum between weight-activity and weight-activity-activity multiplication. 
+4.6.1 Gradients not required!  Can use feedback-alignment trick: the forward and reverse (perhaps higher order) weights can be encouraged to mirror each other.  This effects a degree of weight transport or error propagation; fun things like visual illusions may well be the result of slow bottom-top-bottom feeback loops oscillating.  (This also suggests that feedback readily spans layers
+4.7 And this is what I’m working on now! The race is most definitely on; so many bright people working very hard in this field.

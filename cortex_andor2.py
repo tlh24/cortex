@@ -45,12 +45,12 @@ def hebb_update(w_, inp, outp, outpavg, lr):
 	# but this resulted in the weights all coverging to ~1.
 	# negative hebbian updates are necessary.
 	dw2 = clamp(dw, -1.0, 1.0)
-	dw = torch.pow(dw2 * 5.0, 3.0) # cube is essential!
+	dw = torch.pow(dw2 * 3.0, 3.0) # cube is essential!
 	#dw = dw2
 	ltp = clamp(dw, 0.0, 2.0) # make ltp / ltd asymmetrc
 	ltd = clamp(dw, -2.0, 0.0) # to keep weights from going to zero
 	lr = lr / math.pow(inp.size(0), 0.35)
-	dw = ltp*lr + ltd*lr*(0.9+outer(outpavg*1.5, ones(inp.size(0))))
+	dw = ltp*lr + ltd*1.0*lr*(0.9+outer(outpavg*1.5, ones(inp.size(0))))
 		# above rule effective at encouraging sparsity
 		# but this doesn't work for disentanglement...
 	#dw = ltp*lr*0.8 + ltd*lr*1.2
@@ -60,9 +60,9 @@ def hebb_update(w_, inp, outp, outpavg, lr):
 		print(dw)
 	w_ = torch.add(w_, dw)
 	# also perform down scaling.
-	scale = torch.clamp(outp, 0.7, 1e6)
-	scale = torch.sub(scale, 0.7)
-	scale = torch.exp(torch.mul(scale, -0.06))
+	scale = torch.clamp(outp, 0.5, 1e6)
+	scale = torch.sub(scale, 0.5)
+	scale = torch.exp(torch.mul(scale, -0.08))
 	# upscaling makes the learning unstable!
 	dws = torch.outer(scale, torch.ones(inp.size(0)))
 	w_ = torch.mul(w_, dws)
@@ -114,12 +114,46 @@ def repvec(v, n):
 	q = torch.outer(v, ones(n))
 	return torch.reshape(q, (d*n,))
 
-def outerupt(v):
-	# offset = 0 : output length is N * N+1 / 2
-	# offset = 1 : output length is N * N-1 / 2
-	indx = torch.triu_indices(v.shape[0], v.shape[0], offset=1)
-	o = torch.outer(v, torch.abs(v))
-	return o[indx[0], indx[1]]
+scaler = 1.0 # blind guess bro
+
+# these manual for loops are going to be so very slow, need to put in JAX!
+def outerupt2(v):
+	# outer product upper-triangle, terms with two or one factor.
+	nin = v.shape[0]
+	nout = int( (nin+1) * nin * 0.5 + nin )
+	r = zeros(nout)
+	e = 0
+	for i in range(nin):
+		for j in range(i, nin):
+			if not(i == j):
+				r[e] = v[i] * v[j] * scaler
+				e = e + 1
+	for i in range(nin):
+		r[e] = v[i]
+		e = e + 1
+	return r
+
+def outerupt3(v):
+	# outer product upper-triangle, but for terms with three, two, and one factor
+	nin = v.shape[0]
+	nout = int( nin * (nin+1) * (nin+2) / 6.0 + \
+		nin * (nin+1) * 0.5 + nin )
+	# this took me a surprisingly long time to figure out... sigh
+	r = zeros(nout)
+	e = 0
+	for i in range(nin):
+		for j in range(i, nin):
+			for k in range(j, nin):
+				r[e] = v[i] * v[j] * v[k] * scaler * scaler
+				e = e + 1
+	for i in range(nin):
+		for j in range(i, nin):
+			r[e] = v[i] * v[j] * scaler
+			e = e + 1
+	for i in range(nin):
+		r[e] = v[i]
+		e = e + 1
+	return r
 
 def plot_tensor(r, c, v, name, lo, hi):
 	if len(v.shape) == 1:
@@ -137,8 +171,15 @@ def plot_tensor(r, c, v, name, lo, hi):
 			v = torch.reshape(v, (1,45))
 		elif v.shape[0] == 126:
 			v = torch.reshape(v, (6,21))
+		elif v.shape[0] == 164:
+			v = torch.reshape(v, (4,41))
 		elif v.shape[0] == 224:
 			v = torch.reshape(v, (8,28))
+		elif v.shape[0] == 260:
+			v = torch.reshape(v, (10,26))
+		elif v.shape[0] == 764: # 765 is more easily factorizable
+			v = torch.cat((v, zeros(1)), 0)
+			v = torch.reshape(v, (17,45))
 		else:
 			d = v.shape[0]
 			v = torch.reshape(v, (1,d))
@@ -161,14 +202,19 @@ def plot_tensor(r, c, v, name, lo, hi):
 	cbar[r][c].update_normal(im[r][c]) # probably does nothing
 	axs[r,c].set_title(name)
 
-nhid = 4
-n_f = 36 # 9*8 / 2
-n_b = int( (2*nhid*(2*nhid-1)/2)*(2*nhid) ) # 224
-w_f = zeros(4*nhid, n_f)
-w_b = zeros(4*9, n_b)
-w_l2i = torch.zeros(nhid, nhid)
+
+
+M = 54
+K = 16
+P = 4
+KP = int(K/P)
+Pp = P*2 # 8
+Q = int(  Pp * (Pp+1) * (Pp+2) / 6.0 + 0.5 * Pp * (Pp+1) + Pp ) # 164
+R = 9
+w_f = zeros(K, M) # 45 x 16
+w_b = zeros(R, Q) # 764 x 9
 print_dw = False
-lr = 0.008
+lr = 0.02
 
 animate = True
 plot_rows = 4
@@ -180,8 +226,8 @@ if animate:
 initialized = False
 im = [ [0]*plot_cols for i in range(plot_rows)]
 cbar = [ [0]*plot_cols for i in range(plot_rows)]
-l2 = zeros(nhid)
-l2a = zeros(nhid)
+l2 = zeros(P)
+l2a = zeros(P)
 l1ua = zeros(9)
 supervised = False
 N = 1e6
@@ -189,63 +235,64 @@ N = 1e6
 for i in range(int(N)):
 	anneal = 1.0 - float(i) / float(2e5)
 	anneal = 0.0 if anneal < 0.0 else anneal
-	q = i % 8
+	q = i % 4
 	st, sx, sy = (int(q/4)%2, q%2, int(q/2)%2)
 	# st, sx, sy = (randbool(), randbool(), randbool())
 	l1e = make_stim(st, sx, sy)
 	l1e = reshape(l1e, (9,))
-	l1o = outerupt(l1e) # product of all the boolean variables.
-	l1o = reshape(l1o, (n_f,))
+	l1o = outerupt2(l1e)
 
-	l2b = w_f @ l1o + torch.randn(4*nhid) * ( 0.03 if supervised else 0.1 ) * anneal
-	l2 = torch.sum(reshape(l2b, (nhid, 4)), 1)
+	noiz = torch.randn(K) * ( 0.03 if supervised else 0.1 )
+	l2d = w_f @ l1o + noiz
+	l2 = torch.sum(reshape(l2d, (P, KP)), 1)
 	l2a = 0.996 * l2a + 0.004 * l2
 	if supervised:
-		# supervised learning of the forward weights.
-		l2t = zeros(nhid)
+		# 'gentile' supervised learning of the forward weights.
+		l2t = zeros(P)
 		l2t[0] = float(st) # make sure that, when perfectly seeded,
 		l2t[1] = float(sx) # forwards network can perfectly reconstruct input.
 		l2t[2] = float(sy)
-		l2a = ones(nhid) * 0.5
-		l2b = repvec(l2t, 4) - l2b
+		l2 = 0.05 * l2 + 0.95 * l2t
+		l2a = ones(P) * 0.5
+		l2s = repvec(l2, KP) - l2d
 	l2 = clamp(l2, 0.0, 1.5)
-	l2p = clamp(2.0*l2a - l2, 0.0, 1.0)
+	l2p = clamp(2.0*l2a - l2, 0.0, 1.5)
 	l2n = torch.cat((l2, l2p), 0)
-	# we need at least three terms for revese (alas)
-	# in biology the basal dendrites have far fewer synapses...
-	l2o = torch.reshape(outer(torch.reshape(outerupt(l2n), (28,)), l2n), (n_b,))
-	#l2o = l2o + torch.randn(n_b)* 0.1
-	l1ib = w_b @ l2o
-	l1i = torch.sum(reshape(l1ib, (9, 4)), 1) # 4 dendritic bins here, too
+	# we need at least three multiplicative terms for revese (alas)
+	# or we need two layers
+	# yet in biology the basal dendrites have far fewer synapses...
+	l2o = outerupt3(l2n)
+	l1i = w_b @ l2o
 	l1i = torch.clamp(l1i, 0.0, 1.5)
-	#print(l1i)
 
 	l1u = l1e - l1i
-	l1ub = repvec(l1u, 4) + torch.randn(36) * 0.1 * anneal
 	l1ua = 0.996 * l1ua + 0.004 * l1u
 
-	l1uo = outerupt(l1u)
-	l1eo = outerupt(l1e)
+	# I think we need to 'boost' it to encourage a better latent representation.
+	# ala the up-down-up-down algorithm in contrastive divergence
+	l1o = outerupt2(clamp(l1e - 0.4*l1i, 0.0, 1.5))
+	l2d = w_f @ l1o + noiz
+
+	l1uo = outerupt2(l1u)
+	l1eo = outerupt2(l1e)
 
 	# def hebb_update(w_, inp, outp, outpavg, lr):
 	if supervised:
-		w_f, dwf = hebb_update(w_f, l1eo, l2b, repvec(l2a,4), lr*1.3)
+		w_f, dwf = hebb_update(w_f, l1eo, l2s, repvec(l2a,KP), lr*1.0)
 	else:
-		w_f, dwf = hebb_update(w_f, l1uo, l2b, repvec(l2a,4), lr*1.3)
-		# complement weights, too.
-		# w_f, dwf = hebb_update(w_f, -1.0*l1uo, repvec(l2p,4), repvec(l2a,4), lr*0.8)
+		w_f, dwf = hebb_update(w_f, l1uo, l2d, repvec(l2a,KP), lr*2.0)
 
-	w_b, dwb = hebb_update(w_b, l2o, l1ub, 0.5*ones(9*4), lr)
+	w_b, dwb = hebb_update(w_b, l2o, l1u, 0.5*ones(9), lr*1.0)
 
 	if not animate:
 		fig, axs = plt.subplots(plot_rows, plot_cols, figsize=figsize)
-	if not animate or i % 513 == 512:
+	if not animate or i % 53 == 52:
 		plot_tensor(0, 0, l1e, 'l1e', 0.0, 1.0)
 		plot_tensor(1, 0, l1i, 'l1i', 0.0, 1.0)
 		plot_tensor(2, 0, l1u, 'l1u', -1.0, 1.0)
-		plot_tensor(3, 0, l1uo, 'l1uo', -1.0, 1.0)
+		plot_tensor(3, 0, l1eo, 'l1eo', -1.0, 1.0)
 
-		plot_tensor(0, 1, l2b, 'l2b' , 0.0, 1.0)
+		plot_tensor(0, 1, l2d, 'l2d' , 0.0, 1.0)
 		plot_tensor(1, 1, l2a, 'l2a', 0.0, 1.0)
 		plot_tensor(2, 1, l2o, 'l2o', 0.0, 1.0)
 		plot_tensor(3, 1, l1ua, 'l1ua', -1.0, 1.0)
@@ -259,7 +306,7 @@ for i in range(int(N)):
 		fig.canvas.draw()
 		fig.canvas.flush_events()
 		if animate:
-			time.sleep(0.2)
+			time.sleep(0.02)
 			initialized = True
 			print(q, st, sx, sy, anneal)
 			if i == N - 1:
