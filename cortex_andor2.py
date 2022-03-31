@@ -51,7 +51,7 @@ def hebb_update(w_, inp, outp, outpavg, outplt, lr):
 	ltd = clamp(dw, -2.0, 0.0) # to keep weights from going to zero
 	lr = lr / math.pow(inp.size(0), 0.35)
 	dw = ltp*lr + ltd*lr
-	dw = ltp*lr + ltd*1.0*lr*(0.9+outer(outpavg*1.5, ones(inp.size(0))))
+	dw = ltp*lr + ltd*1.3*lr*(0.9+outer(outpavg*1.5, ones(inp.size(0))))
 		# e.g. neurons with high average rates have more ltd
 		# above rule effective at encouraging sparsity
 		# but this doesn't work for disentanglement...
@@ -68,7 +68,7 @@ def hebb_update(w_, inp, outp, outpavg, outplt, lr):
 	# upscaling makes the learning unstable!
 	dws = torch.outer(scale, torch.ones(inp.size(0)))
 	w_ = torch.mul(w_, dws)
-	w_ = clamp(w_, -0.025, 1.25) # careful about this -- reverse weights need to be large-2.0, 2.0
+	w_ = clamp(w_, -0.00025, 1.25) # careful about this -- reverse weights need to be large-2.0, 2.0
 	# clamping seems unnecessary if the rules are stable--?
 	# no it's needed for and-or task.
 	return w_, dw
@@ -169,6 +169,10 @@ def plot_tensor(r, c, v, name, lo, hi):
 			v = torch.reshape(v, (3,4))
 		elif v.shape[0] == 16:
 			v = torch.reshape(v, (4,4))
+		elif v.shape[0] == 30:
+			v = torch.reshape(v, (3,10))
+		elif v.shape[0] == 40:
+			v = torch.reshape(v, (4,10))
 		elif v.shape[0] == 45:
 			v = torch.reshape(v, (1,45))
 		elif v.shape[0] == 126:
@@ -207,9 +211,9 @@ def plot_tensor(r, c, v, name, lo, hi):
 
 
 M = 54
-K = 16
 P = 4
-KP = int(K/P)
+KP = 4
+K = P*KP
 Pp = P*2 # 8
 Q = int(  Pp * (Pp+1) * (Pp+2) / 6.0 + 0.5 * Pp * (Pp+1) + Pp ) # 164
 R = 9
@@ -233,22 +237,21 @@ l2a = zeros(P)
 l2lt = zeros(P)
 l1ua = zeros(9)
 supervised = False
-N = 2e4
+N = 4e5
 
 for i in range(int(N)):
-	anneal = 1.0 - float(i) / float(N/2.0)
-	anneal = 0.0 if anneal < 0.0 else anneal
-	q = i % 4
+	anneal = 1.0 - float(i) / float(N)
+	anneal = 0.2 if anneal < 0.2 else anneal
+	q = i % 8
 	st, sx, sy = (int(q/4)%2, q%2, int(q/2)%2)
 	# st, sx, sy = (randbool(), randbool(), randbool())
 	l1e = make_stim(st, sx, sy)
 	l1e = reshape(l1e, (9,))
 	l1o = outerupt2(l1e)
 
-	noiz = torch.randn(K) * ( 0.03 if supervised else 0.1 ) * anneal
+	noiz = torch.randn(K) * ( 0.03 if supervised else 0.12 ) * anneal
 	l2d = w_f @ l1o + noiz
-	l2 = torch.sum(reshape(l2d, (P, KP)), 1)
-	l2a = 0.995 * l2a + 0.005 * l2
+	l2 = torch.mean(reshape(l2d, (P, KP)), 1)*2.0
 	if supervised:
 		# 'gentile' supervised learning of the forward weights.
 		l2t = zeros(P)
@@ -259,6 +262,8 @@ for i in range(int(N)):
 		l2a = ones(P) * 0.5
 		l2s = repvec(l2, KP) - l2d
 	l2 = clamp(l2, 0.0, 1.1)
+	l2_pre = l2
+	l2a = 0.995 * l2a + 0.005 * l2
 	l2p = clamp(2.0*l2a - l2, 0.0, 1.1)
 	l2n = torch.cat((l2, l2p), 0)
 	l2lt = 0.99*l2lt + 0.05*(l2 - 0.5) # leaky integral.
@@ -274,11 +279,16 @@ for i in range(int(N)):
 
 	# I think we need to 'boost' it to encourage a better latent representation.
 	# ala the up-down-up-down algorithm in contrastive divergence
-	l1o = outerupt2(clamp(l1e - 0.33*l1i, 0.0, 1.1))
+	boost = 0.5 + 0.65 * float(i) / float(N)
+	l1o = outerupt2(clamp(l1e - boost*l1i, 0.0, 1.1))
+	# draw from the noise again??
+	noiz = torch.randn(K) * ( 0.03 if supervised else 0.12 ) * anneal
 	l2d = w_f @ l1o + noiz
-	l2 = torch.sum(reshape(l2d, (P, KP)), 1)
-	l2 = clamp(l2, 0.0, 1.1)
-	l2p = clamp(2.0*l2a - l2, 0.0, 1.1)
+	l2 = torch.mean(reshape(l2d, (P, KP)), 1)*2.0
+	l2 = clamp(l2, -0.1, 1.1)
+	#l2a = 0.995 * l2a + 0.005 * l2
+	#l2lt = 0.99*l2lt + 0.05*(l2 - 0.5) # leaky integral.
+	l2p = clamp(2.0*l2a - l2, -0.1, 1.1)
 	l2n = torch.cat((l2, l2p), 0)
 	l2o = outerupt3(l2n)
 
@@ -297,15 +307,15 @@ for i in range(int(N)):
 
 	if not animate:
 		fig, axs = plt.subplots(plot_rows, plot_cols, figsize=figsize)
-	if not animate or i % 53 == 52:
+	if not animate or i % 103 == 102:
 		plot_tensor(0, 0, l1e, 'l1e', 0.0, 1.0)
 		plot_tensor(1, 0, l1i, 'l1i', 0.0, 1.0)
 		plot_tensor(2, 0, l1u, 'l1u', -1.0, 1.0)
 		plot_tensor(3, 0, l1eo, 'l1eo', -1.0, 1.0)
 
 		plot_tensor(0, 1, l2d, 'l2d' , 0.0, 1.0)
-		plot_tensor(1, 1, torch.stack((l2,l2a,l2lt))-0.5, \
-			'l2,l2a,l2lt-0.5', -0.5, 0.5)
+		plot_tensor(1, 1, torch.stack((l2_pre,l2,l2a,l2lt)), \
+			'l2_pre, l2, l2a, l2lt', 0.0, 1.0)
 		plot_tensor(2, 1, l2o, 'l2o', 0.0, 1.0)
 		plot_tensor(3, 1, l1ua, 'l1ua', -1.0, 1.0)
 
@@ -320,7 +330,8 @@ for i in range(int(N)):
 		if animate:
 			time.sleep(0.02)
 			initialized = True
-			print(q, st, sx, sy, anneal)
+			# print(q, st, sx, sy, anneal, boost)
+			print(anneal, boost)
 			if i == N - 1:
 				time.sleep(10)
 		else:
