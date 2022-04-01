@@ -249,7 +249,7 @@ for i in range(int(N)):
 	l1e = reshape(l1e, (9,))
 	l1o = outerupt2(l1e)
 
-	noiz = torch.randn(K) * ( 0.01 if supervised else 0.1 ) 
+	noiz = torch.randn(K) * ( 0.01 if supervised else 0.1 ) * anneal
 	l2d = w_f @ l1o + noiz
 	l2 = torch.sum(reshape(l2d, (P, KP)), 1)
 	l2a = 0.995 * l2a + 0.005 * l2

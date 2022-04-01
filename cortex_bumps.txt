@@ -486,3 +486,13 @@ Hm. I guess we don't really need the DC term.
 The middle pixel is on 5/8 of the time, which is kinda a weird cycle. 
 it's 1,2,3,4,7
 Let me see if i can make the system more expressive .. ? 
+Meh, going in circles a little bit here. 
+Think I need to rewind & think concretely about the task / what sort of codes need to be extracted. 
+It could be that I'm working on a far too difficult task, where everything is perfectly entangled & unblanaced to boot... 
+We have the representations sliding around well, check.  But this seems to be an effect of noise, not directionality; the way to get the 4-symbol task to work is to anneal the noise with time, which is not a good sign! 
+If you leave the noise variance constant, it's always bopping around (albeit with some positive convergence properties; the solutions / encoding are ''close'' just not perfect. 
+:-/
+(...)
+Maybe need separate noise on the forward and reverse passes? 
+..
+At least I've improved the plotting. 
