@@ -474,3 +474,15 @@ Woke up this morning with a pretty clear idea of what needs to happen at the com
 4.6  Put these things together: it should be possible to make a feedback control system (E-I balance) that uses only local learning (biologically plausible), a continuum between weight-activity and weight-activity-activity multiplication. 
 4.6.1 Gradients not required!  Can use feedback-alignment trick: the forward and reverse (perhaps higher order) weights can be encouraged to mirror each other.  This effects a degree of weight transport or error propagation; fun things like visual illusions may well be the result of slow bottom-top-bottom feeback loops oscillating.  (This also suggests that feedback readily spans layers
 4.7 And this is what I’m working on now! The race is most definitely on; so many bright people working very hard in this field.
+
+April 1 2022
+
+Doing effectively regressino testing. 
+It seems -- very importantly -- that we need one 'bias' bit, to allow explaining DC activity, without the limitation of the PID activity controller.
+Yeah, that didn't change anything; there were already always-on bits by virtue of the complement system. 
+So, there has to be something else keeping the error from going all the way to zero? 
+From inspection, it looks like the center pixel is oscillating between positive and negative changes... 
+Hm. I guess we don't really need the DC term.  
+The middle pixel is on 5/8 of the time, which is kinda a weird cycle. 
+it's 1,2,3,4,7
+Let me see if i can make the system more expressive .. ? 
