@@ -111,6 +111,21 @@ def inhib_update(w_, l, li, lr):
 	w_ = torch.mul(w_, dw)
 	return w_
 
+def test_inhib_update():
+	# these are completely unorrelated, 
+	# so inhibition should do .. nothing. 
+	# it doesn't do this. bad approximations. 
+	w = zeros(4,4)
+	l2a = zeros(4)
+	l2cov = zeros(4,4)
+	for i in range(1000): 
+		l2 = torch.rand(4) - 0.5
+		w = inhib_update(w, l2, zeros(4), 0.01)
+		print(w)
+		
+
+test_inhib_update()
+
 def repvec(v, n):
 	d = v.shape[0]
 	q = torch.outer(v, ones(n))
@@ -238,6 +253,36 @@ l2lt = zeros(P)
 l1ua = zeros(9)
 supervised = False
 N = 3e4
+
+def compress_matrix(x):
+	# compress a matrix by removing empty rows. 
+	s = torch.sum(x, 1)
+	e = 0
+	n = x.shape[0]
+	y = torch.zeros(x.shape)
+	for i in range(x.shape[0]):
+		if abs(s[i]) > 0.001:
+			y[e] = x[i]
+			e = e+1
+	return y[0:e, :]
+
+def test_all_stim():
+	x = zeros(8, 9)
+	y = zeros(8, M)
+	for i in range(8):
+		st, sx, sy = (int(i/4)%2, int(i/2)%2, i%2)
+		l1e = make_stim(st, sx, sy)
+		l1e = reshape(l1e, (9,))
+		x[i] = l1e
+		l1o = outerupt2(l1e)
+		y[i] = l1o
+	fig,axs = plt.subplots(1, 2, figsize=figsize)
+	axs[0].imshow(x.T.numpy())
+	y = compress_matrix(y.T)
+	axs[1].imshow(y.numpy())
+	plt.show()
+	
+test_all_stim()
 
 for i in range(int(N)):
 	anneal = 1.0 - float(i) / float(N)

@@ -437,27 +437,27 @@ Woke up this morning with a pretty clear idea of what needs to happen at the com
 1.1 RL works to some degree, and has ‘solved’ tasks like Atari (Agent 57, etc).  This is a very significant advancement.  But the action space is small (a few buttons), and the perception space is constrained (8 colors, limited resolution, 2D sprite world, simple game mechanics, etc). 
 1.2 Humans obviously can solve these problems, and most importantly they become very effective at solving them. 
 1.3 How? 
-2. One avenue is that humans factorize distributions in both perceptual and motor domains.  Perception is perhaps most obvious: we factorize objects into attributes; the flip side of this process is the ‘binding’ problem, whereby atrtibutes are bound into hierarchies of objects.  THese attributes include important details like pose, lighting, etc.  (Details that Hinton’s Capsule nets / GLOM model try to get at..)
+2. One avenue is that humans factorize distributions in both perceptual and motor domains.  Perception is perhaps most obvious: we factorize objects into attributes; the flip side of this process is the ‘binding’ problem, whereby attributes are bound into hierarchies of objects.  These attributes include important details like pose, lighting, etc.  (Details that Hinton’s Capsule nets / GLOM model try to get at..)
 2.1 A deeper philosophical question is *why* the world tends to be readily factorizable into low-dimension components, almost universally (but see: our brain; and also see, gene regulatory networks)
 2.2 Motor is sorta the opposite direction: the brain factorizes patterns of output over the space of muscles and their synergies.  
 2.3 Of course there are a lot of additional details to both problems .. 
 2.4 ... but an element that can readily solve both action and perception problems is a memory that can be indexed either by “output” or “input” (e.g. auto-associator, old idea here), and, most importantly -- to counter the curse of dimensionality and the aforementioned factorizable nature of the physical world -- the “output” addressing is factorized / disentangled. 
-2.4.1 This in turn allows low-power learning algorithms (like RL) to have enough leverage to do things like fast-mapping (in dogs) and interacton with the physcial world... and maybe even language / grammar?  
+2.4.1 This in turn allows low-power learning algorithms (like RL) to have enough leverage to do things like fast-mapping (in dogs) and interaction with the physical world... and maybe even language / grammar?  
 3. Very well, so we need a self-factorizing auto-associator.  I propose this is what the cortex is doing in mammals. 
 3.1 And probably plenty of other things... but still. 
-3.2 What is the cortex, then?  Laminar structure, with some columnar structure, notable input (layer 4) assocaition (1, 2-3) output (5 & 6); each layer has ~80% excitatory neurons and 20% inhibitory neurons.  The inhibitory neurons have a great number of specializations, both morphologically, electrochemically, and gene-expression wise.  Three major classes: PV, SST, VIP.  Exitatory neurons in contrast are of fewer classes and firing properties (at least, to my limited knowledge).  The excitatory neurons project, the inhibitory neurons generally do not, though there are exceptions here. 
+3.2 What is the cortex, then?  Laminar structure, with some columnar structure, notable input (layer 4) association (1, 2-3) output (5 & 6); each layer has ~80% excitatory neurons and 20% inhibitory neurons.  The inhibitory neurons have a great number of specializations, both morphologically, electrochemically, and gene-expression wise.  Three major classes: PV, SST, VIP.  Exitatory neurons in contrast are of fewer classes and firing properties (at least, to my limited knowledge).  The excitatory neurons project, the inhibitory neurons generally do not, though there are exceptions here. 
 3.3  Strong motifs in the cortex: 
 3.3.1  E-I balance.  Most neurons, of both polarities, are in a constant state of push-pull, where usually excitatory and inhibitory input balances
 3.3.2  Hebbian or local-type plasticity: synaptic ‘weight’ or coupling changes happen based on almost-entirely local changes, with modulation from retrograde signals, neuromodulators, iternal signaling pathways, etc. 
 3.3.2.1  Some of these pre & post changes are very quick, so called behavioral timescale plasticity.  
-3.3.3 Dales law: neurons generally emit one primary neurotransmitter; glutamate or GABA.  This of course has exceptions but is a useful starting heuristic. 
+3.3.3 Dales law: neurons generally emit one primary neurotransmitter; glutamate or GABA.  This of course has exceptions & many release multiple neurotransmitters -- but is a useful starting heuristic. 
 3.3.4 Highly nonlinear membranes, inclusive the dendrites.  Some (many?) dendrites have dendritic spikes / plateau potentials, which can change the way signals are transmitted to the soma / spike initiation zone.  
-3.3.5 1k - 10k synapses per neuron, roughly.  Most synapses have about the same ‘weight’, and the distribution of these weights is not agreed upon but does not have the resolution of 32-bit or even 16-bit floating point numbers.
+3.3.5 1k - 10k synapses per neuron, roughly.  Most synapses have about the same ‘weight’, and the distribution of these weights is not agreed upon but does not have the resolution of 32-bit or even 16-bit floating point numbers.  (Nvidia suggests 8-bit logarithmic..)
 3.3.5.1 Yet synapses certainly have more state! 
 3.3.6 (Most obvious) The same rough cytoarchitecture throughout, with specializations say in auditory cortex (faster firing rates / high resolution timing information?) or in striate cortex (axons, e.g. -- probably to represent long-distance spatial relationships?)
-3.3.7 Speaking of timing, there is a preponderance of spike-timing dependent plasticity.  Though the degree to which this exists, and how it works in the overall function of the cortex, is not agreed on.  STDP likely depends on much more than just pre-post timing; dpre-post-pre and post-pre-post triplets have their own changes. 
+3.3.7 Speaking of timing, there is a preponderance of spike-timing dependent plasticity.  Though the degree to which this exists, and how it works in the overall function of the cortex, is not agreed on.  STDP likely depends on much more than just pre-post timing; pre-post-pre and post-pre-post triplets have their own changes. 
 3.3.8 Prediction *seems* to be a common motif, particularly for sensory encoding. This has obvious utility for animals interacting with the world (or simulating it, in the case of cognition)
-3.3.9 most feedback is local and low-order (in the poles and zeros sense).  Homeostatic effects are ubiquitous in biology; it’s just a good way to build a system. 
+3.3.9 Most feedback is local and low-order (in the poles and zeros sense).  Homeostatic effects are ubiquitous in biology; it’s just a good way to build a system. 
 (.....)
 4. OK, how to synthesize all these disparate details?  
 4.1 It’s a feedback control system that tries to compress and predict (aka represent) the “input data” (say vision). 
@@ -465,19 +465,20 @@ Woke up this morning with a pretty clear idea of what needs to happen at the com
 4.3 Factorization allows for comprehension, interaction, and manipulation. 
 4.4 This is learned in a wholly *unsupervised way*
 4.4.1 This is yet an unsolved problem in machine learning!  
-4.4.2 Sure, self-supervised transformers seem to get at it, albeit indirectly, and they are sample / data / energy inefficient. 
+4.4.1.1 But is it partly solved?  Seems like there isn’t a scientific consensus.  High-dimensional vector representations definitely work (see Dall-E 2, PaLM; each of these are transformers and they do seem to compose the physical world (visual or linguistic) pretty well, with perhaps limitations due to their feed-forward structure hence what relationships that they can represent. 
+4.4.2 Sure, these self-supervised transformers seem to get at it, albeit indirectly, and they are sample / data / energy inefficient (ish ... they work). 
 4.3 Yet transformers have a key to the puzzle: they multiply activities, not just weights by activities.  Hinton pointed this out (as I’m sure other people have earlier).  The remarkably impressive Nvidia StyleGAN 1 & 2 also relies on activity-activity multiplication.  
 4.4 Activity-activity or activity-weight-activity multiplication is possible if not easy in a biological neural network; indeed many of the nonlinear dendritic effects (spikes) and morphology (inhibitory synapses on the spine neck) directly support this. 
 4.5 I propose that (this is not unique) dendrites act as both activity-weight products (linearly summing the dot product between incoming activities and synaptic weighs) and activity-weight-activity products (taking the morphology-aware product of activity*weight groups, and (possibly nonlinearly) summing that to the soma.  
 4.5.1 Probably this offers a continuum: as the connections grow, their nonlinear summation / multiplication increases. 
-4.5.2 The seemingly random encoding possibly works as a hashing function, which has been shown to be super effective in eg super-resolution and NERF training. (of course the effect is partly the adroit mapping to hardware.)
-4.6  Put these things together: it should be possible to make a feedback control system (E-I balance) that uses only local learning (biologically plausible), a continuum between weight-activity and weight-activity-activity multiplication. 
-4.6.1 Gradients not required!  Can use feedback-alignment trick: the forward and reverse (perhaps higher order) weights can be encouraged to mirror each other.  This effects a degree of weight transport or error propagation; fun things like visual illusions may well be the result of slow bottom-top-bottom feeback loops oscillating.  (This also suggests that feedback readily spans layers
+4.5.2 The seemingly random encoding possibly works as a hashing function, which has been shown to be super effective in eg super-resolution and NERF training. (of course part of this effect is the adroit mapping to hardware.)
+4.6  Put these things together: it should be possible to make a feedback control system (E-I balance) that uses only local learning (biologically plausible), *_a continuum between weight-activity and weight-activity-activity multiplication_*. 
+4.6.1 Gradients not required!  Can use feedback-alignment trick: the forward and reverse (perhaps higher order) weights can be encouraged to mirror each other.  This effects a degree of weight transport or error propagation; fun things like visual illusions may well be the result of slow bottom-top-bottom feedback loops oscillating.  (This also suggests that feedback readily spans layers)
 4.7 And this is what I’m working on now! The race is most definitely on; so many bright people working very hard in this field.
 
 April 1 2022
 
-Doing effectively regressino testing. 
+Doing effectively regression testing. 
 It seems -- very importantly -- that we need one 'bias' bit, to allow explaining DC activity, without the limitation of the PID activity controller.
 Yeah, that didn't change anything; there were already always-on bits by virtue of the complement system. 
 So, there has to be something else keeping the error from going all the way to zero? 
@@ -496,3 +497,111 @@ If you leave the noise variance constant, it's always bopping around (albeit wit
 Maybe need separate noise on the forward and reverse passes? 
 ..
 At least I've improved the plotting. 
+
+April 13 2022
+
+Back from CSHL NAISys -- mostly finished intake of references from all the talks.  Trying desperately to synthesize all the data presented; quite a wide variety of studies to build upon (and plenty that might be pure distractors..). 
+
+Overshadowing all was the presentation by Blaise Aguera y Arcas which described, at a survey level, the very recent advancements made by Google’s PaTH and OpenAI’s Dall-E 2.  Both are foundation models, with huge numbers of parameters, and massive training sets.  Path was trained on 45TB of cleaned data, has 500B parameters, and was trained across 6144 TPUv4s.  Rather than offering key theoretical insights or methodological breakthroughs, the model seems to be succeeding purely due to scale and engineering effort.  A lot of people have put a lot of time into this, the silicon, JAX and XLA frameworks, compute resources, cleaning the data, and making all the details of the model stable and train well (e.g hyperparameters, batch sizes, network widths, parallelization.. deeply inspiring when you think of it all!)  (Aside: seems  daunting, but best to have a youthful attitude here and excess of confidence.)  Furthermore, Blaise suggested that these are yet again only the beginning, and even better models will allow for comprehension / modeling / generation of multi-sensory data, including video and self motion.  
+
+These models are transformative, and some at the conference were quipping “it’s been solved! what do we do now?”, yet many questions remain: 
+* Is there a more efficient way of training a model from this data?  PaTH cost something like $15M to train, while the brain appears to have much more in the way of priors hence data efficiency (and power efficiency -- though this is more a hardware
+factor).  
+** While it is hard to directly challenge backprop, as historically & mathematically there seems to be nothing better than following the gradient, provided that a problem can be formulated as an optimization.  Had a long discussion with Brian Cheung about this at one of the lunches at CSHL; I argued that breaking the global problem into a hierarchical optimization or “data organization is at least more representative of what the brain is doing, and should increase parallelization & data locality (but does not avoid the coordination problem).  With SGD, data needs to flow forward while recording activations, then backwards; the two can be interleaved but it requires some shoehorning.  The brain does not have this form of locking, so far as we know.  
+*** There is the example of brain rhythms, but conflicting evidence here: according to someone at the conference (I forget who), some people don’t have an alpha rhythm.  Yet other studies have shown that the phase of microstimulation with respect to the theta rhythm affects memory encoding. 
+** Furthermore, the whole idea of using SGD in a self-supervised method -- which is 99% of what foundation models are doing -- also seems like shoehorning.  Certainly there is a more direct way of going about it, and arguably this is what the brain is doing. It doesn’t need gradients in the same way as it’s occupied with storing and generalizing data directly.  (Or rather: this happens as an emergent phenomena of what it does, just like it happens with SGD and MLPs as an emergent phenomena / due to the simplicity bias.  
+* Is there a better way of representing statistical dependencies?  Transformers are brilliant in that they natively can encode two-factor conditional probabilities (and hence in many-layered networks, can represent conditional functions of arbitrary numbers of terms), but I think this is a general instance of activity*activity multiplication combined with weight*activity projection.  Both of these individual neurons, or even individual dendrites, are capable of representing both [], though this is just now being explored for deep learning.  
+** Biological neurons seem to be able to extract invariances and equivariances, as opposed to ANNs where convolution determines weight sharing and                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               and invariance is approximated through MLP layers or max-pooling.  So far as I know, this remains an open problem, one that is related to but probably not to be confused with disentanglement, factorization, and compositionality.  
+* The transformer architecture is feedforward, which makes inference and backprop simpler (recurrent networks are harder to run backprop on), but at the same time this limits their computational expressivity.  Psychophysics has shown that the brain solves some problems in a parallel fashion (e.g. search for outliers in an oriented field of lines), and some problems serially (search for a particular shape or object, usually).  That said, this limitation may be justified as the training demands are already excessive. 
+* Data is fed during training in a random order, and the learning agent does not directly interact with it; it cannot perform experiments like a child.  These sorts of natural experiments are very likely to ‘’dramatically’’ simplify problems of disambiguation and disentanglement, but joint sensory-motor learning is, as mentioned, just beginning to be worked on. 
+
+In aggregate, it ‘’should’’ still be possible to improve machine learning models with insights from biology and theory, and these improvements can go to the ‘’bottom’’ of the technology stack. Otherwise, most changes will be at the ‘top’ of the technology stack, eg scaling.  This circulates back to what to change, and how to change it.  
+
+* Backprop.  Many many people have been working for a while on this and - lo! - it is possible.  There a large variety of alternatives now to backprop, like feedback alignment, brainprop[], error correction through emergent phenomena [], eligability traces / use of auxillary variables, RPE-gated plasticity etc, but none seem to approach the simplicity and generality of backprop + SGD.  Not a small factor in this is that the chainrule is built into several highly performant ML packages, and most problems are ordinal and can be formulated as an optimization (they are duals). 
+* Network topology.  I actually think that, if you stay with backprop, there are incremental, moderate gains to be had here.  Definitely worth the engineering effort.  For example, Nvidia presented using 8-bit logarithmically-scaled weights to reduce weight storage / bandwidth.  (This was biologically motivated, too.).  
+** If you forgo backprop, the sky is the limit!  But lack of constraint means that exploring the space and selecting starting points is hard.  Wolfgang Maass’s Probabalistic Skeleton work is inspiring here: sure it took a supercomputer, but evolutionary strategies was well capable of finding robust solutions to make an ant walk.  (With zero learning as well)
+*** I think their cleverness was to make the encoding straightforward: a vector of developmental weights, which create the probabilities of connection, which creates the overall computational structure. 
+* Training schedule.  Make it closed loop, as mentioned.  Very open and interesting field here.  Maass’s probabalistic skeletons 
+
+The world is hierarchically structured, the brain is also hierarchicially structured and modular; want to be able to edit the data flow graph accordingly (which will perhaps take some cleverness). 
+
+April 14 2022
+
+PS2
+	Fixed parameters
+		num neurons
+		num neuron types
+		num dendritic branches
+		Topological dimensions available
+		num synaptic learning rules (blends?)
+	Variable parameters
+		Instance locations (N-d space... ? )
+		Instance connectivity (very sparse)
+		Instance synaptic location / coupling (also sparsre)
+		Instance types
+
+Steps in evaluating a given PS
+	Childhood, N steps
+		Episode, K steps
+			Set the input neurons to image
+			Propagate signal around
+			Update synaptic weights
+	Compression test
+		Inner, J
+			Set input to image
+			Record input, output, true encoding
+		Linear regression to see how well the compression works.
+			(might need a slightly better disentanglement metric here)
+	Prediction test
+		Inner, L
+			Set input to corrupted image (known image + noise)
+			Record error / novelty neurons
+		Straight MSE over all examples
+
+
+Thinking about representing the whole recurrent network as a sparse matrix multiply, which of course simplifies forward propagation by a lot!
+Then the development simply entails unpacking the code (which presumably will be simple MLPs over input space) to fill the matrix.
+This should set the default synaptic weight / presence thereof.
+
+But then how do we represent weight changes / synaptic plasticity?
+At present it's a factor of pre and post activity, exclusively.
+In practice it's a function of pre, post, neuromodulator, Ca+2 in dendrite / spine, eligability trace, ???.
+	(biology also likes to gate presynapses.  Not here, not yet; can do with postsynapse)
+
+Simulation Flow:
+	presynaptic activity is broadcast to all axon terminals
+	postsynaptic activity is computed by multiplying by weight
+	postsynaptic activity is computed as a function of input and space (e.g. threshold function)
+		I'm not sure about this .. segments of dendrites are supposed to implement the AND gate, and the overall tree implements OR, but ..
+		(Needed boolean gates:
+			AND, OR, NOT, PASSGATE.
+			MUL, ADD, INV, IF.
+				(FOR, WHILE, *PTR, TEMP, LET, LET REC, .. the standard substrates of computation.  Only we want this to be meta-computation.)
+		Passgate = PV spine neck inhibition.
+	Postsynaptic net activity is computed
+	Synapses are updated based on rule..
+
+Synapse update basically means a kernel which takes in the various factors and spits out a delta, same as what we did earlier in Mojave musings in JAX.  (could be faster..)
+This means using kernels, rather than sparse matrices.
+Then development is basically populating the 1-D array of synapses, aka the COO sparse matrix format.
+Lots of scatter-gather operations.. meh, so long as it can be made embarassingly parallel, its ok!
+	Seems like it's conceptually simpler to do gather operations, so will thing this way for now..
+Dimension for iterating:
+	1. synapse number along dendritic segment
+	2. dendritic segment in neuron
+	3. neuron in organism
+	4. organism in population
+
+So, a 4-d tensor of synapses (which can be reprojected into 1-D, of course..)
+Simulation Flow, again:
+	+ Update activity
+		- Over all synapses, perform GET operation for the presynaptic activity from the vector (matrix, population) of activity.
+		- Over all segments, perform nonlinear sum (multiplication). Emit Ca+2
+		- Over all neurons, compute output, and write to vector (pop matrix)
+	+ Update synapses
+		- Over all synapses, perform GET operation for pre, post (dendrite, soma).  Emit weight update. Emit state update (as per jax implentation).
+
+I really have no idea how well this all will work, or if it will work; need to scale gradually, starting from very toylike models. (glider task!)
+Suppose it makes sense to do it in jax, for sure.
+	Will have to turn off the gradient accumulation.
+
