@@ -605,3 +605,8 @@ I really have no idea how well this all will work, or if it will work; need to s
 Suppose it makes sense to do it in jax, for sure.
 	Will have to turn off the gradient accumulation.
 
+April 30 2022
+
+Have the JAX code up and working!  Though it does not seem to be evolving complex behavior...
+I think one problem is that connection probability is necessarily normalized -- neurons 'have to' be connected to other neurons, instead of defaulting to no connection.
+Defaulting to no connection / making the probabilities absolute should fix this, but we'll need a 'null' connection & need to think of how to implement it.
