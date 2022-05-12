@@ -610,3 +610,123 @@ April 30 2022
 Have the JAX code up and working!  Though it does not seem to be evolving complex behavior...
 I think one problem is that connection probability is necessarily normalized -- neurons 'have to' be connected to other neurons, instead of defaulting to no connection.
 Defaulting to no connection / making the probabilities absolute should fix this, but we'll need a 'null' connection & need to think of how to implement it.
+
+Also, it's not clear why the learning rules & biases are all clustered around zero.  These are effectively under brownian motion, so should not matter at all; they should only be constrained by the limits, yet they do not seem to bounce into them at all .
+
+May 2 2022
+
+OK need to present Springtail! 
+
+The situation has been evolving (pun intended?), and it’s worth going back and reflecting on the path. 
+
+Last year: 
+-- Current ML methods adopt a grossly simplified version of what synapses & dendrites are.  There are three areas rife for disruption: 
+--- If we were to add behavioral timescale plasticity, it should serve well as ephermenal ‘binding variables’, much like the ‘attentional’ variables in the now-prevalent Transformer architecture.  
+---- Notably, this is very much at odds with the current ML approaches, which adopt high-dimensional vector representations.  (Are these really so bad? If we have only a few examples, say one positive, one negative, it’s easy to measure the difference between the two: it’s a vector.  And, if the representations are truly disentangled, then there won’t be much per-class off-axis variance.  That is, the vector will be invariant and true. Hmm.  So there is not really such a problem with vectoral representations, which is much more consistent with modern ML approaches.  Provided, of course, that they are disentangled. 
+--- This also solves the (infamous) binding problem: if neurons are feature detectors, and their activity represents the presence (or absence) of an object, how do you represent the linkages between parts to form a whole? 
+--- Dendrites are inherently nonlinear, and have plateau potentials & forward / back-propagating spikes.  This can flexibly serve to allow for activity-activity multiplication, which again is an essential component of Transformers.  It should also support some basic logical operations: if the soma (summation node) is ‘or’, then the dendrites can be ‘and’.  (Add in ‘not’ and you can express any boolean logic.)
+--- The nervous system is notoriously closed-loop; the balance of excitation and inhibition is just one example of this. In comparison, most machine learning models are sequential, with one feedback loop: that of error propagation through SGD.  Finer granularity in feedback permits much higher level of parallelization, and supports perceptual-infill (e.g. visual illusions; the creation of an approximate scene graph in the first place.  
+
+
+-------
+Random thoughts: 
+* Why do this at all?  why not just allow for the current pace of ML to continue?  It’s hyper competitive, which is super bad.  Lots of plenty bright, ambitious people working in the are.  And, as the CSHL NAIsys conference showed, it’s all different bits of optimization and search; one of the reasons that academic projects don’t get so far is that they simply don’t apply enough effort. 
+
+Generally the idea is that biology supports higher levels of parallelzation and sample efficiency.  E.g. it seems like a bit of a shoehorn to use SGD with self-supervised methods.  But then again, this works!  Also, the degree of invariance compression / equivariance extraction in ANNs is still somewhat weakly defined.  For the 
+
+In comparison, the brain basically 
+
+May 3 2022
+
+Well I seem to have stopped on that last part and got back to work on skeleton.py .. ahhah
+All tests with population of 3k.
+
+train_jit:
+	1.906 sec / iter.
+train no jit but jit on sim_step_update and no scan:
+	1.16 sec / iter. (faster!!!)
+train no jit and no jit on sim_step_update:
+	1.16 sec/iter (interesting -- does jax jit everything internally?)
+train with jit, no jit on sim_step_update:
+	1.88 sec (??!)
+train with no jit, no jit on sim_step_update, but scan on:
+	1.18 sec or 1.17 sec
+		*** this is the winner.
+		( slightly slower if sim_step_update is jitted )
+(double check) train no jit, no jit on sim_step_update, no scan:
+	26.46 sec (!!!)
+(double check) train no jit, sim_step_update_jit:
+	1.91 sec
+
+eval_gar_jit:
+	3.37 sec
+eval_gar no jit:
+	1.42 sec
+
+POP is 7680
+float32:
+	train 2.412 make_pop 0.003 eval_gar 4.596
+float16:
+	train 0.795 make_pop 0.0006 eval_gar 2.574
+
+Ok so ... we need to figure out how to make float16 work!
+Much much faster and or can run larger models / larger populations!
+	(might well be limited by memory bandwidth here..)
+
+Note note:
+Needed to add the following lines to the kernel boot flags to allow the (nearly) full memory of the 3090 to be used:
+> sudo nano /etc/default/grub
+GRUB_CMDLINE_LINUX="pci=assign-busses,realloc,hpmemsize=128M,hpbussize=0x33,hpmmiosize=128M,hpmmioprefsize=16G"
+> sudo update-grub
+On the 11Gb 2080Ti, I can get a 3k population size before running out of memory;
+On the 3090 w/ above, it's possible to get 6k, with the current neuron type configuration.
+(No changes were made to bios).
+To get nvidia-settings to display something,
+sudo nano /etc/X11/xorg.conf.d/80-igpu-primary-egpu-offload.conf
+:
+Section "Device"
+    Identifier "Device0"
+    Driver     "modesetting"
+EndSection
+
+Section "Device"
+    Identifier "Device1"
+    Driver     "nvidia"
+    BusID      "PCI:05:0:0"                 # Edit according to lspci, translate from hex to decimal.
+    Option     "AllowExternalGpus" "True"    # Required for proprietary NVIDIA driver.
+EndSection
+:
+That all seems to work and is better than looking at nvidia-smi.
+Success!
+Now need to encode an objective function for the 'output' neurons.
+(& this one needs to be rotation invariant)
+
+
+May 5 2022
+
+Tried out pure simulated annealing overnight, best solution seems to be:
+correct 42.475266 err 40.931347 out 26.354053  /  109.76066
+Let's compare this to search with recombination:
+seems to oscillate a whole bunch
+correct 87.72359 err 58.33085 out 31.88125  /  177.93568
+take that solution and switch back to simulated annealing
+Doesn't seem to be working any better!
+Annealing is also oscillating around 170-180 total loss.
+correct 87.258545 err 59.643234 out 31.868845  /  178.77063
+
+May 6 2022
+After reading a bunch of Kenneth Stanley's papers, I've concluded that we need some form of novelty search -- to push the networks out of local minima.
+Propose doing this by recording activity on the evaluation phase, storing it in a large matrix, and sorting this matrix based on self similarity over time..
+Problem is that we *probably* need speciation or so ... novelty will encourage diversity, but crossover and recombination will collapse this through in-mixing (??)
+Will still need to address the problem of recombination: how to keep effective cabals / coordinated genes around. hmm.
+
+May 9 2022
+Can we get rid of the only-positive acitivities limitation?
+That's how ANNs work .. but of course it's not how BNNs function.
+It would simplify and streamline things considerably, of course: the rules could allocate however many excitatory and inhibitory neurons as needed.
+
+The limitation is seeing if the learning rules can be stable / or how to formulate them so that they are stable.
+
+It likely makes sense to revisit some of the old experiments of hand-crafted 'cortical' networks to see what and how the subtraction is happening.
+
+(This thinking is

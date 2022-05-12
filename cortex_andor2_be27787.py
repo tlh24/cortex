@@ -7,6 +7,7 @@ import random
 import pdb
 import time
 import matplotlib.pyplot as plt
+plt.rcParams['figure.dpi'] = 180
 from torch import clamp, matmul, outer, mul, add, sub, ones, zeros, reshape
 
 def make_stim(s, x, y):
@@ -240,7 +241,7 @@ lr = 0.02
 animate = True
 plot_rows = 4
 plot_cols = 3
-figsize = (19, 11)
+figsize = (19, 10)
 if animate:
 	plt.ion()
 	fig, axs = plt.subplots(plot_rows, plot_cols, figsize=figsize)
@@ -251,7 +252,7 @@ l2 = zeros(P)
 l2a = zeros(P)
 l2lt = zeros(P)
 l1ua = zeros(9)
-supervised = False
+supervised = True
 N = 3e4
 
 def compress_matrix(x):
@@ -287,7 +288,7 @@ test_all_stim()
 for i in range(int(N)):
 	anneal = 1.0 - float(i) / float(N)
 	anneal = 0.0 if anneal < 0.0 else anneal
-	q = i % 4
+	q = i % 8
 	st, sx, sy = (int(q/4)%2, q%2, int(q/2)%2)
 	# st, sx, sy = (randbool(), randbool(), randbool())
 	l1e = make_stim(st, sx, sy)

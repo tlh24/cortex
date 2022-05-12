@@ -7,6 +7,7 @@ import random
 import pdb
 import time
 import matplotlib.pyplot as plt
+plt.rcParams['figure.dpi'] = 180
 from torch import clamp, matmul, outer, mul, add, sub, ones, zeros, reshape
 
 def make_stim(s, x, y):
@@ -118,7 +119,7 @@ def repvec(v, n):
 
 scaler = 1.0 # blind guess bro
 
-# these manual for loops are going to be so very slow, need to put in JAX!
+# these manual for loops are slow, need to put in JAX!
 def outerupt2(v):
 	# outer product upper-triangle, terms with two or one factor.
 	nin = v.shape[0]
@@ -156,6 +157,10 @@ def outerupt3(v):
 		r[e] = v[i]
 		e = e + 1
 	return r
+
+def outerupt3i(v):
+	vv = jnp.concatenate((v,0.5 - v), 0)
+	vv = jnp.clamp(vv, 0
 
 def plot_tensor(r, c, v, name, lo, hi):
 	if len(v.shape) == 1:
@@ -236,13 +241,13 @@ l2 = zeros(P)
 l2a = zeros(P)
 l2lt = zeros(P)
 l1ua = zeros(9)
-supervised = False
+supervised = True
 N = 4e5
 
 for i in range(int(N)):
 	anneal = 1.0 - float(i) / float(N)
 	anneal = 0.2 if anneal < 0.2 else anneal
-	q = i % 4
+	q = i % 8
 	st, sx, sy = (int(q/4)%2, q%2, int(q/2)%2)
 	# st, sx, sy = (randbool(), randbool(), randbool())
 	l1e = make_stim(st, sx, sy)
@@ -253,12 +258,12 @@ for i in range(int(N)):
 	l2d = w_f @ l1o + noiz
 	l2 = torch.mean(reshape(l2d, (P, KP)), 1)*2.0
 	if supervised:
-		# 'gentile' supervised learning of the forward weights.
+		# 'gentle' supervised learning of the forward weights.
 		l2t = zeros(P)
 		l2t[0] = float(st) # make sure that, when perfectly seeded,
-		l2t[1] = float(sx) # forwards network can perfectly reconstruct input.
+		l2t[1] = float(sx) # forwards network can perfectly reconstructed input.
 		l2t[2] = float(sy)
-		l2 = 0.1 * l2 + 0.9 * l2t
+		l2 = 0.01 * l2 + 0.99 * l2t
 		l2a = ones(P) * 0.5
 		l2s = repvec(l2, KP) - l2d
 	l2 = clamp(l2, 0.0, 1.1)
@@ -279,7 +284,7 @@ for i in range(int(N)):
 
 	# I think we need to 'boost' it to encourage a better latent representation.
 	# ala the up-down-up-down algorithm in contrastive divergence
-	boost = 0.4 + 0.65 * float(i) / float(N)
+	boost = 0.4 + 0.65 * float(i) / float(N) # anneal this too
 	for j in range(1):
 		err = l1e - l1i
 		l1o = outerupt2(clamp(l1e - boost*l1i, 0.0, 1.1))

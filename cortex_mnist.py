@@ -7,6 +7,7 @@ import random
 import pdb
 import time
 import matplotlib.pyplot as plt
+plt.rcParams['figure.dpi'] = 180
 from torch import clamp, matmul, outer, mul, add, sub, ones, zeros
 
 print_dw = False
@@ -177,12 +178,12 @@ N = 60000
 animate = True 
 if animate:
 	plt.ion()
-	fig, axs = plt.subplots(5, 3, figsize=(20, 12))
+	fig, axs = plt.subplots(5, 3, figsize=(20, 11))
 initialized = False
 im = [ [0]*3 for i in range(5)]
 cbar = [ [0]*3 for i in range(5)]
 lr = 0.005 # if the learning rate is too high, it goes chaoitc
-for k in range(25): 
+for k in range(250):
 	mnist = enumerate(train_loader)
 	for i in range(N): 
 		batch_idx, (indata, target) = next(mnist)
