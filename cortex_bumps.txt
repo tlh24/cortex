@@ -729,4 +729,324 @@ The limitation is seeing if the learning rules can be stable / or how to formula
 
 It likely makes sense to revisit some of the old experiments of hand-crafted 'cortical' networks to see what and how the subtraction is happening.
 
-(This thinking is
+(This thinking is.. )
+
+May 11 2022
+cortex_andor3.py seems to be (finally) working ok.  Critical advancement was to add both nonlinear term expansion as well as compression, using nonlinear least squares.
+It solves the checker-glider problem when the output /address space is 4 bits, but sometimes gets stuck when the output space is only 3 bits (which is the minumum required to describe the stimuli..).
+Let me try just running the thing for longer, maybe it will get unstuck due to symmetry-breaking & nonlinear hebbian magic? hhm.
+
+How do these networks work anyway?
+Input l1e is expanded to l1o
+l1o is projected to l2x via w_f
+l2x is converted to l2c using nonlinear least squares
+l2c is expanded to l2r
+l2r is projected to l1x via w_b
+l1c is converted to l1c via nonlinear least squares
+
+Update:
+error is l1o - l1x
+	aka actual expansion minus estimated expansion.
+Considering w_b,
+	change w_b based on the nonlinear outer product of
+	l2r and error
+		where l2r is the nonlinear expansion of l2c
+Considering w_f,
+	change w_f based on the nonlinear outer product of
+	error and l2r
+
+IF error is positive & output is positive, increase corresponding weights in both w_f and w_b
+likewise, if error is negative, decrease both corresponding weights.
+For the reverse weights, this is obvious
+for the forward weights, less so: whatever led to the current output configuration, decrease that!
+This has the obvious effect of changing the output representation to be less similar to whatever it was ...
+which pushes it to some other representation (via weights)
+
+Yeah, the system works reasonably well with 4 output bits.
+Still some residual errors, but that's part of nonlinear hebb.
+With three, it always can't represent one of the input patterns (suggesting that if there were 7, it would represent all?
+answer:  No, still seems to get stuck on one symbol.
+Probably need to boost / maybe PID to quash those errors.
+
+Also, fwiw, seems to use a vectoral addressing scheme for the symbols (as opposed to a digital address.. hm. )
+
+
+May 17 2022
+
+Much improved understanding from Anthropic's investigations on Transformers (they work via routing information -- typically keys -- forward in time, making the softmax operation a soft 'search' or 'match' operation.  All this arises through very opportunistic use of local information, which is perhaps why SGD is such an effective learning algorithm.)
++ the FAIR paper on solving recusive sequence tasks using neurosymbolic computing, again with transformers.  Wow, it performs better than Mathematica! And probably could be better.  (see the m8ta blog entry for more.. probably could be expanded to programming, with effort.
+
+Anyway, this proves it all seems to come down to
+(1) Mechanism.  You need to provide sufficient representational structure to solve the problem, which is a form of meta-problem and requires some thought.
+(2) The transformer architectures are able to solve these recursive sequence problems much faster than evolutionary techniques; they have much better 'inductive bias' and *memory* of everything they've been exposed to.
+	Hell, this means that the old boostrapping dream is solved!
+(3) As mentioned, SGD is opportunistic but needs to be poised where opportunities occur semi-spontaneously.
+(4) Probably routing / gating is as important as multiplication; I was wrong by over-emphasizing the relevance of MUL above PASS
+(5) Transformers can represent not just statistics, but more relevantly and importantly, basic algorithms e.g. conditional copy or analogy-making.  That these are evolved and not baked in is truly amazing!
+(6) Transformers are a remarkably linear system: almost everything ouside of the attention matrix is linear (or ReLU), and when the attentional matrix is fixed, its all basically linear.
+
+The reading experience gave me far more respect for the emergent ingenuity of SGD and the remarkable generality of Transformers, and lead to significant questioning of what I'm doing here (again.. hah)
+
+Intuition suggests that trying to avoid SGD might well be a purely academic exercise, useful by virtue of getting notoriety, but one must be cautious and thoughtful about what needs to be done.
+
+I think the original motivation was right: you just need too many training samples with standard deep learning to scale well to large, diverse, real-world datasets.  (This with the caveat that many passes through a dataset might well be required to infer the structure ; fewer passes would require more prior information.)
+Or, put another way, need a method to learn representations & routing control protocols (aka algorithms) in a way that solves the
+(a) coordination problem (= determine representations per layer)
+(b) alignment problem (= reduce the error of reconstruction).
+(c) Noisy inference problem (= make sense of an ambiguous world based on accrued experience)
+
+
+May 23 2022
+Need to record thoughts from Friday (Boom in the forest) and this weekend (Yosemite with Tom and Will).
+
+Boom in the Forest:
+Jason Yosinski: ML researcher working on wind turbines using networks of pressure sensors.
+He's worked in machine learning for decades, and evolutionary algorithms for at least this long too.
+Suggests that in any sufficiently high-dimensional space, half the gradient directions will be better than the other half (but parhsp not better than the current solution), so improving a network or genome requires only finite bits of luck -- only a few bitch of coordination need to come together at the same time.
+He also reiterated that many solutions, like eyes, had intermediate forms that were selectively beneficial.
+Led me to think (again) that predator-prey dynamics, which may have been essential to the Cambrian explosion, is useful for iteratively improving the 'loss landscape' ala GANs, allowing effective exploration without needing to have large quantities of luck at any given point (or makes getting stuck in local minima less likely).
+After digesting this for a while -- and looking at
+A -- How current machine learning models seem to work (they exploit latent structure in a network)
+B -- The small successes of the maiden-ogre experiments
+I think it's work revisiting the skeleton experiments, just with a different eye to the objective function (must be dynamic) and a possibly different conceptualization of the meta-objective (make it incrementally possible; no leaps are required..)
+
+Yosemite / Hetch Hetchy:
+I'm remembering what Chongxi said about his son, that he could recite a Chinese poem long before he learned the meaning of the words.
+This also came up while thinking of long-term episodic memory & its incredible *depth*.  How many roads have i travelled, how many places and events are actually well recorded in my memory, if only they can be queued / accessed!
+If we turn the task of the neural auto-encoder on its head, and say that memory (remembering) occurs before generalization, then the task is quite a bit different: take a database of all examples, learn what to throw away and learn an auto-associative index on them.
+This is hard, of course; you need to know an ordinality/ordering to make decision about what to throw away and how to assess similarity.
+	(The difficulty in assessing similarity is one reason why both skeleton.py and cortex_andor4.py have a hard time: they have to search over many possible encodings / addressing schemes (in addition to there being plenty of bugs haha)
+Which led to the next thought: the way to infer an ordering / indexing on highly nonlinear compressed yet low dimensional data is to
+(1) *experiment* with the natural world, eg. be able to move about it.
+(2) Assume that most causal factors are low-d, piecewise constant or piecewise linear.
+
+Plenty of oldish literature to suggest the latter, but I think that the former is perhaps more interesting and relevant, esp. considering the sample efficiency of the human brain
+	Ish .. Yan LeCunn just tweeted that the average five year old has on the order of 5 * 365 * 12 * 60 * 60 * 20 = 1.5 billion frames of video from which to infer the structure of the world.
+		* Some things, like the emergent algorithms of transformers, may be emergent only at large scale..
+		* Still, you really need to start with the right substrate.
+
+I'm sorta imagining something like recursive LSH, where there is enough structure in the indexers / predictors to allow low-gradient selection of working addressing schemes.
+The task of inverse graphics remains a great testbed, but needs to be broken down in significant ways before scaling.
+
+
+
+Hmm, seems transformers can already do something interesting:
+Geometry-Free View Synthesis: Transformers and no 3D Priors
+https://arxiv.org/abs/2104.07652
+Ah, transformers.  But need to see what the VQGAN is doing in there.
+
+May 24 2022
+Critical point of the mammalian cortex as compared to current machine learning models:
+--> The preponderance of feedback to disambiguate sensory experience!
+
+Meta thoughts:
+Algebra and theoretical models are an essential "crutch" or tool for problem solving.
+I may be running in circles because I've not engaged mathematics / algebra nearly well enough.
+And perhaps the reason deep learning is working so well is that it does engage algebra and calculus (at least the chain rule of differentiation) *explicitly*
+Which implies that trying to avoid derivatives / gradient free computation is unecessarily cripling the approaches.  As I've intuited for a while.
+Therefore, it's a good idea to use gradients for the forseeable future, where practical (e.g. not analytical gradients in evolution).  Yes!
+
+Alright, gradients work really well and are super easy ..
+as we well expected.
+Can easily do nonlinear compression with the outerupt functions.
+Only need a little bit of tweaking of the representation to get this working..
+Results were with a roi of 5 on the 28 x 28 image.
+fi1, fi2 = outerupt_indx2_flat(siz, roi, True)
+
+Try with ROI of 1 -- this will be much closer to PCA (at least for the forward pass)
+should run faster.  fewer terms in the expansion.  (doesn't seem to be running much faster..)
+Really should add a batch dimesion to improve speed..
+End loss is 11
+w_f (32, 784)
+w_b (784, 528)
+HUH seems you ** don't need the extra forward terms? **
+	Also note that there are digital-ish errors in the reconstruction.
+
+Back to roi = 5
+end loss is 10 (not much better eh?)
+w_f (32, 7696)
+w_b (784, 528)
+What about straight PCA?
+oops didn't do that.
+
+What about only nearest-neighbor cross-terms?
+end loss ~15
+w_f (32, 784)
+w_b (784, 63)
+	(some pixel errors here too, fyi)
+
+OK, now real (nonlinear) PCA / one hidden-layer network:
+end loss ~ 16
+w_f (32, 784)
+w_b (784, 32)
+(Why this obsession with DBN?  This seems to work just fine TYVM)
+
+If we run it for 2 epochs,
+end loss ~ 13
+(Still getting the pixel errors..)
+
+Turn back on the nonlinear feedback. Q = 528
+w_f (32, 784)
+w_b (784, 528)
+Also run for 2 epochs.
+end loss ~ 9
+(not sure if it could go down further?)
+
+What happens if we reinstate roi, only even bigger, 7?
+	Really need to quantify based on the test set not train set!!
+	If we increase the matrices enough, eventually it can store the whole dataset..
+w_f (32, 14772)
+w_b (784, 528)
+end loss ~9 again.
+
+Question: Can this compression be used to predict class labels?
+
+May 25 2022
+YEs, it can! 
+However, if you use the full 60k training set, it's still better to just do linear regression to select the label (as assessed by MSE..)
+If you cut down the linear regression size to 100, 
+then the compressed representation is slightly better. 
+	compressed mean label prediction error 5.7132864
+	naive mean label prediction error 6.7690516
+That's with a ROI of 7. 
+Try with ROI=1
+	mean train loss 9.757882
+	mean test loss 9.6124525
+	compressed mean label prediction error 5.7888865
+	naive mean label prediction error 6.9488473
+Ok, so ... about the same. 
+What if we increase the representation size? (48)
+	mean train loss 7.382174
+	mean test loss 7.2273593
+	compressed mean label prediction error 6.494618
+	naive mean label prediction error 6.2625747
+What if we decrease the representation size? (20)
+	w_f (20, 784)
+	w_b (784, 210)
+	mean train loss 14.872782
+	mean test loss 14.594089
+	compressed mean label prediction error 5.20966
+	naive mean label prediction error 6.1839123
+Good!  So, it does better.. 
+Adding some translations: 
+	torchvision.transforms.RandomAffine(10.0),
+gives: 
+	w_f (20, 784)
+	w_b (784, 210)
+	mean train loss 15.875707
+	mean test loss 14.274618
+	compressed mean label prediction error 5.3931966
+	naive mean label prediction error 7.572067
+Looks promising!! 
+Try again with 20deg rotations: 
+	w_f (20, 784)
+	w_b (784, 210)
+	mean train loss 16.331211
+	mean test loss 13.986706
+	compressed mean label prediction error 4.5654993
+	naive mean label prediction error 6.855
+Oh wow!!?? Even lower error. 
+Let's throw the ROI=5 back in there. 
+		{ Aside: really need to enable batch mode here.. speed up training}
+	w_f (20, 7696)
+	w_b (784, 210)
+	mean train loss 15.717631
+	mean test loss 13.437547
+	compressed mean label prediction error 5.3180842
+	naive mean label prediction error 7.040411
+
+Wnat to run more experiments but really need to eat something! 
+ROI = 5, rotation = 40,
+	w_f (20, 7696)
+	w_b (784, 210)
+	mean train loss 16.888586
+	mean test loss 14.305665
+	compressed mean label prediction error 5.9888306
+	naive mean label prediction error 8.747594
+
+Added in a batch dimension.. speeds up computation, but slows down convergence.
+Interesting.
+
+With a batch size of 8:
+	w_f (20, 7696)
+	w_b (784, 210)
+	mean train loss 17.341217
+	mean test loss 14.789629
+	compressed mean label prediction error 5.616935
+	naive mean label prediction error 8.502002
+With a batch size of 32:
+	w_f (20, 7696)
+	w_b (784, 210)
+	mean train loss 30.184021
+	mean test loss 28.65005
+	compressed mean label prediction error 5.768119
+	naive mean label prediction error 8.599775
+BS 32, ROI 3:
+	w_f (20, 3700)
+	w_b (784, 210)
+	mean train loss 38.49564
+	mean test loss 37.350113
+	compressed mean label prediction error 6.2187138
+	naive mean label prediction error 6.6117
+
+Umm.  I think I might be doing this wrong.
+The label ought to be one-hot!  Categorical!
+Of course it won't work super well with just the numbers 0,1,2..
+Yeah, duh.
+Below, one epoch, roi=3, batch=32
+	w_f (20, 3700)
+	w_b (784, 210)
+	mean train loss 38.642357
+	mean test loss 36.807293
+	compressed mean label prediction error 0.072603054
+	naive mean label prediction error 0.095275916
+Below, two epochs, roi=1, batch=8
+	w_f (20, 784)
+	w_b (784, 210)
+	mean train loss 18.2238
+	mean test loss 15.588934
+	compressed mean label prediction error 0.07381655
+	naive mean label prediction error 0.10375466
+Below, two epochs, roi=1, batch=64
+	w_f (20, 784)
+	w_b (784, 210)
+	mean train loss 38.745132
+	mean test loss 37.064823
+	compressed mean label prediction error 0.06895668
+	naive mean label prediction error 0.09322322
+Run again (since it's fast..):
+	w_f (20, 784)
+	w_b (784, 210)
+	mean train loss 37.436176
+	mean test loss 36.331757
+	compressed mean label prediction error 0.08552185
+	naive mean label prediction error 0.106565624
+Increase TN, the number of examples used in the linear regression, to 200.
+	w_f (20, 784)
+	w_b (784, 210)
+	mean train loss 41.640827
+	mean test loss 40.023956
+	compressed mean label prediction error 0.06269046
+	naive mean label prediction error 0.11225252
+Humm..
+Bump the hidden dimension to 32.
+	w_f (32, 784)
+	w_b (784, 528)
+	mean train loss 20.714134
+	mean test loss 17.512472
+	compressed mean label prediction error 0.061895754
+	naive mean label prediction error 0.11251253
+Without rotation:
+	w_f (32, 784)
+	w_b (784, 528)
+	mean train loss 17.407146
+	mean test loss 17.232634
+	compressed mean label prediction error 0.055899657
+	naive mean label prediction error 0.10356578
+Without rotation, hidden dim 48, roi 3:
+	w_f (48, 3700)
+	w_b (784, 1176)
+	mean train loss 17.438473
+	mean test loss 17.392864
+	compressed mean label prediction error 0.089243285
+	naive mean label prediction error 0.11814148

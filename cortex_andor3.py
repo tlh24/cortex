@@ -42,6 +42,8 @@ def outerupt2(v):
 		e = e + 1
 	return r
 
+# really need to represent this as a matrix or tensor product.
+
 @jax.jit
 def outerupt3(v):
 	# outer product upper-triangle, but for terms with three, two, and one factor
@@ -114,10 +116,15 @@ def plot_tensor(r, c, v, name, lo, hi):
 	global initialized
 	if len(v.shape) == 1:
 		n = v.shape[0]
+		if n == 3:
+			v = jnp.concatenate((v, jnp.zeros((1,))), 0)
+			v = jnp.reshape(v, (2,2))
 		if n == 4:
 			v = jnp.reshape(v, (2,2))
 		elif n == 9:
 			v = jnp.reshape(v, (3,3))
+		elif n == 27:
+			v = jnp.reshape(v, (3,9))
 		elif n == 44:
 			v = jnp.reshape(v, (4,11))
 		elif n == 189:
@@ -136,7 +143,7 @@ def plot_tensor(r, c, v, name, lo, hi):
 		# cbar[r][c].update_normal(im[r][c]) # probably does nothing
 		axs[r,c].set_title(name)
 
-
+@jax.jit
 def hebb_update(w_, inp, outp, outpavg, outplt, lr):
 	# see older source for the history and reasoning behind this.
 	d = inp.shape[0]
@@ -146,7 +153,7 @@ def hebb_update(w_, inp, outp, outpavg, outplt, lr):
 	ltp = jnp.clip(dw, 0.0, 2.0) # make ltp / ltd asymmetrc
 	ltd = jnp.clip(dw, -2.0, 0.0) # to keep weights from going to zero
 	lr = lr / math.pow(d, 0.35)
-	dw = ltp*lr + ltd*1.3*lr*(0.9+\
+	dw = ltp*lr + ltd*1.5*lr*(0.9+\
 		jnp.outer(outpavg*1.5, jnp.ones((d,) )))
 
 	w_ = w_ + dw
@@ -166,7 +173,7 @@ for q in range(8):
 	v = jnp.reshape(v, (9,))
 	stim = stim.at[q].set(v)
 
-
+@jax.jit
 def nlls(des, est): # nonlinear least squares
 	# des is the target expanded value,
 	# est is the estimate of the compressed val
@@ -191,7 +198,7 @@ w_b = jnp.zeros((M, Q))
 l2ra = jnp.zeros((Q,))
 l2lt = jnp.zeros((Q,))
 
-N = 10000
+N = 20000
 
 for i in range(int(N)):
 	q = i % 8
@@ -199,7 +206,7 @@ for i in range(int(N)):
 	l1o = outerupt2i(l1e)
 
 	key,sk = rsplit(key)
-	noiz = jax.random.normal(sk, (Q,)) * 0.05 # this might not be required?
+	noiz = jax.random.normal(sk, (Q,)) * 0.08 # this might not be required?
 	l2x = w_f @ l1o + noiz
 
 	l2c = jnp.ones((P,)) * 0.5
