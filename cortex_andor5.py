@@ -6,6 +6,7 @@ import jax
 import jax.numpy as jnp
 from jax.random import split as rsplit
 import numpy as np
+from sklearn.decomposition import PCA
 import torch
 import torchvision
 import pdb
@@ -214,7 +215,7 @@ batch_size = 60000
 train_loader = torch.utils.data.DataLoader(
   torchvision.datasets.MNIST('files/', train=True, download=True,
                              transform=torchvision.transforms.Compose([
-										  torchvision.transforms.RandomAffine(20.0),
+										  torchvision.transforms.RandomAffine(40.0),
                                torchvision.transforms.ToTensor()
                              ])),
   batch_size=batch_size, shuffle=True, pin_memory=True)
@@ -291,9 +292,9 @@ testtarget_jax = to_jax(testtarget)
 # all that seems to work ok.
 # time for the real thing.
 siz = 28
-roi = 3
+roi = 5
 
-P = 32
+P = 20
 Pp = P*2
 
 fi1, fi2 = outerupt_indx2_flat(siz, roi, True)
@@ -348,6 +349,7 @@ bs = outerupt_b_jc(jnp.ones((P,)))
 
 M = fs.shape[0]
 Q = bs.shape[0]
+Q = P ## HACK
 lr = 0.001
 
 @jax.jit
@@ -363,7 +365,7 @@ def swish(x):
 # loss plateaus around 20, though.
 # Imperfect but perceptually nice reconstruction..
 #@jax.jit
-#def run_model2(w_f, w_b, l1e):
+#def run_model(w_f, w_b, l1e):
 	#l1o = outerupt_f(l1e)
 
 	#l2x = w_f @ l1o
@@ -418,24 +420,24 @@ def swish(x):
 # this model converges quickly & has a low ultimate loss (~10)
 # representation remains vectoral -- varied activation at the hidden layer.
 @jax.jit
-def run_model(w_f, w_b, l1e):
+def run_model(w_f, w_b, b_2, l1e):
 	# dumb simple model, with no non-linear least squares compression
 	# see what it comes up with.
 	l1o = outerupt_f(l1e)
 
 	l2x = w_f @ l1o
 
-	l2c = sigmoid(l2x)
+	l2c = sigmoid(l2x) + b_2
 
-	l2r = outerupt_b(l2c) # outerupt_b(
+	l2r = l2c # outerupt_b(l2c)
 
 	l1i = jnp.clip(w_b @ l2r, 0.0, 1.0)
 
 	return l2c, l1i
 
 @jax.jit
-def compute_loss(w_f, w_b, l1e):
-	l2c, l1i = run_model(w_f, w_b, l1e)
+def compute_loss(w_f, w_b, b_2, l1e):
+	l2c, l1i = run_model(w_f, w_b, b_2, l1e)
 	return jnp.sum((l1e - l1i)**2)
 
 # for gradient to work, w_f and w_b need to be non-zero
@@ -443,6 +445,7 @@ key,sk = rsplit(key)
 w_f = jax.random.normal(sk, (P,M)) * 0.0025
 key,sk = rsplit(key)
 w_b = jax.random.normal(sk, (784,Q)) * 0.0025
+b_2 = jnp.zeros((P,))
 
 slowloss = 0.0
 
@@ -455,8 +458,8 @@ def mp(indx):
 	return a
 
 N = 60000
-BATCH = 64
-for ii in range(4):
+BATCH = 16
+for ii in range(16):
 	mnist = enumerate(train_loader)
 	batch_idx, (indata, intarget) = next(mnist)
 	indata_jax = to_jax(indata)
@@ -466,18 +469,20 @@ for ii in range(4):
 
 	for i in range(int(N/BATCH)):
 
-		def stp(w_f, w_b, l1e):
-			loss, (w_f_grad, w_b_grad) = jax.value_and_grad(\
-				compute_loss, (0, 1))(w_f, w_b, l1e)
-			return loss, w_f_grad, w_b_grad
+		def stp(w_f, w_b, b_2, l1e):
+			loss, (w_f_grad, w_b_grad, b_2_grad) = jax.value_and_grad(\
+				compute_loss, (0, 1, 2))(w_f, w_b, b_2, l1e)
+			return loss, w_f_grad, w_b_grad, b_2_grad
 
-		loss, w_f_grad, w_b_grad = jax.vmap(stp, (None, None, 0), 0)\
-			(w_f, w_b, indata_jax[i*BATCH : (i+1)*BATCH])
+		loss, w_f_grad, w_b_grad, b_2_grad = jax.vmap(stp, (None, None, None, 0), 0)\
+			(w_f, w_b, b_2, indata_jax[i*BATCH : (i+1)*BATCH])
 
 		w_f_grad = jnp.sum(w_f_grad, 0)
 		w_b_grad = jnp.sum(w_b_grad, 0)
+		b_2_grad = jnp.sum(b_2_grad, 0)
 		w_f = w_f - w_f_grad * lr
 		w_b = w_b - w_b_grad * lr
+		b_2 = b_2 - b_2_grad * lr
 
 		loss = jnp.mean(loss)
 		slowloss = 0.98 * slowloss + 0.02*loss
@@ -487,21 +492,21 @@ for ii in range(4):
 print("w_f", w_f.shape)
 print("w_b", w_b.shape)
 
-def run_model_batch(w_f, w_b, dat): 
+def run_model_batch(w_f, w_b, b_2, dat):
 	 
-	def stp(w_f, w_b, l1e): 
-		l2c, l1i = run_model(w_f, w_b, l1e)
+	def stp(w_f, w_b, b_2, l1e):
+		l2c, l1i = run_model(w_f, w_b, b_2, l1e)
 		loss = jnp.sum((l1e - l1i)**2)
 		return l2c, loss
 		
-	l2c_all, loss_all = jax.vmap(stp, (None, None, 0), 0)(w_f, w_b, dat)
+	l2c_all, loss_all = jax.vmap(stp, (None, None, None, 0), 0)(w_f, w_b, b_2, dat)
 	return l2c_all, loss_all
 
 # run this on test & asses reconstruction / prediciton. 
-l2c_train, loss_train = run_model_batch(w_f, w_b, indata_jax)
+l2c_train, loss_train = run_model_batch(w_f, w_b, b_2, indata_jax)
 print('mean train loss', jnp.mean(loss_train))
 
-l2c_test, loss_test = run_model_batch(w_f, w_b, testdata_jax)
+l2c_test, loss_test = run_model_batch(w_f, w_b, b_2, testdata_jax)
 print('mean test loss', jnp.mean(loss_test))
 
 # make test one-hots..
@@ -515,18 +520,39 @@ l2c_train1 = np.concatenate((np.asarray(l2c_train[0:TN]), np.ones((TN,1))), 1)
 # use on test (all samples)
 l2c_test1 = np.concatenate((np.asarray(l2c_test), np.ones((10000,1))), 1)
 pred = l2c_test1 @ ww
-err = (testtarget_hot - pred)**2
-print('compressed mean label prediction error', np.mean(err))
+indx = jnp.argmax(pred, 1)
+pred_hot = jax.vmap(mp, 0, 0)(indx)
+err = (testtarget_hot - pred_hot)**2
+print('compressed one-hot label prediction error', np.mean(err))
 
 # now do the same for no compression (control) 
 indata1 = np.concatenate((np.asarray(indata_jax[0:TN]), np.ones((TN,1))), 1)
 (ww,resid,rank,sing) = np.linalg.lstsq(\
 	indata1, np.asarray(intarget_hot[0:TN]), rcond=None)
-
+# all samples again.
 testdata1 = np.concatenate((np.asarray(testdata_jax), np.ones((10000,1))), 1)
 pred = testdata1 @ ww
-err = (testtarget_hot - pred)**2
-print('naive mean label prediction error', np.mean(err))
+indx = jnp.argmax(pred, 1)
+pred_hot = jax.vmap(mp, 0, 0)(indx)
+err = (testtarget_hot - pred_hot)**2
+print('naive one-hot label prediction error', np.mean(err))
+
+# also need to compare to PCA (which should be the same as linear regression, but double check just to make sure)
+pca = PCA(n_components=P, svd_solver='full')
+pca.fit(np.asarray(indata_jax)) # use the full matrix
+pcaindata = pca.transform(np.asarray(indata_jax[0:TN]))
+pcaindata1 = np.concatenate((pcaindata, np.ones((TN,1))), 1)
+(ww,resid,rank,sing) = np.linalg.lstsq(\
+	pcaindata1, np.asarray(intarget_hot[0:TN]), rcond=None)
+
+pcatest = pca.transform(np.asarray(testdata_jax))
+pcatest1 = np.concatenate((pcatest, np.ones((10000,1))), 1)
+pred = pcatest1 @ ww
+indx = jnp.argmax(pred, 1)
+pred_hot = jax.vmap(mp, 0, 0)(indx)
+err = (testtarget_hot - pred_hot)**2
+print('PCA one-hot label prediction error', np.mean(err))
+
 
 # display a few samples of input - compress - reconstruct.
 def prime_factors(n):
@@ -559,7 +585,7 @@ def vec2mtrx(ar):
 
 for i in range(5):
 	l1e = indata_jax[i]
-	l2c, l1i = run_model(w_f, w_b, l1e)
+	l2c, l1i = run_model(w_f, w_b, b_2, l1e)
 	fig, axs = plt.subplots(1,3, figsize=(18, 8))
 	im = axs[0].imshow(jnp.reshape(l1e, (28,28)))
 	plt.colorbar(im, ax=axs[0])

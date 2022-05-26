@@ -1050,3 +1050,104 @@ Without rotation, hidden dim 48, roi 3:
 	mean test loss 17.392864
 	compressed mean label prediction error 0.089243285
 	naive mean label prediction error 0.11814148
+
+Note:
+tried changing the output / final nonlinearity.
+It's quite sensitive to this!
+Changing to
+	l1i = jnp.clip(w_b @ l2r, -0.2, 1.2)
+Causes the model to not converge (!!!)
+It makes it so the outout has only a few bits on.. why?
+
+Sigmoid output on l1i gives nice results, but the codes are saturated and bad.
+Am thinking that we're missing some bias terms here .. ?
+So that the slopes can be inverted?
+Maybe helps, maybe not.
+Seems to help with lost pixels at least.
+	w_f (32, 3700)
+	w_b (784, 528)
+	mean train loss 10.11068
+	mean test loss 8.062884
+	compressed mean label prediction error 0.057571307
+	naive mean label prediction error 0.11125314
+Again:
+	w_f (32, 3700)
+	w_b (784, 528)
+	mean train loss 10.0058565
+	mean test loss 7.905799
+	compressed mean label prediction error 0.056958407
+	naive mean label prediction error 0.10198992
+
+
+Seems this is about as good as we might get --
+roi = 5 batch = 16, P = 32, epochs = 10
+	w_f (32, 7696)
+	w_b (784, 528)
+	mean train loss 9.989642
+	mean test loss 8.041153
+	compressed mean label prediction error 0.05843653
+	compressed one-hot label prediction error 0.053519998
+	naive mean label prediction error 0.10049593
+	naive one-hot label prediction error 0.079059996
+Lacking any further information, seems like ~ 5% error is as good as possible without using supervised data (probably?)
+roi = 5, batch = 16, P = 20, epochs = 10
+	w_f (20, 7696)
+	w_b (784, 210)
+	mean train loss 15.351827
+	mean test loss 13.229023
+	compressed mean label prediction error 0.056146413
+	compressed one-hot label prediction error 0.04976  <-- slightly better
+	naive mean label prediction error 0.09369152
+	naive one-hot label prediction error 0.08028
+
+roi = 5, batch = 16, P = 20, epochs = 100
+	w_f (20, 7696)
+	w_b (784, 210)
+	mean train loss 16.233717
+	mean test loss 13.735222
+	compressed mean label prediction error 0.060591716
+	compressed one-hot label prediction error 0.057
+	naive mean label prediction error 0.105436824
+	naive one-hot label prediction error 0.095359996
+
+Ok!  I think this is as optimized as I might well get at this point ...
+Sure I could fiddle with it more but .. eh?
+A days+ experiment seems effective, time for a
+
+May 26 2022
+Looks like my fancy nonlinear system works ...
+exactly the same as good old PCA in terms of dimensionality reduction. 
+With 16 epochs: 
+	w_f (20, 7696)
+	w_b (784, 210)
+	mean train loss 16.316217
+	mean test loss 13.730327
+	compressed one-hot label prediction error 0.061139997
+	naive one-hot label prediction error 0.08794
+	PCA one-hot label prediction error 0.06172
+	
+OK, turn off all the goofy multiplication: 
+epochs = 5, roi = 1, no nonlinear expansion of hidden state, 
+This and the previous used 40deg affine transforms
+	w_f (20, 784)
+	w_b (784, 20)
+	mean train loss 21.786966
+	mean test loss 19.35434
+	compressed one-hot label prediction error 0.05706
+	naive one-hot label prediction error 0.09804
+	PCA one-hot label prediction error 0.06388
+YEah .. just nonlniear does very slightly better. 
+	w_f (20, 784)
+	w_b (784, 20)
+	mean train loss 20.900702
+	mean test loss 18.523268
+	compressed one-hot label prediction error 0.06888
+	naive one-hot label prediction error 0.09566
+	PCA one-hot label prediction error 0.0729
+{ of note: some of the examples even I can't recognize! } 
+Let's try only nonlinear input expansion !? 
+( should be almost exactly the same)
+Yes no change. 
+	compressed one-hot label prediction error 0.067719996
+	naive one-hot label prediction error 0.097219996
+	PCA one-hot label prediction error 0.070379995
