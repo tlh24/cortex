@@ -1151,3 +1151,144 @@ Yes no change.
 	compressed one-hot label prediction error 0.067719996
 	naive one-hot label prediction error 0.097219996
 	PCA one-hot label prediction error 0.070379995
+
+
+Friday May 27 2022
+Seems like it's time for a bit of review!
+Let's go through the source code (and maybe some papers) and review the lessons learned.
+* cortex_nn.py
+	Used to iteratively estimate a 8x4 matrix (4 real dimensions, 8 apparent)
+	This with either one-hot activations or random combinations of the 4 vectors.
+	Started the l1 l2 nomenclature...
+	Not really sure if this worked so well.
+
+* cortex_nn2.py
+	Iterative forward-backward trail, with three layers.
+	Raised awareness to the fact that that hidden layer is hard to correct -- how to allocate responsibility / credit to either the top layer or the bottom layer weights?  How do the upper layers contribute to prediction in the lower layers, if the hidden layer depends on both?
+	Fun expermients, but inconclusive.
+	Still don't really know the answer to responsibility / credit issue .. I think, when the stimulus is ambiguous, there is no way to really represent hidden layer activity without upper causes (hm?)
+
+* cortex_2axis.py
+	This one actually works.
+	The task is to take a 3-dim input (6 with complements) and produce a 2-bit address / index using feedback alignment.
+	Yes, the nonlinear hebbian rules can do this in the tiny toy example.
+	Well, better than not working!
+
+	Gave some confidence that the Hebbian learning + E-I balance + feedback alignment is not totally riddiculous..
+
+* schmid_test.py
+	This is after Schmidhuber 1999
+	VAE is a 3-layer, one hidden MLP
+	Probably I got this from the web somewhere, particuarly given the print statements.. using save_miage as opposed to plt.imshow, fwiw.
+	It's a beta-VAE, where the beta term grows from 0.25 to 0.75 (ish)
+	The latent representations seem not so disentangled,
+	consistent with the architecture..
+		[1]S. Hochreiter and J. Schmidhuber, “Feature Extraction Through LOCOCODE,” Neural Computation, vol. 11, no. 3, pp. 679–714, Apr. 1999, doi: 10.1162/089976699300016629.
+
+* cortex_bumps.py
+	This was written in the Mojave (partly) .. idea is to predict a series of moving bumps, rather than predicting binary patterns, using the same framework as above.
+	That is, the next frame was predicted from the current frame + the current hidden activation.
+	Spent quite some time trying to figure out how to represent something like 'pass gate' topology.
+	This is really another, perhaps overy complicated, version of activity-activity multiplication, that required the use of a weight *tensor* not matrix, which is quite the excessive memory representation.
+	(Don't think we should generally use weight tensors in the future; there has to be a better way to represent or factorize .. that said, the Anthropic work makes quite successful use of tensor products in understanding how transformers work.. hmm but that's for understanding, transformers are still mstrix-matrix mults.
+	I don't think it ever really worked, partly because what information was kept around was not clear.
+
+* cortex_bumps_sgd.py
+	One of the several times I check to see if the topology actually works by using SGD and autodiff.
+	* but still with the pass-gates
+	It does, pretty sure.  But quite slow; this is not a great way to represent the problem, per thoughts above.
+	Unsurprisingly.
+	{Still not a bad torch implementation.  Building the calouses and foundations.. }
+	Looking at the plotted output, unclear if it's really disentangling anything... the reconstructions are fairly noisy around zero (might well just need appropriate clamps / nonlinearities.. )
+
+* cortex_mnist.py
+	This was the first 'complete' script written while at Loyal, and it is actually pretty successful!
+	Is able to quickly and semi-reliably reconstruct MNIST digits in the two-layer autoencoder topology per cortex_2axis above.
+	The nonlinear Hebbian learning works well, even if it never fully cleans up the residual errors.
+	Most importantly, 'conjunctive' code allocation + explain-away sparsification does seem to work well, and it all converges rapidly, ~ 3000 steps or so.
+	Feedback alignment (in the local meaning of the term, not lit) also works correctly.  Asymmetric learning rates may contribute to this.
+
+	Problem is that conjunctive features only go so far for representing the digits ... need conditional features, at least.
+
+* cortex_andor.py
+	This version had nonlinear dendrites, was written in torch, and is trained to 'compress' or index the glider-checker task.
+	As of today, it sort-of works..
+	This features the product-of-activity outer product, nonlinear hebbian correlative weight update, noise bootstrapping (which i like), and a supervised option.
+	It was designed as the simplest toy case to think about & test conditional / activity * activity features, in a quasi-biological way (nonlinear dendrites).
+
+	Lessons: learning arbitrary indexes/compressions is quite hard, system is prone to instabilities.
+	A highly compressed representation is fragile: if you change one address line or bit, then all the other ones need to be changed as well!
+		Of course this is not true of the real world ...
+		it is fractionally spaced, not full for a given set of axes.
+		E.g. not all combinations of all things; there are categories of axes, axes of axes so-to-speak.
+
+cortex_andor2_be27787.py
+	So this solves the glider-checker problem!  Almost perfectly!
+	Proving above wrong, or at least incomplete, I guess.
+	Yet it's a tricky system that required a fair bit of work to function,
+	and is also unstable.
+		(One part of the solution is simulated annealing, though even without this it seems to converge quickly..)
+	I think in general something in this realm could more generally work when, per above, the full address space is not used, or the address space itself is factorized.
+
+cortex_andor3.py
+	This was after skeleton.py (below) but in the same series; I switched from pytorch to JAX here.
+	Got rid of dendrites, kept the activity-activity outer product mostly intact
+	When encoding eight symbols with 4 bits, it always seems to miss one.
+		Seems that it gets stuck in a local minima, where updates on one symbol exactly counteract updates on another, and the feedback can't push it to a new representation..
+	Increasing the latent dimension fixes this, i think.
+	Model still works with a latent of three dim, i think.
+
+	Remains toy, but still pretty OK.
+
+cortex_andor4.py
+	Took andor3 above and switched to MNIST.
+	No SGD, still E-I balanced feedback.
+	But but, did use non-linear least squares to convert from the expanded latent dimension to the compressed latent.
+	Doesn't work that great -- turning down synapses to and from the uncompressed latent is very tricky!
+	Spent some time on this one, but the approximations / reconstructions never were that good..
+	Some aspect of this might be tweaking the representations and feedback, some aspect might just be the overall sensitivity of the model / instability of the encoding.
+	As mentioned, if one address / index changes many other encodings also need to change, which makes the problem more tangled hence harder to solve.
+		-- Seems like a fundamental issue!!
+	What if you simply don't change an encoding once it is set?
+	(Other than if other encodings completely take over predicting for one mode .. then you need some learning rule or something to make sure the weights decay.)
+	* Model is surprisingly sensitive to learning rate!
+	Needs more negative feedback loops for sure ...
+	but that said, at this point I was getting itchy that the network struture itself was limiting, and that I didn't understand what the problem was / how a 'good' way of solving it might be.
+	As in: are activity*activity maps a reasonable representational basis?
+
+	All this was prefaced, as indicated by the names of the scripts, that current MLPs are pretty good at linear 'OR' operations. Input A or input B (times weight) gets summed to produce output (unless negative weight..)
+	What you seem to get in dendrites is more of an 'AND' operation.. you need both conditions for there to be output (~= multiply).
+	Hinton definitely mentioned this.
+	Many people have worked on it, but of course the reresentations become entangled then ... which is part of their power.
+	It can also be thought of as an 'if' operation.
+
+	IDK, looking at the output again now, I think there is a bug somewhere.
+
+* cortex_andor5.py
+	Finally gave up and went with SGD!
+	Are these representations even reasonable?
+	Yes, they are.
+	Note: did non use non-linear least squares here, just propagated the gradient through the whole model & had asymmetric w_f and w_b matrices.
+		e.g. w_f went expanded l1 to l2; w_b went expanded l2 to l1
+	Yep, it works, and offers reasonable reconstructions.
+	Can be used for few-shot learning of classes with an accuracy very slightly better than boring-old PCA
+		PCA on whole training set,
+		Bio-autoencoder (BAE) on whole training set,
+		then supervised learning on 200 samples of the training set
+		and testing on the whole test set for both conditions.
+	Plenty of fiddling showed that it's mostly the nonlinearity, not the AxA, that lends efficiency in semi-supervised learning.
+	A result in and of itself!
+
+* skeleton.py
+	Much work went into this & I think much work remains.
+	From Tim Saliman's work, I think that virtual (or not) batch norm might be required to get better per-neuron behavior hence overall behavior-solution diversity [1]
+		(notes that this was essential to get some behavior out of convnets, where intial noise does not produce meaningful actions.)
+	He also offers some good insights on parameter fuzzing vs policy fuzzing [2]
+
+		[1]T. Salimans, I. Goodfellow, W. Zaremba, V. Cheung, A. Radford, and X. Chen, “Improved Techniques for Training GANs.” arXiv, Jun. 10, 2016. Accessed: May 27, 2022. [Online]. Available: http://arxiv.org/abs/1606.03498
+		[2]T. Salimans, J. Ho, X. Chen, S. Sidor, and I. Sutskever, “Evolution Strategies as a Scalable Alternative to Reinforcement Learning.” arXiv, Sep. 07, 2017. Accessed: May 27, 2022. [Online]. Available: http://arxiv.org/abs/1703.03864
+
+	Big open question of how to set the objective function properly to get good encodings?
+	Also, we need to incorporate environmental interactions!
+	(Spoke with Tarin about this yesterday; see alt-ai.org
+	Will have to write more later.

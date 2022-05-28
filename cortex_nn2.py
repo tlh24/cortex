@@ -176,7 +176,6 @@ for k in range(1):
 	#print('error', err, 'l2a', l2a)
 	error[k] = err
 	
-pdb.set_trace()
 #print(error)
 #print(torch.mean(error), torch.std(error))
 #print(' ')

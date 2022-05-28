@@ -349,7 +349,6 @@ bs = outerupt_b_jc(jnp.ones((P,)))
 
 M = fs.shape[0]
 Q = bs.shape[0]
-Q = P ## HACK
 lr = 0.001
 
 @jax.jit
@@ -429,7 +428,7 @@ def run_model(w_f, w_b, b_2, l1e):
 
 	l2c = sigmoid(l2x) + b_2
 
-	l2r = l2c # outerupt_b(l2c)
+	l2r = outerupt_b(l2c)
 
 	l1i = jnp.clip(w_b @ l2r, 0.0, 1.0)
 
@@ -483,6 +482,10 @@ for ii in range(16):
 		w_f = w_f - w_f_grad * lr
 		w_b = w_b - w_b_grad * lr
 		b_2 = b_2 - b_2_grad * lr
+
+		if i % 5 == 4:
+			w_f = 0.999 * w_f
+			w_b = 0.999 * w_b
 
 		loss = jnp.mean(loss)
 		slowloss = 0.98 * slowloss + 0.02*loss

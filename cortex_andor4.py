@@ -15,8 +15,10 @@ import time
 
 #from jax.config import config
 #config.update("jax_debug_nans", True)
+print(jax.devices())
+print(jax.devices()[0].platform, jax.devices()[0].device_kind)
 
-torch_device = 0
+torch_device = 1
 print("torch cuda devices", torch.cuda.device_count())
 print("torch device", torch.cuda.get_device_name(torch_device))
 #device = torch.device("cpu")
@@ -347,7 +349,7 @@ bs = outerupt_b_jc(jnp.ones((P,)))
 # M = fs.shape[0]
 M = 784
 Q = bs.shape[0]
-lr = 0.0025
+lr = 0.0032
 
 w_f = jnp.zeros((Q, M))
 w_b = jnp.zeros((M, Q))
@@ -439,7 +441,7 @@ for ii in range(1000):
 		# l1o = outerupt_f(l1e)
 
 		key,sk = rsplit(key)
-		noiz = jax.random.normal(sk, (Q,)) * 0.08 # this might not be required?
+		noiz = jax.random.normal(sk, (Q,)) * 0.12 # this might not be required?
 		l2x = w_f @ l1o + noiz
 
 		l2c = jnp.ones((P,)) * 0.5
@@ -487,6 +489,9 @@ for ii in range(1000):
 			0.5*jnp.ones((M,)), jnp.zeros((M,)), lr*1.2) # was 1.2
 
 		w_f = jnp.clip(w_f, -0.001, 0.5)
+		if i % 5 == 1:
+			w_f = 0.99983451 * w_f
+			w_b = 0.99975673 * w_b
 
 		if i%100 == 99:
 			# now need to do the same nonlinear least squares,

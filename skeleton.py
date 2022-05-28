@@ -18,7 +18,7 @@ import traceback
 plt.rcParams['figure.dpi'] = 170
 
 print(jax.devices())
-print(jax.devices()[0].platform, jax.devices()[0].device_kind)
+print("jax", jax.devices()[0].platform, jax.devices()[0].device_kind)
 
 # torch.set_default_tensor_type('torch.cuda.FloatTensor')
 # ^^ slows things down!
