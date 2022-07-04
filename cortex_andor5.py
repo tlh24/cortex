@@ -458,7 +458,7 @@ def mp(indx):
 
 N = 60000
 BATCH = 16
-for ii in range(16):
+for ii in range(256):
 	mnist = enumerate(train_loader)
 	batch_idx, (indata, intarget) = next(mnist)
 	indata_jax = to_jax(indata)

@@ -1290,5 +1290,182 @@ cortex_andor4.py
 
 	Big open question of how to set the objective function properly to get good encodings?
 	Also, we need to incorporate environmental interactions!
-	(Spoke with Tarin about this yesterday; see alt-ai.org
+	(Spoke with Tarin about this yesterday; see alt-ai.org)
 	Will have to write more later.
+
+June 2 2022
+Since the last entry, have had dinner with Luke & learned a bunch of things.
+
+(1) A number of theoretical physicists have entered the deep learning field, I think at GB or DM, and they have done very well.  According to Luke, this is because they have been *careful* -- I'd assume, do the associated math..
+
+(2) Very large image and language models are getting to be both compute ($$) and data-limited; it's hard to curate more of the web to improve the results further.  Very interesting!
+
+(3) Luke mirrored my questioning: So what exactly do we do, now that Transformers, or at least objects with attention and resnet units (and probably convolution) seem to be cleaning up?
+	-- emphasis on "seem to be".  See the caveats above, and questions about the data / compute efficiency of this class of methods.
+
+(4) Mentioned Adept.ai, which is a new spin-out of Google Brain, working on using large language models + program synthesis stuff to automate common tasks on the computer.
+	It's a good idea, think it could definitely work!  Strong team! (Though allegedly Augustus Odena is a character.  Are we not all..)
+	-- Aside: some aspects of the Transformer may seem obvious in retrospect; isn't that true of many things though.  I suppose Vaswani and Parmar needed a lot of experience to gain insight that attention is indeed all you need.
+
+(5) Luke has been working on a meta-learning 100+ task corpra, and has found that whatever algorithm he has works for most, but it can never work for all / and it can't work on itself.  Have to see what the tasks are to better understand this.
+	This led to a short discussion of conciuosness and symbols / meta-symbols and the possible need for recurrence / a recursive syumbol manipulation system for "fully" closing the loop.
+	Talked a good bit about this on my "swan hike" with Judy, Arthur, and Alex..
+	Hard to recreate that magic, but I do think it all comes down to computed-addressing / "pointer arithmetic" and amorytized search.
+
+(6) Which is really what transformers are doing, I think.
+	-- They compose / create both algorithms (as in the Anthropic paper, where cetain heads are shown to copy data based on key-query matching; persumably more complicated algorithms can arise with this sort of match-search-forward algorithmic substrate?) and do good function mapping (via the many layers of MLP and resnets.
+	-- Can do pointer math, maybe even!
+	-- Certainly can do conditional execution & express higher-level probabilities.  Probably do this in a way that is better (?) than just activity-activity multiplication because of the added (minimal) structure (e.g. search)
+	-- My rough estimate is that for these sorts of models to work, you want to use the absolute simplest representation possible (e.g. MLP + ReLU / swish seems like just barely enough nonlinearity to represent anything; query-key-value is probably just the right quantity of complexity to allow algorithm composition
+	-- Keeping everything as linear as possible, in high-dimensional spaces .. just  seems to work with SGD.  The two are compatible.  SGD is a very effective way of tuning weights in high-d spaces. (where everything is both a saddle and vectors tend to be orthogonal..
+		-- I think that the "secret language" of Dall-E is an example of this.  Vector representation of what is roughly discrete or factorial representations... you get aliasing, but also generalization.
+
+(7) skeleton.py:
+We're asking it to do roughly a NP hard problem.
+It can't reliably do this.
+If we want it to work, need a sensory-motor loop to allow experimentation to cut the ambiguity & allow for factorization.
+There is really no other way, other than brute force exploration, and then you get into the problem of entanglement of addressing lines / factors.
+	(This might be a problem in the task too?)
+Yeah anyway, time to not be lazy ... and probably increase the complexity and capacity of the network (at the expense of a smaller population, but so what)
+Definitely worth a shot
+	(though I'm leaning more toward the 'artisinal' now ;-)
+
+June 8 2022
+Spent the last week-ish binging on papers. I think I have a better lay of the land, at least as it stands at present; now need to organize my thoughts (and also re-read all my old notes...)
+
+1. Predictive coding and equilibrium propagation are fundamentally the same thing -- an iterative means of propagating error derivatives backwards through a computational graph.  Provided you have error units, predictive coding even reduces to Hebbian learning (which is what I've implemented).
+	Notable that this can be derived from Friston's free-energy principle.  While I've shied away from this in the past, I think that, as Donald Knuth says, you need to lean into mathematics -- it may be a crutch, but it's also a tool for navigating difficult conceptual areas.
+	In light of this, I should be writzing more calculus!
+	And need to read the free-energy tutorial.
+2. Predictive coding / equilibrium propagation *do* solve the forwards-backwards coordination problem, but but some elements of coordination may be avoidable, vs-a-vis Sindy Lowe Putting an end to end-to-end.  You may be able to learn OK representations locally & greedily.
+	Caveat: in all Hinton's DBN work, the layers are trained greedily, but then you need a period of backprop fine-tuning to "get the elements to work together" or so.
+	Greedy training gets the parameters approximately in the right starting point. (although he offers no proof of this; it seems rather to be an intuition.)
+	One assumpion in the Lowe work is that the underlying latent / generating factors do not change on a rapid timescale, hence end to end-to-end uses a local contrastive loss, InfoNCE, (Oord 2018).
+		This seems to be sound & has much precedence e.g. Linsker
+	Another caveat: both predictive coding and equilibrium propagation require many passes to move their errors around the hierarchies.
+		Thought: depends on the markov blanket / complexity of the computational elements you are trying to select for!
+3. Contrastive methods, as used in wave2vec, can be used with backprop to very effectively build a unsupervised decoder.
+	The way that this system works is that they train contrastively:
+	They mask off certain portions of the sampled, compressed latents, input that into a transformer, then use the transformer to predict the class membership of a quantized version of the masked latent.
+		Quantization is through a differentiable Gumbell softmax (which includes a sampling step!)
+		Quantization was important to improve the latents, and is consistent with the underlying discrete nature of speech (though they do not analyze this..)
+	That is, they don't predict the actual quantized latent ... just try to maximize the difference between that and other codewords in the same utterance (humm?)
+		This is a common refrain -- you do not want to predict the whole input sequence,
+		but you want to be able to discriminate that sequence from everything else.
+		This is different from the 'pure' version of an auto-encoder;
+		having to re-represent all of the features as required by e.g. L2 loss, puts a heavy requirement on the encoder half.
+	Other contrastive systems work on the principle of predicting the next sampled symbol (which is predictive coding in another form)
+	There is a transformer in there too, which is trained via the contrastive loss...
+		Note that the fill-in codeword is trained as well.  Probably some tricky clever engineering in there!
+
+	These contrastive losses on semi-auto-encoder models seems like a much more data efficient way of training compared to GANs.
+
+4. Search!  Distributed search (hierarchically and spatially) is vital to breaking inference problems down when perfect / algorithmic inferences cannot be found.
+
+4. Spent some time on hashing / locality sensitive hashing / spectral hashing etc.
+	Hashing can of course be very fast,
+	but LSH does not seem to be per se a powerful way of organizing or generalizing over data.
+	E.g. the way to make LSH work better is to tag a DBN (greedy + fine-tune) to do the hashing,
+	Or to look at spectral methods (e.g. find the PCA of the data, break the space up using non-outer-product eigenvectors = hash functions)
+	This is not directly performing computation on the dataset in the same way as SGD on epochs of data is doing it..
+	You could imagine extensions of the process that refactor, contrastively perhaps, the hash functions (= adresses) of the data based on input occurrence.
+	This would be consistent with phenomenology.  You don't need an auto-encoder of the data if you simply ... remember it!
+
+	As for addressing, can do some sort of online incremental version, ala NEAT etc, where once some old index no longer is needed, it can be repurposed...
+
+	Problems with hashing:
+	1 -- It's not clear how to make it hierarchical.
+		Do you hash addresses, recurrently?
+		Or concatenate the addresses to bits of the data?
+	2 -- Not obvious how to deal with inference of / use of latent variables.
+		Is this like a Hopfield network, auto-associative fill-in?
+		Latent variables = position of objects, identity of objects, binding of attributes into whole, etc.
+	3 -- Not obvious how to use straight memory to do 'computation'.
+		Computation is necessary for generalization / compression.
+		Computation is (surprisingly) effectively done well by transformers, which do some sort of variable binding and forwarding magic & can iteratively explore this space via SGD.
+		Networks like ResNets, CNNs do less computation than function approximation.
+			Hedon: can you have meta-symbols, functors sorta, that work on higher-level symbols?
+			That would allow for even better generalization performance.
+			Maybe this is possible by making the system properly re-entrant and reflective (per consciousness discussion above)?
+
+Ok, start with a database. MNIST, SHFN, all youtube videos etc.
+This already has an indexing variable
+	imperfect but very useful: time and space
+Find other indexing variables that
+	-- Allow you to rapidly search over the recorded data, ala LSH
+		* ANNs are definitely a form of fast readout: you just propagate activations through a network to read out the memory (function approx)
+	-- Allow interpolation
+		* ANNs are also great at this, by interpolating in the latent space & again reading out the input (reverse propagation).
+		StyleGAN and Transformers are perhaps the best ...
+			because they do the best at approximating data with pseudo-algorithms.
+	-- Correspond to real factors of variation in the world
+		* This is similar to the disentangling hypothesis / set of ideas.
+		You want to make the latent space roughly correspond to the structure of the world.
+		This obviously makes indexing much faster / easier,
+		and it makes the database required much smaller: you can combine values (as in key-value store) compositionally to predict the world.
+	-- Perform processing gain on the stimulus
+		* Similar to above.  procesing gain = compression.
+		There seems to be no way around the need for extensive computation to find modules that evince processing gain. You need a lot of compute!
+		Also, it would seem that making an advancement on SGD is very hard if not impossible.
+		That said: SGD is harder to parallelize than biological update
+		yet it's not obvious how biology solves coordination problems (finding coalitions of good settings across levels of a hierarchy)
+		and SGD is ideally good for this.
+	-- Utilize motor output / reafferent / experimentation to disentangle the world
+		In this sense, there are XXX ways of pulling out independent factors of variation in data:
+		1. PCA.  linear methods. SVD.  Generally efficient. Not so powerful (just a rotation and scale.)
+		2. Linear projection + token nonlinearity (ReLU),
+			trained via SGD, or *prop.
+			Even rectification offers enough processing gain to support completely general function approximation; modules learned in the process of supervised learning have proven to be useful for other tasks and/or tend to be general factors of variation.
+		3. Nonlinear PCA / ICA
+			Use higher moments of the distribution of data to extract separable components (blind separation)
+			E.g. data is never perfectly white & tends to follow categorical or discrete distributions while noise may follow gaussian distributions.
+				The original Sejonowski and Bell paper (1995) focuses on linear mixtures of non-gaussian sources based on the InfoMax principle.
+				What about nonlinear mixtures of non-gaussian sources?
+		4. Kernel trick, then PCA or ICA.
+			Take a nonlinear problem and make it linear by dimensionality expansion.
+			Suffers from the curse of dimensionality, alas -- and still needs a metric for selecting the (linear combination of) output dimensions.
+		5. Slow variance of latent factors in the real world.
+			Wiskott and Sejnowski 2002
+			For example, when hallucinating a video of mountain biking, the only thing changing is position (and even that is conditional on velocity, conditional the terrain elevation etc. )
+			The world is not changing (except the clouds wind etc)
+			We have reduced things to maximally static!
+			Seems like a good goal.
+			A perhaps more realistic model is piecewise linear:
+			There are abrupt transitions in the underlying latent variables.
+			Like speech!
+				Note note: "performance degrades if the model is forced to learn multiple invariances simultaneously" hmm.
+		6. Experimentation.  'Natural scientist'
+			Some papers on using self-motion signals as a supervisory signal (predict the motor signal from the visual field, e.g.)
+			More can definitely be done here.
+		7. Brute force.
+			This is equivalent to partitioning a graph, which allgedly is NP-hard.
+			Ran into this problem directly in the glider-checker task in that maximally compressing address variables are inherently entangled with each other.
+			If we were to address sequentially, might work?
+			Or might just find bad encodings.
+			Or perhaps if we allow much larger encoding /addressing spaces, then subsequently weight-decay pare down it should work?
+			Is this sufficient to evince computation hence compression?
+			Also: how to do this in a small-enough way (e.g. ReLU is just barely enough of a nonlinearity) that it's explorable.
+
+
+Thoughts:
+	Using backprop makes it much easier to use only feedforward architectures, but it does not preclude you from using feedback (e.g LSTMs, BPTT)
+	cortex_andor5:
+		Has about the same efficiency as PCA for image classification
+		Which is saying a bit .. PCA is easy to compute and (present day) obvious.
+		Predicts (is an auto encoder) in pixel space, MSE in pixel space ... one way to regularize this is to add a contrastive term.
+			Might be worth experimenting with.
+		Far better is to seed disentangling with motor reafferent.
+
+Hedon:
+	One reason for the highly asymmetrical morphology of cortical excitatory neurons is the need for address / value computing.
+	Some things, such as removing translation or zoom variance natuurally factorizes as an addressing operation: you add the eye position to the 2D address, and automatically re-index to head coordinates.
+	Likewise for head to body, body to world..
+	Indeed, indexing (gather) or even scatter opeartions are very general, and can easily be used to generate algorithms, which is really the (only) way to permit low-data generalization.
+
+Yes but:
+	It makes sense, but how to actually implement it?
+	Addressing signals are back-propagating to L1/L2?
+	Value signals are axons that ramify to L4? From L5/6?
+	There are definitely more layers here than two, and many more neuronal subtypes to deal with.
+
+
