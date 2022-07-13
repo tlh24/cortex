@@ -1469,3 +1469,95 @@ Yes but:
 	There are definitely more layers here than two, and many more neuronal subtypes to deal with.
 
 
+July 4 2022
+	Happy independence day!
+	Going on a trip to NM in a few days, so it's good to get some work done today.
+	Finally got key-query mapping working for circles; need to rejigger the weight / key update rule. 
+	Rather obvious in retrospect. 
+	Might not be biologically plausible in the current instantiation / present meta-parameters, but meh. 
+	
+	Todo: 
+	-- One-hot obviously will not cut it for more complicated or interesting input data. 
+	As before, we want something closer to a factorial encoding or 'dense' encoding where addresses (here 100..) are maximally (or fairly) uncorrelated, and can contribute to different parts of recognizing and recreating the sensory space. 
+	
+	I suspcect that a second layer of tuning is required here; cortex_mnist *does* decompose the space into conjunctive features, which sum to reproduce the digits.
+	(And with SGD, cortex_mnist5 does offer slight processing gain..)
+	Presently the key matches on the entire input space, which doesn't make sense; there needs to be a 'don't care' or 'don't connect' vector. 
+	Alternately, we combine the two topologies so that 'don't care' is equivalent to zero forward or backward weights; it hence does not contribute to the reconstruction. 
+	Or, as I proposed with Laura Demming: key-query indexes a value, which subsequently sums.
+
+	There are two problems here:
+	1 -- Re-creating the stimulus, ala an auto-encoder.
+		Work so far has focused on E-I balance, which is plausible, though
+		- there does not seem to be a ton of evidence for backward inhibitory projections, and
+		- it's not clear how to scale the system to multiple layers.
+			Oldhausen also ran into the problem ... you get a conjuction of linear features, but need backprop to make them work together (coordination problem)
+	2 -- Deliberately segregating the query/address space to allow invariance: 'don't care'.
+
+	re 2, Probably the most obvious solution is the best?
+	Add a second set of coefficients which acts as a weight on the K-Q match?
+	But then, how to update the gate?
+	Maybe a momentum term ... if the input data consistently matches the key, then increase to saturation.
+	If it's unreliable, then decay to zero.
+	But try to make the gate vector as large as possible.
+	re 1, perhaps the solution is some sort of reprocity?
+
+	Getting a weird bistable behavior here ...
+	that of course needs to be fixed (probably wrong learning rule?)
+	Also probably need a dataset with a bit more statistical structure
+	Or hidden layers that are smaller.
+
+July 5 2022
+	Looking over what I did last night:
+	-- The 'gate' weight seems redundant, even though it does support the desired operation: allowing for partial key matches (keys 'focus' on maybe 1/4 of particular circles..)
+	-- The redundancy encourages a moving dynamic of keys and gate, which maybe makes sense, but is not really desireable..
+	-- I wonder if the right solution is to incorporate E-I feedback control here.
+		The current network is not trying to minimize any error.
+		So it's challenging to say "how well it's doing".
+	-- System is super sensitive to hyperparameter (weight decay) change.
+		0.999978 works, 0.999878 does not work.
+		Not a good sign.
+		Probably if we increase WD further (slow weight decay), the gate variable will move around even more.
+		Nope.  Slowing weight decay makes it more stable.
+		Decided to get rid of weight decay and replace it with total weight normalization ..
+		Divisive normalization doesn't work,
+		but substractive normalization works just fine & properly encourages the keys and gates to focus on smaller regions of the stimulus space.
+		(see 20220705_circles2)
+
+	Question is: beyond address-space segmentation, what really do we want to do here?
+	Ultimate goal: via a series of layers, convert this circles tasks into a compressed, disentangled representation: cx, cy, radius.
+	* With, of course, the help of these supervised variables!
+	* Without, of course, any SGD or actual supervision.
+		This may require some heuristics to solve coordination problems.
+	* In such a way that, with additional time, it could *conceivably* also disentangle in a wholly unsupervised way.
+	* In a way that it generalizes to problems other than circles, eg MNIST, images, video, stereo video...
+	* Incorporates something like E-M or iterative inference of address/query latents in the case they are not supplied. (network that is able to do both? )
+
+	Alright, it seems that I can finagle the network to mostly do what I want.
+	"Artisinal"
+	I think the next priority is to add in auto-encoding feedback?
+
+	Notes on circles2:
+	PCA can extract most of the variance of this dumb simple dataset.
+	The top-3 PCAs can predict w/
+		r^2 of 0.938 for cx and cy, and 0.737 for radius.
+	Bumping to top-10,
+		r^2 of 0.967 for cx and cy, 0.770 for radius.
+	(Corresponding weight matrix looks like a scale/rotation, good).
+	** Suggests that a lot of structure might well be just reasonable PCA..
+		which many dot-product architectures should be able to extract.
+		(Pelehan et al.. )
+			Hmm, this is good to know!
+	Yet .. recreating the circles from those PCA vectors. Hmm.
+
+July 7 2022
+	Have a version of the closed-ish loop inverse-graphics version of circles started. 
+	It doesn't work yet, as the expanded variable doesn't vary too much; 
+	Think I need to whiten and center it. 
+		(This seems to be a common feature of all sorts of statistical processing algos)
+	OK, 'ex' is whitened, but ... still not clear that it's finding a good mapping from the expanded supervised cx,cy,r to the l2 variables. 
+	Let's remove the 'gate' variable, which should make it more interpretable. 
+	Yeah, now need to see if it actually inverts the data -- e.g. can do approximate forward graphics, with no error and limited feedback .. ?? 
+
+July 11 2022
+	With the gate variable removed, not clear that it's really finding a good address from 'ex' variable ... need to do a reconstruction?
