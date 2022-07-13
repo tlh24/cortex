@@ -140,8 +140,8 @@ for k in range(500):
 		l2b = torch.exp(-1.0 * l2) # flip the sign
 		l2a = l2b * 0.01 + l2a * 0.99
 		l2b = l2b - l2a
-		#l2c = l2b / (torch.max(l2b) + 0.01)
-		l2c = l2b
+		l2c = l2b / (torch.max(l2b) + 0.01)
+		#l2c = l2b
 		l2c = clamp(l2c, 0.0, 5.0)
 
 		keys = keys + eta*(outer(l2c, l11))*(outer(l21, l1) - keys)
