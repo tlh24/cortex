@@ -1561,3 +1561,6 @@ July 7 2022
 
 July 11 2022
 	With the gate variable removed, not clear that it's really finding a good address from 'ex' variable ... need to do a reconstruction?
+
+July 13 2022
+	OK, have the reconstruction implemented.. 

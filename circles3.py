@@ -8,7 +8,7 @@ import random
 import pdb
 import time
 import matplotlib.pyplot as plt
-plt.rcParams['figure.dpi'] = 160
+plt.rcParams['figure.dpi'] = 110
 from torch import clamp, matmul, outer, mul, add, sub, ones, zeros, reshape
 from torch import sum as tsum
 
@@ -68,7 +68,6 @@ def make_circle():
 
 #plt.show()
 
-# see if we can make a self-organizing hierarchical key-query-value network...
 NL1 = 32*32
 NL2 = 100
 NL3 = 3
@@ -105,32 +104,52 @@ im = [ [0]*plot_cols for i in range(plot_rows)]
 # you don't have this with key-query.
 # if the value is zero, then the distance is high when the input (query) is active but the hidden unit is not, and this causes a key update
 
+repetitive = True
+NREP = 40
+circles = zeros((NREP, 1024), device=torch_device)
+latents = zeros((NREP, 3), device=torch_device)
+for k in range(NREP):
+	l1, latent = make_circle()
+	l1 = l1.to(device=torch_device)
+	circles[k,:] = torch.reshape(l1, (1024,))
+	latent = torch.tensor(np.asarray(latent), device=torch_device).float()
+	latent = torch.squeeze(latent)
+	latents[k,:] = latent
+
 for k in range(500):
-	for i in range(200):
-		l1, latent = make_circle()
-		l1 = l1.to(device=torch_device)
-		l1 = reshape(l1, (32*32,))
-		l2 = (outer(l21, l1) - keys) * gate
+	for i in range(400):
+		if repetitive:
+			l1 = circles[(i+k)%NREP, :]
+		else:
+			l1, latent = make_circle()
+			l1 = l1.to(device=torch_device)
+			l1 = reshape(l1, (32*32,))
+		l2 = (outer(l21, l1) - keys) * gate # must be a better broadcast method
 		l2 = torch.sqrt(tsum(l2**2, 1))
+		# l2 = l2 - torch.min(l2)
+		#l2 = l2 / (torch.max(l2) + 0.11)
+		#l2b = torch.exp(-0.5 * l2) # flip the sign
+		## max of l2b will always be 1.0
+		#l2a = l2b * 0.02 + l2a * 0.98
+		#l2c = l2b - l2a
+		#l2c = l2c + torch.randn(NL2, device=torch_device) * 0.08 # needs to be adaptive?
+		#l2c = l2c / (torch.max(l2c) + 0.11)
+		#l2c = torch.clamp(l2c, 0.0, 1.0)
+		l2 = l2 + torch.randn(NL2, device=torch_device) * 0.05
 		l2 = l2 - torch.min(l2)
-		l2 = l2 / (torch.max(l2) + 0.11)
-		l2b = torch.exp(-0.5 * l2) # flip the sign
-		# max of l2b will always be 1.0
-		l2a = l2b * 0.02 + l2a * 0.98
-		l2c = l2b - l2a
-		l2c = l2c + torch.randn(NL2, device=torch_device) * 0.08 # needs to be adaptive?
-		#l2c = torch.exp(l2b)
-		#l2c = l2c - tsum(l2c)
-		#l2c = l2b - torch.mean(l2b) # sparsify .. ?
-		l2c = l2c / (torch.max(l2c) + 0.11)
-		l2c = torch.clamp(l2c, 0.0, 1.0)
-		#l2d = torch.gt(l2c, 0.15).float()
+		l2b = torch.exp(-1.0 * l2) # flip the sign
+		l2a = l2b * 0.01 + l2a * 0.99
+		l2b = l2b - l2a
+		#l2c = l2b / (torch.max(l2b) + 0.01)
+		l2c = l2b
+		l2c = clamp(l2c, 0.0, 5.0)
 
 		keys = keys + eta*(outer(l2c, l11))*(outer(l21, l1) - keys)
 		# keys = clamp(keys, 0.0, 1.0) # ??? depends on source distribution
 
-		vara = outer(l2c, l11)*((outer(l21, l1) - keys)**2) # weighted variance
-		gvar = gvar + eta2*(vara - gvar)
+		vara = ((outer(l21, l1) - keys)**2) # unweighted variance
+		gvar = gvar + eta2*outer(l2c, l11)*(vara - gvar) # weight here
+		#gvar = gvar + eta2*(vara - gvar)
 		gate = 1.0 / torch.sqrt(gvar + 0.01)
 		#gate = clamp(gate, 0.0, 1.0)
 		#ds = tsum(gate, 1)
@@ -138,8 +157,11 @@ for k in range(500):
 		#ds = torch.exp(0.0001234 * (ds-200)) -1
 		#gate = gate - outer(ds, l11)
 
-		latent = torch.tensor(np.asarray(latent), device=torch_device).float()
-		latent = torch.squeeze(latent)
+		if repetitive:
+			latent = latents[(i+k)%NREP, :]
+		else:
+			latent = torch.tensor(np.asarray(latent), device=torch_device).float()
+			latent = torch.squeeze(latent)
 		# key2 update logic: 
 		# if l2c is active, then move the key closer to latent
 		keys2 = keys2 + eta*(outer(l31, l2c))*(outer(latent, l21) - keys2)
@@ -174,7 +196,9 @@ for k in range(500):
 		latent_recon = tsum(outer(l31, l2c) * keys2, 1) / tsum(l2c)
 
 	axs[0,0].clear()
-	axs[0,0].plot(l2.cpu().numpy(), 'b')
+	l2m = l2 - torch.min(l2)
+	l2m = l2m / (torch.max(l2m) + 0.01)
+	axs[0,0].plot(l2m.cpu().numpy(), 'b')
 	print(torch.mean(l2).cpu())
 	axs[0,0].plot(l2a.cpu().numpy(), 'r')
 	axs[0,0].plot(l2b.cpu().numpy(), 'm')
@@ -202,6 +226,7 @@ for k in range(500):
 	if k == 0:
 		data = np.linspace(0.0, 1.0, 320 * 320)
 		data = np.reshape(data, (320, 320))
+		
 		im[0][1] = axs[0][1].imshow(data)
 		im[0][2] = axs[0][2].imshow(data)
 		im[1][0] = axs[1][0].imshow(data)
@@ -209,6 +234,11 @@ for k in range(500):
 		data = np.reshape(data, (10, 30))
 		im[1][1] = axs[1][1].imshow(data)
 		im[1][2] = axs[1][2].imshow(data)
+		
+		axs[0][1].set_title('keys (l1->l2)')
+		axs[0][2].set_title('gvar (l1->l2)')
+		axs[1][1].set_title('keys (l3->l2)')
+		axs[1][2].set_title('gvar (l3->l2)')
 
 	data = bi.numpy()
 	gata = gi.numpy()
