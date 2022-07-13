@@ -8,7 +8,7 @@ import random
 import pdb
 import time
 import matplotlib.pyplot as plt
-plt.rcParams['figure.dpi'] = 110
+plt.rcParams['figure.dpi'] = 120
 from torch import clamp, matmul, outer, mul, add, sub, ones, zeros, reshape
 from torch import sum as tsum
 
@@ -94,7 +94,7 @@ plot_rows = 2
 plot_cols = 3
 if animate:
 	plt.ion()
-	fig, axs = plt.subplots(plot_rows, plot_cols, figsize=(20, 12))
+	fig, axs = plt.subplots(plot_rows, plot_cols, figsize=(35, 16))
 im = [ [0]*plot_cols for i in range(plot_rows)]
 
 # basically want to care about conjunctive inputs --
@@ -105,7 +105,7 @@ im = [ [0]*plot_cols for i in range(plot_rows)]
 # if the value is zero, then the distance is high when the input (query) is active but the hidden unit is not, and this causes a key update
 
 repetitive = True
-NREP = 40
+NREP = 1399
 circles = zeros((NREP, 1024), device=torch_device)
 latents = zeros((NREP, 3), device=torch_device)
 for k in range(NREP):
@@ -119,7 +119,7 @@ for k in range(NREP):
 for k in range(500):
 	for i in range(400):
 		if repetitive:
-			l1 = circles[(i+k)%NREP, :]
+			l1 = circles[(i+k*400)%NREP, :]
 		else:
 			l1, latent = make_circle()
 			l1 = l1.to(device=torch_device)
@@ -137,11 +137,11 @@ for k in range(500):
 		#l2c = torch.clamp(l2c, 0.0, 1.0)
 		l2 = l2 + torch.randn(NL2, device=torch_device) * 0.05
 		l2 = l2 - torch.min(l2)
-		l2b = torch.exp(-1.0 * l2) # flip the sign
+		l2b = torch.exp(-0.5 * l2) # flip the sign
 		l2a = l2b * 0.01 + l2a * 0.99
 		l2b = l2b - l2a
-		l2c = l2b / (torch.max(l2b) + 0.01)
-		#l2c = l2b
+		#l2c = l2b / (torch.max(l2b) + 0.01) unnecessary..
+		l2c = l2b
 		l2c = clamp(l2c, 0.0, 5.0)
 
 		keys = keys + eta*(outer(l2c, l11))*(outer(l21, l1) - keys)
@@ -158,7 +158,7 @@ for k in range(500):
 		#gate = gate - outer(ds, l11)
 
 		if repetitive:
-			latent = latents[(i+k)%NREP, :]
+			latent = latents[(i+k*400)%NREP, :]
 		else:
 			latent = torch.tensor(np.asarray(latent), device=torch_device).float()
 			latent = torch.squeeze(latent)
@@ -230,9 +230,11 @@ for k in range(500):
 		im[0][1] = axs[0][1].imshow(data)
 		im[0][2] = axs[0][2].imshow(data)
 		im[1][0] = axs[1][0].imshow(data)
-		data = np.linspace(0.0, 1.0, 10 * 30)
+		data = np.linspace(0.0, 32.0, 10 * 30)
 		data = np.reshape(data, (10, 30))
 		im[1][1] = axs[1][1].imshow(data)
+		data = np.linspace(0.0, 1.0, 10 * 30)
+		data = np.reshape(data, (10, 30))
 		im[1][2] = axs[1][2].imshow(data)
 		
 		axs[0][1].set_title('keys (l1->l2)')

@@ -109,7 +109,7 @@ for k in range(500):
 		l1, latent = make_circle()
 		l1 = l1.to(device=torch_device)
 		l1 = reshape(l1, (32*32,))
-		l2 = (outer(l21, l1) - keys) # * gate # FIXME
+		l2 = (outer(l21, l1) - keys) * gate # FIXME
 		l2 = torch.sqrt(torch.sum(l2**2, 1))
 		l2 = l2 + torch.randn(NL2, device=torch_device) * 0.05 # needs to be adaptive?
 		l2 = l2 - torch.min(l2)
@@ -156,13 +156,13 @@ for k in range(500):
 
 		# need to simulate forward and inverse graphics!
 		# forward: latent -> ex -> select key(s)2 [64] -> l2_recon -> avg(keys)
-		l2_recon = outer(ex, l21) - keys2
-		l2_recon = l2_recon - min(l2_recon)
-		l2_recon = torch.exp(-4.0 * l2_recon)
+		#l2_recon = outer(ex, l21) - keys2
+		#l2_recon = l2_recon - torch.min(l2_recon)
+		#l2_recon = torch.exp(-4.0 * l2_recon)
 
-		# weighted average of first-layer keys
-		l1_recon = torch.sum(outer(l2_recon, l11) * keys, 0) / torch.sum(l2_recon)
-		l1_recon = reshape(l1_recon, (32, 32))
+		## weighted average of first-layer keys
+		#l1_recon = torch.sum(outer(l2_recon, l11) * keys, 0) / torch.sum(l2_recon)
+		#l1_recon = reshape(l1_recon, (32, 32))
 
 		# now inverse graphics:
 		# l1 -> l2c -> keys2 -> expand^-1 (?!?) -> latent_recon
