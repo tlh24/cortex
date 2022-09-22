@@ -1,0 +1,8 @@
+(menhir
+ (modules parser))
+
+(ocamllex lexer)
+
+(executable
+ (name program)
+ (libraries core core_unix.command_unix))

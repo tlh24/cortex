@@ -72,7 +72,8 @@ NL1 = 32*32
 NL2 = 100
 NL3 = 64
 keys = zeros(NL2, NL1, device=torch_device)
-gate = torch.rand((NL2, NL1), device=torch_device)
+gate = ones((NL2, NL1), device=torch_device)
+	# this used to be random, but seems unnecessary..
 expand = torch.randn((NL3, 3), device=torch_device) / 10.0 # this should be automatic
 ex_avg = torch.zeros(NL3, device=torch_device)
 ex_var = torch.ones(NL3, device=torch_device)
@@ -126,7 +127,8 @@ for k in range(500):
 		keys = keys + eta*(outer(l2c, l11))*(outer(l21, l1) - keys)
 		keys = clamp(keys, 0.0, 1.0)
 
-		gate = gate + eta2*(outer(l2c, l1))
+		gate = gate + eta2*(outer(l2c, l1)) # this might not be so stupid in the grand scheme of things, even if it's unprinicpled. 
+		# keeping all signals in the range of 0-1 eliminates several problems
 		gate = clamp(gate, 0.0, 1.0)
 		ds = torch.sum(gate, 1)
 		ds = clamp(ds, 200, 1e5)

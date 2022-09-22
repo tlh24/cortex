@@ -1,0 +1,8 @@
+lib: [
+  "_build/install/default/lib/logo_program/META"
+  "_build/install/default/lib/logo_program/dune-package"
+  "_build/install/default/lib/logo_program/opam"
+]
+bin: [
+  "_build/install/default/bin/logo_program"
+]

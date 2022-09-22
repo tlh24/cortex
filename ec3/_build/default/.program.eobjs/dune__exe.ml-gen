@@ -1,0 +1,14 @@
+(** @canonical Dune__exe.Lexer *)
+module Lexer = Dune__exe__Lexer
+
+
+(** @canonical Dune__exe.Logo *)
+module Logo = Dune__exe__Logo
+
+
+(** @canonical Dune__exe.Parser *)
+module Parser = Dune__exe__Parser
+
+
+(** @canonical Dune__exe.Program *)
+module Program = Dune__exe__Program

@@ -142,34 +142,76 @@ def make_stim(i):
 	cx = (xi+1)*7
 	cy = (yi+1)*7
 	return gauss_stim(cx, cy, 5.0)
+
+def make_circle():
+	accept = False
+	while (not accept):
+		cx = torch.randn(1) * 12 + 16
+		cy = torch.randn(1) * 12 + 16
+		r = torch.rand(1) * 16 + 4
+		if cx - r >= 1 and cx + r < 31 and cy - r >= 1 and cy + r < 31:
+			accept = True
+	# paint an anti-aliased line (+1 in line, 0 otherwise)
+	inner = r - 2.0
+	x = outer(torch.arange(0, 32), ones(32))
+	y = outer(ones(32), torch.arange(0, 32))
+	z = torch.sqrt((x - cx)**2 + (y - cy)**2)
+	out1 = clamp(1-(z-r), 0.0, 1.0)
+	out2 = clamp(z-inner, 0.0, 1.0)
+	out = out1 * out2
+	return out, (cx, cy, r)
 	
 
-batch_size = 1
-train_loader = torch.utils.data.DataLoader(
-  torchvision.datasets.MNIST('files/', train=True, download=True, 
-                             transform=torchvision.transforms.Compose([
-                               torchvision.transforms.ToTensor()
-                             ])),
-  batch_size=1, shuffle=True, pin_memory=True)
-test_loader = torch.utils.data.DataLoader(
-  torchvision.datasets.MNIST('files/', train=False, download=True,
-                             transform=torchvision.transforms.Compose([
-                               torchvision.transforms.ToTensor()
-                             ])),
-  batch_size=batch_size, shuffle=True, pin_memory=True)
-HID1 = 128
+MNIST = False
+
+if MNIST:
+	QQ = 28
+	boost = 0.33
+else:
+	QQ = 32
+	boost = 0.10
+
+
+if MNIST:
+	batch_size = 1
+	train_loader = torch.utils.data.DataLoader(
+	torchvision.datasets.MNIST('files/', train=True, download=True,
+										transform=torchvision.transforms.Compose([
+												torchvision.transforms.RandomAffine(25.0, translate=(0.06,0.06), scale=(0.95,1.05), shear=4.0, interpolation=torchvision.transforms.InterpolationMode.BILINEAR),
+											torchvision.transforms.ToTensor()
+										])),
+	batch_size=1, shuffle=True, pin_memory=True)
+	test_loader = torch.utils.data.DataLoader(
+	torchvision.datasets.MNIST('files/', train=False, download=True,
+										transform=torchvision.transforms.Compose([
+												torchvision.transforms.RandomAffine(25.0, translate=(0.06,0.06), scale=(0.95,1.05), shear=4.0, interpolation=torchvision.transforms.InterpolationMode.BILINEAR),
+											torchvision.transforms.ToTensor()
+										])),
+	batch_size=batch_size, shuffle=True, pin_memory=True)
+else:
+	NREP = 1399
+	circles = zeros((NREP, 1024))
+	latents = zeros((NREP, 3))
+	for k in range(NREP):
+		l1, latent = make_circle()
+		circles[k,:] = torch.reshape(l1, (1024,))
+		latent = torch.tensor(torch.asarray(latent)).float()
+		latent = torch.squeeze(latent)
+		latents[k,:] = latent
+
+HID1 = 256
 HID2 = 32
 
 # it's great we can just start with zeros here. 
-w_f1 = torch.zeros(HID1, 28*28)
-#w_f1 = torch.rand(HID1, 28*28) / 28
-w_b1 = torch.zeros(28*28, HID1) # let hebb fill these in. 
+w_f1 = torch.zeros(HID1, QQ*QQ)
+#w_f1 = torch.rand(HID1, QQ*QQ) / QQ
+w_b1 = torch.zeros(QQ*QQ, HID1) # let hebb fill these in.
 w_l2i = torch.zeros(HID1, HID1)
 w_f2 = torch.zeros(HID2, HID1)
 w_b2 = torch.zeros(HID1, HID2) # let hebb fill these in. 
 w_l3i = torch.zeros(HID2, HID2)
 
-l1a = torch.zeros(28*28)
+l1a = torch.zeros(QQ*QQ)
 l2a = torch.ones(HID1) * 0.5
 l3a = torch.ones(HID2) * 0.5
 
@@ -184,13 +226,15 @@ im = [ [0]*3 for i in range(5)]
 cbar = [ [0]*3 for i in range(5)]
 lr = 0.005 # if the learning rate is too high, it goes chaoitc
 for k in range(250):
-	mnist = enumerate(train_loader)
-	for i in range(N): 
-		batch_idx, (indata, target) = next(mnist)
-		#indata = make_stim(i)
-		indata = torch.reshape(indata, (28*28,))
-		# l1e = torch.cat((indata, -indata))
-		l1e = indata
+	if MNIST:
+		mnist = enumerate(train_loader)
+	for i in range(N):
+		if MNIST:
+			batch_idx, (indata, target) = next(mnist)
+			#indata = make_stim(i)
+			l1e = torch.reshape(indata, (QQ*QQ,))
+		else:
+			l1e = circles[i%NREP, :]
 
 		l2e = clamp(w_f1 @ l1e, -0.5, 1.5) + torch.randn(HID1) * 0.25
 		l2li = clamp(w_l2i @ l2e, 0.0, 5.0)
@@ -200,7 +244,7 @@ for k in range(250):
 		# iterate .. ?  gradient-boosting? 
 		err = l1e - l1i
 		noiz2 = torch.randn(HID1) * torch.exp(clamp(l2a,0.0,1.0) * -10) * 0.7
-		l2e = clamp(w_f1 @ (l1e + 0.35*err), -0.5, 2.5) + noiz2
+		l2e = clamp(w_f1 @ (l1e + boost*err), -0.5, 2.5) + noiz2
 		l2li = clamp(w_l2i @ l2e, 0.0, 5.0)
 		l2s = l2e - l2li # sparsified
 		l1i = clamp(w_b1 @ l2s, 0.0, 1.0) 
@@ -223,7 +267,7 @@ for k in range(250):
 		w_f1 = hebb_update(w_f1, l1u, l2s, l2a, lr)
 		w_f2 = hebb_update(w_f2, l2u, l3s, l3a, lr*0.1)
 		w_b2 = hebb_update(w_b2, l3u, l2u, 0.5*ones(HID1), lr*0.1)
-		w_b1 = hebb_update(w_b1, l2s, l1u, 0.5*ones(28*28), lr)
+		w_b1 = hebb_update(w_b1, l2s, l1u, 0.5*ones(QQ*QQ), lr)
 		
 		#w_l2i = inhib_update(w_l2i, l2s, l2li, lr*1.0)
 		#w_l3i = inhib_update(w_l3i, l3s, l3li, lr*1.0)
@@ -231,24 +275,24 @@ for k in range(250):
 		# these are images; too complicated to write to stdout. 
 		def plot_tensor(r, c, v, name, lo, hi):
 			if len(v.shape) == 1:
-				if v.shape[0] == 2*28*28:
-					v = torch.reshape(v, (2,28,28))
+				if v.shape[0] == 32:
+					v = torch.reshape(v, (4,8))
+				if v.shape[0] == 2*QQ*QQ:
+					v = torch.reshape(v, (2,QQ,QQ))
 					v = torch.cat((v[0,:,:], v[1,:,:]), 1)
-				if v.shape[0] == 28*28:
-					v = torch.reshape(v, (28,28))
+				if v.shape[0] == QQ*QQ:
+					v = torch.reshape(v, (QQ,QQ))
 				if v.shape[0] == 256:
 					v = torch.reshape(v, (16,16))
 				if v.shape[0] == 128:
 					v = torch.reshape(v, (8,16))
 				if v.shape[0] == 64:
 					v = torch.reshape(v, (8,8))
-				if v.shape[0] == 32:
-					v = torch.reshape(v, (4,8))
 				if v.shape[0] == 10:
 					v = torch.reshape(v, (2,5))
 			if len(v.shape) == 2:
-				if v.shape[1] == 28 * 28:
-					q = torch.reshape(v, (HID1, 28, 28))
+				if v.shape[1] == QQ * QQ:
+					q = torch.reshape(v, (HID1, QQ, QQ))
 					# display a sample of the tuning functions
 					b = [torch.cat([q[i*12+j] for j in range(12)], 1) for i in range(6)]
 					v = torch.cat(b)
@@ -265,7 +309,7 @@ for k in range(250):
 			cbar[r][c].update_normal(im[r][c]) # probably does nothing
 			axs[r,c].set_title(name)
 			
-		if (i % 3500) >= 3499: 
+		if (i % 350) >= 349:
 			if not animate:
 				fig, axs = plt.subplots(4, 3, figsize=(16, 9))
 			plot_tensor(0, 0, l1e, 'l1e', -2.0, 2.0)

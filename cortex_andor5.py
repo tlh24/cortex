@@ -13,6 +13,7 @@ import pdb
 import matplotlib.pyplot as plt
 plt.rcParams['figure.dpi'] = 180
 import time
+import umap
 
 #from jax.config import config
 #config.update("jax_debug_nans", True)
@@ -214,8 +215,9 @@ for q in range(8):
 batch_size = 60000
 train_loader = torch.utils.data.DataLoader(
   torchvision.datasets.MNIST('files/', train=True, download=True,
-                             transform=torchvision.transforms.Compose([
-										  torchvision.transforms.RandomAffine(40.0),
+      transform=torchvision.transforms.Compose([
+		torchvision.transforms.RandomAffine(40.0, translate=(0.06,0.06), scale=(0.90,1.1), shear=4.0,
+		interpolation=torchvision.transforms.InterpolationMode.BILINEAR),
                                torchvision.transforms.ToTensor()
                              ])),
   batch_size=batch_size, shuffle=True, pin_memory=True)
@@ -458,7 +460,7 @@ def mp(indx):
 
 N = 60000
 BATCH = 16
-for ii in range(256):
+for ii in range(32):
 	mnist = enumerate(train_loader)
 	batch_idx, (indata, intarget) = next(mnist)
 	indata_jax = to_jax(indata)
@@ -556,6 +558,18 @@ pred_hot = jax.vmap(mp, 0, 0)(indx)
 err = (testtarget_hot - pred_hot)**2
 print('PCA one-hot label prediction error', np.mean(err))
 
+# for shits and giggles, let's try to cluster on the compressed data.
+d = np.asarray(l2c_train)
+e = umap.UMAP(n_components=2, verbose=True).fit_transform(d)
+
+target = np.asarray(intarget)
+rgb = np.zeros((60000, 3))
+rgb[:,0] = 1.0 - np.clip(target / 4.5, 0.0, 1.0)
+rgb[:,1] = np.clip(target / 4.5, 0.0, 1.0) - np.clip((target-4.5)/4.5, 0.0, 1.0)
+rgb[:,2] = np.clip((target-4.5)/4.5, 0.0, 1.0)
+
+plt.scatter(e[:,0], e[:,1], c=rgb)
+plt.show()
 
 # display a few samples of input - compress - reconstruct.
 def prime_factors(n):
@@ -586,7 +600,7 @@ def vec2mtrx(ar):
 		ar = jnp.reshape(ar, (1, n))
 	return ar
 
-for i in range(5):
+for i in range(12):
 	l1e = indata_jax[i]
 	l2c, l1i = run_model(w_f, w_b, b_2, l1e)
 	fig, axs = plt.subplots(1,3, figsize=(18, 8))

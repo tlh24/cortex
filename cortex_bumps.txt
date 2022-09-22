@@ -1228,13 +1228,13 @@ cortex_andor2_be27787.py
 	Yet it's a tricky system that required a fair bit of work to function,
 	and is also unstable.
 		(One part of the solution is simulated annealing, though even without this it seems to converge quickly..)
-	I think in general something in this realm could more generally work when, per above, the full address space is not used, or the address space itself is factorized.
+	I think in general something in this realm could more generally work when, per above, the full address space is not used, or the address space itself is factorized / structured.
 
 cortex_andor3.py
 	This was after skeleton.py (below) but in the same series; I switched from pytorch to JAX here.
 	Got rid of dendrites, kept the activity-activity outer product mostly intact
 	When encoding eight symbols with 4 bits, it always seems to miss one.
-		Seems that it gets stuck in a local minima, where updates on one symbol exactly counteract updates on another, and the feedback can't push it to a new representation..
+		Seems that it gets stuck in a local minima, where updates on one symbol exactly counteract updates on another, and the feedback can't push it to a new representation... and noise just can't push it out of the hole.
 	Increasing the latent dimension fixes this, i think.
 	Model still works with a latent of three dim, i think.
 
@@ -1310,20 +1310,20 @@ Since the last entry, have had dinner with Luke & learned a bunch of things.
 (5) Luke has been working on a meta-learning 100+ task corpra, and has found that whatever algorithm he has works for most, but it can never work for all / and it can't work on itself.  Have to see what the tasks are to better understand this.
 	This led to a short discussion of conciuosness and symbols / meta-symbols and the possible need for recurrence / a recursive syumbol manipulation system for "fully" closing the loop.
 	Talked a good bit about this on my "swan hike" with Judy, Arthur, and Alex..
-	Hard to recreate that magic, but I do think it all comes down to computed-addressing / "pointer arithmetic" and amorytized search.
+	Hard to recreate that magic, but I do think it all comes down to computed-addressing / "pointer arithmetic" and amortized search.
 
 (6) Which is really what transformers are doing, I think.
-	-- They compose / create both algorithms (as in the Anthropic paper, where cetain heads are shown to copy data based on key-query matching; persumably more complicated algorithms can arise with this sort of match-search-forward algorithmic substrate?) and do good function mapping (via the many layers of MLP and resnets.
+	-- They compose / create both algorithms (as in the Anthropic paper, where cetain heads are shown to copy data based on key-query matching; presumably more complicated algorithms can arise with this sort of match-search-forward algorithmic substrate?) and do good function mapping (via the many layers of MLP and resnets.)
 	-- Can do pointer math, maybe even!
 	-- Certainly can do conditional execution & express higher-level probabilities.  Probably do this in a way that is better (?) than just activity-activity multiplication because of the added (minimal) structure (e.g. search)
 	-- My rough estimate is that for these sorts of models to work, you want to use the absolute simplest representation possible (e.g. MLP + ReLU / swish seems like just barely enough nonlinearity to represent anything; query-key-value is probably just the right quantity of complexity to allow algorithm composition
-	-- Keeping everything as linear as possible, in high-dimensional spaces .. just  seems to work with SGD.  The two are compatible.  SGD is a very effective way of tuning weights in high-d spaces. (where everything is both a saddle and vectors tend to be orthogonal..
+	-- Keeping everything as linear as possible, in high-dimensional spaces .. just  seems to work with SGD.  The two are compatible.  SGD is a very effective way of tuning weights in high-d spaces. (where everything a saddle and vectors tend to be orthogonal..)
 		-- I think that the "secret language" of Dall-E is an example of this.  Vector representation of what is roughly discrete or factorial representations... you get aliasing, but also generalization.
 
 (7) skeleton.py:
 We're asking it to do roughly a NP hard problem.
-It can't reliably do this.
-If we want it to work, need a sensory-motor loop to allow experimentation to cut the ambiguity & allow for factorization.
+It can't reliably do this in the alotted time; cortex_andor* has a lot more time to anneal down to factorized variables.
+If we want it to work, need a sensory-motor loop to allow experimentation to cut the ambiguity & allow for quick factorization.
 There is really no other way, other than brute force exploration, and then you get into the problem of entanglement of addressing lines / factors.
 	(This might be a problem in the task too?)
 Yeah anyway, time to not be lazy ... and probably increase the complexity and capacity of the network (at the expense of a smaller population, but so what)
@@ -1362,10 +1362,10 @@ Spent the last week-ish binging on papers. I think I have a better lay of the la
 
 4. Search!  Distributed search (hierarchically and spatially) is vital to breaking inference problems down when perfect / algorithmic inferences cannot be found.
 
-4. Spent some time on hashing / locality sensitive hashing / spectral hashing etc.
+5. Spent some time on hashing / locality sensitive hashing / spectral hashing etc.
 	Hashing can of course be very fast,
 	but LSH does not seem to be per se a powerful way of organizing or generalizing over data.
-	E.g. the way to make LSH work better is to tag a DBN (greedy + fine-tune) to do the hashing,
+	E.g. the way to make LSH work better is to train a DBN (greedy + fine-tune) to do the hashing,
 	Or to look at spectral methods (e.g. find the PCA of the data, break the space up using non-outer-product eigenvectors = hash functions)
 	This is not directly performing computation on the dataset in the same way as SGD on epochs of data is doing it..
 	You could imagine extensions of the process that refactor, contrastively perhaps, the hash functions (= adresses) of the data based on input occurrence.
@@ -1563,4 +1563,827 @@ July 11 2022
 	With the gate variable removed, not clear that it's really finding a good address from 'ex' variable ... need to do a reconstruction?
 
 July 13 2022
-	OK, have the reconstruction implemented.. 
+	OK, have the reconstruction implemented.. it's a useful feedback mechanism.  
+	But I seem to have broken the key-query matching. 
+	(... stream-of-work writing here ... )
+	It all seems to be working again, though circles3 does not match the larger circles well. 
+	Circles2 is back to matching segments of circles; this seems to be dependent on the *form* of computation of "gate".
+	Here gate is just an outer product of activations between L1 and L2, decayed.
+	(Hence is of Hebbian form). 
+	
+	Regarding what exactly the keys are aka how the space should be segmented, this is a fundamental problem!
+		- Clearly, with circles3, we can do both forward and inverse graphics, with some (untuned) efficiency. 
+		- Yet still making a LUT for 100 circles sure seems like cheating. 
+		- Need something that factorizes the space, implicitly (in an unsupervised manner) first, then in a quasi-supervised manner later. 
+		
+	Outstanding problems: 
+		- Need an encoding that compresses and simplifies the stimuli, while ignoring invariances / extracting equivariances. 
+			So, early in the pipeline, we worry only about local statistics; as we ascend the hierarchy, worry about larger and larger receptive fields. 
+				Currently don't have this.  Units need to have a topology, axons / dendrites spatial limits (certainly dendrites)
+		- Said encoding might start out as one-hot but gradually entangle itself to be factorial (?)
+			I like this intuition & it's consistent with 'aha' moments. 
+			From the run:
+			Distributed, parcelized search based on the fractal structure of the world is bound to be better than SGD (?), and should be able to find an efficient "address space"
+		- The system ought to do inference in a iterative E-M manner, consistent with visual illusions and the timing of visual perception 
+		- Slack variables: 
+			Inference probably involves use of ephermenal variables; could be BTSP. 
+			We don't really have any data, other than in the hippocampus, that BTSP is important,
+			but from a logical perspective, it would seem so! Natural place to store the information. 
+				The alternative is to store everythnig in vectors of activations. 
+				Which, to be honest, is not *totally* unreasonable.
+				See transformers, which work well with 1024-2048 dim latents. 
+				(I also wonder if BTSP might be a bit of a distraction..)
+		- Time:
+			We don't have any elments of time or timing in the model.  The CNS seems to put quite a lot of energy into timing though.  It might be needed for stability, and it might be needed for causality or slow-feature analysis.  (All of the above?)
+		- Feedback:
+			Allocation of neurons & their keys ought to be subject to being able to predict the stimulus / lower layer.
+			That is, if some part of the stimulus is unexplained, keys should move annd/or unactive neurons should take up that space.
+			The previous series of experiments worked well with this, and used the 'explanining away' effect to some advantage. 
+				Still, I think that the K-Q model 'feels better' than E-I feedback balance (though that too may be a part of the system, perhaps through the thalamus?)
+				// Yeah well the overall architecture of the brain generally (exception: the basal ganglia) does not employ inhibitory long-distance projections.  
+	
+July 14 2022
+	// Last night read an interesting thread on hacker news describing how perception is not a problem with Tesla's autopilot, it's commonsense reasoning.
+	// The perceptual system can notice things like trash cans, stoplights etc, but it just never learns the local geography / does not have more than 15-30 seconds of memory for what the world is.
+	// This is an important bit of insight: am I solving the wrong problem?
+
+	Reading back over things. Might want to loop back to the overarching goals / remind why motor-informed disentangled representations are important.
+	1 -- Boostrapped knowledge.  We want to be able to explore an unknown problem domain purely based on experimentation.
+		Networks like EfficientZero RL algorithms might be getting pretty close (review that?)
+			Right, three improvements:
+			1. Vision model (project to latent space) + Action model trained to match next observation + state ala Siamese networks.  DUH
+			2. LSTM to predict value based on series of states to prevent state-reward aliasing
+			3. Off-policy reajustment when updating value prefix
+				(this i understand less well)
+		To properly make this work, need:
+	2 -- Disentangled / factorized representations
+		So that the agent 'knows' how to manipulate the world & does not suffer from the curse of dimensionality.
+		** Need to critically inspect this assumption **
+	3 -- Computational gain on the perceptual module
+		This is a correlary to 2.  Factorization requires computation; in the current conception, this is done with some sort of address arithmetic which supports abstraction beyond just PCA.
+
+	----
+
+	To make the 'circles' set of algorithms work, I do think that these are needed
+	1 -- Iteration / feedback
+	2 -- Nonlinearity
+		(otherwise, it's just PCA --
+		of course the activation is highly nonlinear, but presently I suspect that we're still doing a degree of PCA..)
+	3 -- Active allocation of K-Q units / elimination of redundant units
+
+	4 (?) Random projection is a cool idea, but it's not exactly invertible.
+
+	----
+	Plugged in the mnisty data, and it appears that among many other things, we need to improve allocation (even more obvious now!!)
+	and to add in slack variables to make reconstruction with just the supervised signal work.
+
+	Thought that needs to be clarified:
+	Without added interactions and added assumptions (temporal consistency, e.g.), everything will revert to PCA, or some other form of "conjunctive feature" analysis.
+		All we have, at the end of the day, are the statistics in the data.
+	Still, even given this, it should be possible to iteratively-anneal representation space.
+		MNIST + circles should be a good simple testbed for this.
+
+	----
+	With two different values of NL2, 100, 500 and 768, we don't get a uniform representation of all the digits. 
+	Instead, it all seems to be 1, 9, and a few 8's. 
+	If we change the RandomAffine to 5 (from 40), with NL2 at 256, it looks better -- though 1 is definitely over-represented. 
+	Adding translate, scale and shear deformations (so easy with PIL/torch!) makes the problem even worse! 
+	I think that the way key matching is being done is wrong; we need a different statistical model, or a different form of the gate variable. 
+	Switching back to the gate calulation scheme (decayed outer product) from circles2, doesn't fix the problem. 
+	Get a bunch more 9's replacing the 1's, fwiw.. 
+	System really should be segmenting the tiny visual scene into line segments... 
+		Say, shouldn't there be some calculation on the address lines or something? 
+		Even if it's not invertible, make something like a nonlinear expansion, cross-terms yadda yadda?? 
+		Let's think more about this in the morning! 
+	After, of course, fixing the model to get segmentation working as well as the nonlinear hebbian models
+	(Could just replace the outer product K-Q update with a cube or something... 
+		yeah that looks like crap.)
+
+July 15 2022
+	Some thoughts from last night:
+	1 -- Transformers very much has activity-activity modulation:
+		The key, query, and value are all generated at the same step with one continuous weight matrix.
+			Github that illustrates this:
+			https://github.com/openai/glide-text2im/blob/69b530740eb6cef69442d6180579ef5ba9ef063e/glide_text2im/xf.py
+			Note: Gaussian ReLU, or GELU = swish
+	2 -- The 'slack variables' or 'ephermental variables' that I was talking about can serve the same purpose: they can 'route information around' based on activity.
+		Ideally, they have concrete meaning, eg location, pose etc.
+		These should be inferrable through slow-feature analysis + active experimentation -- that's what we do!
+	3 -- Such variables need to interact with the other address variables, probably in linear and non-linear ways, as PSPs do in dendrites (neverming NMDA spikes, calcium waves, up/down states... oy)
+		Transformers mix things up via their input encoding and decoding matrices.
+
+	Just read:
+	https://www.newyorker.com/tech/annals-of-technology/the-pastry-ai-that-learned-to-fight-cancer
+	Proves .. yet again .. that at the end of the day, you want to search for *algorithms* to describe & perceive the data (not just feature detectors)
+
+	Need to get the statistics of the first layer working reasonably well with MNIST first.  Then later more complexity.
+		I think we can let go of principles for a bit,
+		Try out various heuristics.
+	First of all:
+		We are matching only on ones.
+		Need to match more on *all* the digits!
+		Removing the population mean did not improve much.
+		then removing the gating also did not improve much.
+		Need to have some sort of normalization that encourages ... forces total activation to be constant per key.
+
+		-->> Why does it appear that many of the units have exactly the same keys?
+		If a query matches one key, it should inhibit other keys. Balance.
+		But not WTA: the units need to be decorrelated, something I've worked on a bunch.
+		Explaning-away works well for this.
+		Think about other feedback first? Hard to fit explaining-away into a multi-level hierarchy.
+		What about just weight decay? or LTD?
+			Hard because the E and I eelments of the K-Q calculation are not separated.
+			In the brain obviously PV neurons are busily doing their own thing..
+		Also, in terms of activations, why are '0' and '1' very active, but '9' shows up more??
+
+July 18 2022
+	More time passing.. well.
+	Decided to just straight implement feedback control, since need to experiment and alignment of encodings to data is not obvious otherwise.
+
+July 26 2022
+	Effectively re-implemented Hebbian learning, though with key normalization (normalize by incoming activity), and it works ... okay.
+	The cricles aren't perfect, and some of the weights need to be negative for it to work properly, and it's still just linear projection.
+	But, as before, it does tend to vectorally auto-encode the circles.
+	It does /not/ automatically form a good non-negative basis, as with cortex_mnist.
+	And it takes longer to arrive at the basis -- cortex_mnist forms the bases almost immediately, without GPU acceleration.
+	What is this missing, again?
+	Weak nonlinear interactions?
+
+	Problem!
+	cortex_mnist does not work with circles stimuli (?!)
+	But it does work fine with MNIST input.
+	Why?
+	Seems that l2e is too low; even though the forward weights are strongly positive, the reverse weights are even more positive; it;s become imbalanced.
+	Turning off boosting drdamatically slowed convergence!
+	But the circles system does not work with boost = 0.33.. ??
+	Nowo seems ok.
+	Still plenty of residual errors, but does find a reasonably good basis for the circles.
+	Not quite as good as circles3.. ?
+
+	Eh, anyway, I'm not addressing the real problem here ... addressing!
+
+August 1 2022
+	bumps.py
+	The key averaging ideaa works perfectly well, progressively tiles the space with low-d functions.
+	e.g. topology of space is learnable with temporal coorellations, and nothing else.
+	Now need to add feedback / allocation & use that to update the keys.
+
+August 2 2022
+	Still not clear on the feedback allocation of addresses.
+	Varaince normalization helped, though!
+	& This network (bumps.py) can continually represent the data, despite the adresses changing & becoming more simple
+	Also it appears that the network completely fails at the cricles task.
+	Issue:
+	-- keys forward and keys reverse default to large DC static values.
+	-- Removing the random key seed & replacing it with a noise term does not markedly change things.
+	-- Adding in mean subtraction, in both time and P, improves things slightly..
+		But, the network no longer immediately encodes the stimulus, as before.
+	-- Alas, the learning rule does not seem quite right.. forward keys arise, then fade- ?
+		Stimulus is not amenable to this averaging!
+		(If the pixel values are just the x,y coordinates, then the center of the circle is easy / immediate to fall out
+		But the radius is not obvious, and cannot be calculated by averaging; it needs a distance calculation r = mean( sqrt( (x-cx)^2 + (y-cy)^2 ) where cx and cy are the mean / center of the circle.
+		Of course any pair of 'on' pixels can be used to calculate the distance ..
+		and also of course we want an algorithm that generalizes beyond just circles!
+			Like squares and squiggles and such!
+		Try going back to K-Q matching??
+	-- The other aspect is that, without knowledge from other pixels,
+		you a priori *don't know* whether that activation is part of any particular circle.
+		+ One solution to this is to add in local cross terms to the forward key calculation.
+		  (Have explored this idea before.. it's obvious)
+		+ Another solution is to make both forward and reverse into K-Q maps.
+			Will this work?
+			Say we decompose the input into an ideal 3D representation.
+			Each pixel now has a 3D address ...
+			Determining if the pixel is "on" is then a distance calculation:
+				(px - cx)^2 + (py - cy)^2 - (pr - cr)^2 ~= 0
+					Where pr = 0 (pixels should have no knowledge of radius)
+			Actual distance calculation:
+				sqrt( (px - cx)^2 + (py - cy)^2 + (pr - cr)^2) < thresh
+			Seems we'd need at least one extra term there -- a a per-axis 'gain', which would be allowed to go negative (!!)
+			(Which we already have :)
+			(And also go to zero ... how to calculate or update this??
+				So:
+			sqrt( gx*(px - cx)^2 + gy*(py - cy)^2 + gr*(pr - cr)^2 ) < thresh
+				(thresh can be constant, absorbed into gain vector).
+	-- Assuming that we *know* (e.g. supervised learing) what cx,cy,cr are
+		Is it possible to infer the gains on each of those address lines?
+			(In addition to the c* varaibles)
+		Assume that it's a central pixel @ 0.5, 0.5
+		physical space is [0..1]
+		any circles where dist(cx, cy ; 0.5, 0.5) = cr will activate this pixel.
+		aka dist(...) - 1.0*cr = 0
+		example pattern:
+		0.25, 0.50, 0.25
+		0.75, 0.50, 0.25
+		0.50, 0.25, 0.25
+		0.50, 0.75, 0.25
+		0.2, 0.2, 0.424
+		0.8, 0.8, 0.424
+		etc.
+		again, invariance is that dist(cx, cy ; 0.5, 0.5) - cr = 0
+		can we somehow gradient-descent into this?
+		or otherwise detect this invariance -- which is of course a parametric circle!
+			Yes .. detection of invariance!!
+	-- The most obvious way of detecting invariance is to straight search for it.
+		Randomly combine, perhaps heuristically, different operators on the data.
+		Ala "Distilling free-form laws from natural data" 2009.
+			This used the heuristic of derivatives:
+			Conservation equations should be both conserved (duh) and
+			predict the relations between derivatives of state variables over time.
+				This is probably too big of an ask in s'okae,
+				but that should not detract ffrom the search for invariances in other ways.
+	-- Let's see if gradient descent can solve the problem.
+		Why not be lazy.
+		As usual, implementing it has revealed a lacunae of thinking:
+		In the current architecture, each pixel has a key and gain.
+		key -> should be 2-d location
+		gain -> width of activation
+		realistically, you don't need independent keys / gains for all of these.
+		keys are basically axis-aligned linear ramps.
+		gain is just three variables used by all keys
+			which is equivalent to pre-multiplying those addresses / queries.
+		Assuming that we are given the 2D linear ramp keys, can the gains be learned?
+
+cirlces_grad.py:
+	Yes, SGD can estimate the gains based on MSE from all the photos + supervised 3d coordinates ...
+	But, if you seed it improperly, it doesn't work.
+	eg. if the radius gain is positive, it does not find the 'good' solution of
+	[ 1.5 1.5, -1.2] (ish)
+	Soo.. in this case, seems you need to pick the sign.
+
+	Recap:
+	To fully analyticaly do forward-graphics from cx, cy, cr using the K-Q distance measurement framework,
+	In one layer,
+	You need to do per-address line gain, with one of those addresses negaitve.
+		(e.g. subtract the radius)
+	Then, *this* needs to be passed through another distance function -- or at least square prior exponential. ('match')
+	Thus, really need two layers --
+		which is of course exactly what circles3.py does!
+			(if imperfectly)
+			& it uses one-hot encoding to do this.. which seems slightly like a cheat?
+
+	Invarainces, covariances, descriptors, how to allocate iteratively, how to allocate properly..
+		the truth is still obscured.
+	1 -- Patterns which co-occur  *can* help to describe a topology of the space.
+	2 -- K-Q distance calculation *can* be used (in layers) to do forward graphics.
+	3 -- K-Q distance calculation *can* also be used for inverse graphics,
+			But atm, this seems only for one-hot representations.
+	4 -- NL Hebbian learning is good at NNMF.
+	5 -- Cross-product terms between pixels can readily compress MNIST to a low-d vectoral space (20 dimensions), but this compression does not yield any classification improvements relative to straight PCA.
+		-- This is probably possible with the NL Hebbian work,
+			But that is limited in that allocation & self-org is driven by feedback,
+			which in turn doesn't work well when the forward or reverse transforms are significantly nonlinear.
+		-- Notably, with K-Q, the forward and reverse transforms are very nonlinear!
+	6 -- In the circles task, supervised activation is determined as a result of an invariance relation.
+		-- A priori, it's not clear how to find these.
+		-- But, one hope is that restricting the building blocks + allowing implicit search (matching), invariances will be easier to find.
+	7 -- Intra-layer normalization schemes (lateral + homeostasis) are effective hacks for whitening / centering.
+
+As I was telling LiAn last night,
+	1 -- All patterns of retinal ganlion cell firing is not equally likely, despite the > 100:1 compression of the retina itself (at least for luminance)
+	There are common patterns, on multiple scales, and these tend to be semi-algorithmically related to underlying factors.
+	Such underlying factors of causality or variation are cognitively available, and lead to a compositional nature of the world.
+	Such forms of compositionality have been seen in both StyleGAN and Transformer based text to image models (w/ pre-trained language models)
+	Transformers, and to a lesser extent, StlyeGANS, have a computational structure which allows pointer-arithmetic like algorithm composition.
+	Said pointer arithmetic is conditional MLP-layers, which are easy to train with SGD.
+	Transformers also evince an implicit searching through Softmax attention (though other topologies also work).
+	MLPs, in turn, can theoretically do the same functions -- the projection allows for invariance (can ignore non-projecting dimensions), but it takes potentially many layers to combine vectors to allow something as useful as 'pointer arithmetic' (e.g. distance function must be created with two opposite-signed nonlinearities in a lower layer)
+	This motivates the creation of 'address spaces' as a fundamental operation in bio-infused artisinal neural networks.
+	Addressing, of course, implies an ordering of the stimuli, which either needs to be inferred through spatial-temporal statistics (correlations), or though active experimentation.
+	Addressing neatly solves the memory / function approximation dichotomy, too: you can use all your data efficiently by only updating the addresses, but keeping the contents relatively constant.
+	This, of course, is complicated by the potential presence of hierarchical or layered address calculation, where intermediate layers need to change both their output and input keys.
+	Still, there is a way.
+
+	It may be commented that human appreciation of beauty -- which frequently reflects some degree of self-similarity, fractial or integer-dimensioned, seems to be reflective of some fundamental operation and or assumption of the brain.  It assumes some quasi-algorithmic compressability of sensory space, and when that does happen, it can be pleasureable.
+
+August 3 2022
+	Thinking while running:
+	Probably need to decompose the problem into something simpler, particuarly given the math / logic above.
+	What about lines, which is also 3D (inersect and angle / slope) but can also reasonable be parameterized as 4D (two points on line).
+	How would the K-Q net deal with this?
+	Even simpler parameterization: just angle. line always goes through the center.
+	This is very easy to parameterize, pixels have an address based on angle (slope)
+	Assuming key is 1D angle
+	On = distance(angle - address) < threshold
+	OK, now add 1 DOF: x-intersect.
+	Add in an additional key variable, 'x', which is a linear ramp
+	On = distance(angle - address, k_x - a_x) < threshold
+		(a_x shifts the line horizontally)
+	Thus it's easy to add an additional variable, y-intersect:
+	On = distance(angle-address, k_x - a_x, k_y - a_y) < threshold
+		I *think* this should work, but better make sure...
+	No no, the angle argument needs to be modulated, or the angle look-up needs to be translated.
+	Modulation: (hmm ... please go to the notebook!)
+
+
+August 5 2022
+	A. Coates and A. Y. Ng, “Learning Feature Representations with K-Means,” in Neural Networks: Tricks of the Trade, vol. 7700, G. Montavon, G. B. Orr, and K.-R. Müller, Eds. Berlin, Heidelberg: Springer Berlin Heidelberg, 2012, pp. 561–580. doi: 10.1007/978-3-642-35289-8_30.
+
+	Uses power-correlation between keys to organize / group K-means filters into smaller-dimensional groups for subsequent K-means (e.g. hierarchical!)
+	Interesting / smart.
+
+	Also just discovered UMAP!  Beautiful explanation at
+	https://umap-learn.readthedocs.io/en/latest/how_umap_works.html
+-------
+	Had lunch with Jascha, some salient feedback:
+	1 -- Do you really need RBF representation?
+		Divisive normalization might well be good enough.
+		DN constrains the vectors to be on the surface of a sphere (if you divide by the l2 norm), or some other geometric form with a different norm.
+		This is sorta less interesting in high-d spaces, where most of the mass is at the periphery anyway .. ???
+	2 -- He thinks that the current transformer architecture can't possibly be perfect -- how did the original authors back in 2017 get many of the details correct?
+		I think that there very well maybe an engineering plateau (which is what I said), but more relevantly, if transformers enable algorithms like pointer arithmetic, then while there may be better ways of training them, there really aren't more fundamental ways of representing pointer (or vector) arithmetic.
+		Or, perhaps, doing matching other than cosine distance.
+	3 -- JSD thinks that there is much opportunity for networks that learn to ignore or take advantage of invariances.
+		This, of course, can decrease the representation dimension, which makes learning easier (perhaps consistent with his theoretical work?  I should read it..)
+		Says that current networks can have one or two transition points corresponding to dimensionality reduction, but there is much room for more, particuarly in the algorithm design.
+		This relates intimately to above, and ideed to what I've been fiddling with.
+	4 -- Some discussion of ethics of AI research, what human jobs will be automated first, and moralistic ambiguity of working it (you are accelerating it's arrival, but also have some leverage over its use?)
+		This segued to the current polarization problems, and how imperfect algorithms are already really good at gaming human minds.
+		His point that patches can be applied to software, but not to humans (!) ... we're really going to need some collective action here / laws to regulate advertizing and mind-manipulation.
+		Case in point: even mediocre algorithms are quite good at propagating misinformation and deeply messing with society.
+
+	Re 1 & 2: True, softmax is divisive normalization, where alignment is a dot-product, not distance measurement.
+	(see link July 15 2022)
+	 weight = th.einsum(
+            "bthc,bshc->bhts", q * scale, k * scale
+        )
+	here q and k are activity vectors from the lower MLP.
+	This is probably better for gradient-flow; the normalization distributes the gradient to other members of the same vector.
+	I've been thinking mostly about l2 distance while trying to do forward graphics on the circles and lines etc.
+	Absolutely worth trying to do the same with cosine distance or divisevely normalized dot-product (as in softmax).
+
+	Would love to have some intuition on what exactly it's doing with space; perhaps my addressing ideas are wrong?
+		Well, in computer RAM, perfectly entangled addressing can be achieved not only by distance calculation (which has the unfortunate effect of sign change of the derivative, hence optimization is less straghtforward)
+		but also by dot-product & threshold, if you include the complement on the address bits (as with the XOR task, way back when), and set the threshold to match on *all* bits.
+		Provided the complement is perfect, this will work
+			if it's not, then can cheat by setting everything to 1 and everything is selected.
+		Anyway, if the input is not normalized, then it does succumb to attack -- dot-product if the vector is eg [5 0 0 0 0] selects 16 things .. not one of 32.
+			(distance : would select nothing)
+		But if its normalized, then yes basically have a map which is the surface of a N-sphere, rather than a N-dimensional cartesian space, and cosine distance is probably just as good as cartesian distance.
+		So, equivalence?
+	I think there is probably something deeper here.
+	UMAP e.g. is already decent at classification, and that uses a very simple euclidean distance in high-d (k nearest neighbors) to map down to low-dimensions (using a binary cross-entropy loss).
+	In supervised learning / classification, we know the approximate distances, at least the distances for same-class objects (low), which is non-euclidean; you then tune the parameters of the network to minimize this 'distance'.
+		Distance is another way of representing multi-dimensional ordinality,
+		and SGD is a way of converting between the two,
+		Where location is represented in high-dimensional, possibly hierarchical activation space.
+		Yet if we have actual location / ordinality, should use that.
+
+	Why not just have some sort of datastructure that represents the distances / ordinality directly??
+++ Use distances
+	(including various internal metrics, such as L2 norm, linear correlation, power-law correlation (L4?), explain-away feedback)
+	when self-organization is required.
+++ Use supervised information
+	(eye movement, head movement, any other form of ineraction - manipulation)
+	when possible, + assumption of slowly-changing world
+		Yes!
+
+	A current hypothesis is that the brain uses sequential one-hot and vector representations; for example, saccades can move an object between hemi-fields, which at the level of V1 will completely change which subsets of neurons are active (kinda like Laplacian pyramids / mipmaps / common graphics pipelines..)
+
+	With L2 addressing & variable width (might be a better way - ed.), then selecting different subsets of V1 neurons based on location is trivial.
+	Extracting that information is a bit harder; might need some sort of iterative voting scheme?
+	At each level you need to infer some address bits (vectors)
+	With cosine / softmax addressing, instead of moving linearly through the space (e.g. position is encoded in rate (mgiht be hard for neurons))
+	You instead can rotate through the space.
+	But one rotation is still really just parameterized by two vectors: x and y, which are orthogonal (easy, most are) and concevably -x (? maybe not)
+	Or could be two sets of vectors X and Y ... Probably this doesn't matter so much, its still a 1D change, what really matters is propagating this to lower levels.
+	So, if now we have two hemi-fields, the next vectoral representation needs to convert the full sweep of that vecor (in either scheme) into either nothing (not in hemi-field) or a linear ramp, e.g multiply by 2, add offset, threshold.
+	And so on, down the hierarchy.
+	Obviously this is not so hard to implement with local or distributed normalization, but how ever could this be learned?
+
+	Distance and keys seems to make this simpler, because you just tile any space as necessary, and learning is obviously hebbian / local.
+	But, hierarchy!
+	Need to go back to the circles / squares test / toy problems.  Must be a way to adjust keys and queries to auto-organize.
+
+August 8 2022
+	(edited above as well)
+	To really think about it, the visuo-sensory world is not just 2+D (~2M axons from the eyes), but dependencies extend in time as well, which you can imagine as sampling the world ~60 times / second.
+	The task of a memory is to store as much of this information as reasonable (throwing away ecologically appropriate details), and make it as accessible (indexed and auto-encoding) as possible.
+
+	Seems to require a degree of local-greedy algorithms + iterative, up-down reorganization... there necessarily will be multiple heuristics.
+
+----
+	Getting back to the circles task, job now is to organize those feature vectors so they can be indexed by local small translations, local orientation changes.
+	Maybe an down-up-down algorithm would work here?
+	E.g. use the alignment of forward and backward keys to make the maps place similar activations physically close to each other,
+	And also address-wise close to each other
+		But this is merely a consequence of forward-backward symmetry?
+	Bottom-up: integrate information to both disentangle and form coherent whole objects.
+	Top-down: organize tuning & responses to make the aggregate feature detection - selection work.
+	Also, probably, perform perceptual fill-in to the correct and auto-adjusted level.  (no hallucinations, visual ('optical') illusions OK)
+		"Push things back onto the manifold" .. but this has to be coupled with learning the manifold itself!
+			I wonder if you lived in a world where the assumptions that visual illusions violate were absent ... would they still be illusions?
+		How can a top-down signal work for both organization and fill-in?
+	Anyway, currently the allocation of units in all the networks is essentially random, which is unphysiological.
+		Even higher in cortex I assume there is a local topology?
+
+	Experiments with UMAP
+	conclusion: UMAP can recover the latent 3D structure directly, reasonably robustly, and quickly. (with default parameters!)
+	you do not need any hierarchy or whatnot,
+	but you do need more samples than the number of dimensions.
+	e.g. 2000 works, but 500 does not)
+	from the map it is somewhat trivial to invert (map supervised signal to embedded dimensions, do interpolation of the examples in embedded dim)
+	but not totally clear that this is an 'algorithm' per se.
+	instead, it's a detailed bidirectional map, which *could* concevably be used to make an 'algorithm'
+	better would be to use the umap algorithm to discover the compression / decompression algorithm (??)
+	make the map then compress it.
+		Aside: need to look up how semi-supervised umap works.
+
+August 10 2022
+Hi Jascha,
+
+
+    The nice thing about DP in a normalized space is also that every input will be represented by some set of active features. For RBF kernels in a high dimensional space, most units will be off for most inputs. It's hard to tile a high dimensional space with Gaussian bumps ... you need an exponentially large (in the space's dimensionality) number of Gaussian bumps to do it. (another option would be to use RBF activations, but with something like divisive normalization, so that a few are active for any input. This seems likely more brittle though.)
+
+
+Yes, that makes good sense, thanks!
+
+I'm trying to reconcile two ideas:
+
+One is that algorithms like umap and t-sne are sample efficient and can (sometimes) learn useful compressions/indexes on the data.  They work on distances, like RBF, and are invertible.  These mappings offer implicit allocation of nonlinearities, I think.
+
+The second is that normalized activations are much more amenable to high-d spaces, like you say, and they can be readily stacked into a hierarchy.
+This hierarchy is necessary because each layer offers only one explicit hyperplane nonlinearity per output dim.
+
+Can you somehow combine both?
+
+1: For example, t-sne mappings of the digit '7' organizes into a 2D map of attributes like angle, length of legs, and presence or absence of the continental cross.  These are variances with meaning, with kinda complicated forward nonlinearities -- and very complicated inverse nonlinearities (via manifold approximation... it becomes like a lookup table)
+
+Right, a deep MLP aims to approximate a function via a series of summed, rotated, scaled hinges / nonlinearities (example: fitting a bump, see test_sinc_mlp.py).
+	And it sometimes has problems with this, since it can't really multiply terms.
+T-sne and umap aim to approximate the manifold of the data directly, with the primary constraint that it needs to map down to a handful of dimensions (usually 2 or 3..)
+	Speaking of which: this is exactly what James DiCarlo was talking about!
+		J. J. DiCarlo, D. Zoccolan, and N. C. Rust, “How Does the Brain Solve Visual Object Recognition?,” Neuron, vol. 73, no. 3, pp. 415–434, Feb. 2012, doi: 10.1016/j.neuron.2012.01.010.
+
+In the test_sinc_mlp example, there isn't even much rotation, actually!  Nor do weights frequently (if ever?) cross zero.
+Furthermore, the way that it approximates the function is sorta non-obvious: take a positive slope (with bias, i assume) and subtract off negative hinges.
+Again, I say: "Just barely enough of a nonlinearity"
+
+A RBF approximates the same sinc function using .. one central bump or 'key'.
+
+2. A second big disadvantage of RBF or UMAP is that the resulting transform is much, much slower than if you implement it as a clean fast MLP or even transformer.
+This is because I think you need to do a bunch of comparisons with the existing data (??)  Should look ups.
+	Yes, umap relies on PyKNNdescent library for finding the N-nearest neighbors of a datdapoint.
+	I think for transform, though, it does not use parallel threads (?)
+	PyNNdescent is multithreaded.
+
+Here is an example run of circles_umap.py:
+umap fit 28 64000 (200704, 25)
+UMAP(n_components=3, verbose=True)
+Thu Aug 11 12:22:48 2022 Construct fuzzy simplicial set
+Thu Aug 11 12:22:48 2022 Finding Nearest Neighbors
+Thu Aug 11 12:22:48 2022 Building RP forest with 18 trees
+Thu Aug 11 12:22:48 2022 NN descent for 16 iterations
+         1  /  16
+         2  /  16
+         3  /  16
+         4  /  16
+        Stopping threshold met -- exiting after 4 iterations
+Thu Aug 11 12:22:56 2022 Finished Nearest Neighbor Search
+Thu Aug 11 12:22:56 2022 Construct embedding
+Epochs completed: 100%| ███████████████████████████████████ 200/200 [00:26]
+Thu Aug 11 12:23:32 2022 Finished embedding
+umap transform
+Thu Aug 11 12:23:33 2022 Worst tree score: 0.13764062
+Thu Aug 11 12:23:33 2022 Mean tree score: 0.28430208
+Thu Aug 11 12:23:33 2022 Best tree score: 0.85714062
+Thu Aug 11 12:23:35 2022 Forward diversification reduced edges from 960000 to 714586
+Thu Aug 11 12:23:37 2022 Reverse diversification reduced edges from 714586 to 714586
+Thu Aug 11 12:23:39 2022 Degree pruning reduced edges from 799768 to 799762
+Thu Aug 11 12:23:39 2022 Resorting data and graph based on tree order
+Thu Aug 11 12:23:39 2022 Building and compiling search function
+Epochs completed: 100%| █████████████████████████████████████ 30/30 [00:09]
+Thu Aug 11 12:25:19 2022
+
+Yes so ... "Building and compiling the search function" is an expensive operation (the most expensive?)
+	It is not multithreaded.
+	And is needed for "transform" function.
+	Seems to take about a minute and a half.
+	It's in /home/tlh24/.local/lib/python3.10/site-packages/pynndescent/pynndescent_.py", line 1635, in query
+Next up is building an embedding, 26 sec.
+
+So NNdescent does have GPU implementations, but they might not be as efficient as bruteforce for high-dimensional data, see
+https://docs.dgl.ai/en/0.8.x/api/python/knn_benchmark.html
+bruteforce = compute all N(N-1)/2 distances, sort and select the k smallest per row..
+It also seems that KNN starts to fail when data dimensionality gets above ~ 50 ... weird, because umap (which uses NNdescent) works fine on MNIST and semi OK on FashionMNIST, and these are 784-dim.. perhaps the paper is too pessimistic on recall, or perhaps recall is not that important to umap?
+Seems that umap uses a RP forest for NN descent.
+... which is kinda funny as RP forests have much lower recall than pynndescent.  Guess it's useful as a first pass at least.
+	ref: https://github.com/erikbern/ann-benchmarks
++ RP forest:
+	It works by building a forest of N binary random projection trees.
+
+	In each tree, the set of training points is recursively partitioned into smaller and smaller subsets until a leaf node of at most M points is reached. Each parition is based on the cosine of the angle the points make with a randomly drawn hyperplane: points whose angle is smaller than the median angle fall in the left partition, and the remaining points fall in the right partition.
+
+	The resulting tree has predictable leaf size (no larger than M) and is approximately balanced because of median splits, leading to consistent tree traversal times.
+
+	Querying the model is accomplished by traversing each tree to the query point's leaf node to retrieve ANN candidates from that tree, then merging them and sorting by distance to the query point.
+
+		Note though: pyNNdescent uses built-in rp_trees.py, not an external library.
+
+Well still .. I really like the concept of the NNdescent algorithm.  Start with a random collection of k nearest neighbors, then join over their neirest neighbors, add in reverse neighbors, and select from this larger set neighbors that are closer.
+The problem with any NN metric is that proximity becomes less and less meaningful with larger dimensions.
+	MNIST probably has locally low dimensionality, which is why it works..
+
+Experiment: Adding transformations to MNIST unsurprisingly makes clustering via UMAP harder.
+See screenshots/20220812_umap_mnist_native.png and screenshots/20220812_umap_mnist_transformations.png
+	End-goal would be to have something that can approximately extract transformations..
+
+Tested umap on cortex_andor5.py, which does nonlinear compression of the vector space.  It does worse that untransformed data (the digits are smushed into each other), even though one-hot prediction was better than PCA prediction (and presumably PCA is just as clusterable, if not better, by umap).
+	Well, this system was not per se engineered to represent invariances;
+	instead, it was engineered to represent bilinear probabilities (pairs of pixels that are on at the same time..)
+	The pairs of pixels seem like a decent compression, but apparently do not provide processing gain to improve digit recognition.
+
+August 12 2022
+
+Likewise, translation, skew, scale & whatnot do not hinder human perception noticeably, but they strongly effect umap and t-sne.
+	Interestingly, I think that we do a version of internal mental rotation (latent variable inference?) when perceiving characters that are highly skewed.
+	Much more common, stereotyped letters are basically instantly recognized.
+		("amorized inference"... but how to add a de-translate module?
+		I'm assuming that it involves a degree of content-agnostic addressing, still)
+
+Read over
+H. Tang and K. Ellis, “From Perception to Programs: Regularize, Overparameterize, and Amortize.” arXiv, Jun. 13, 2022. Accessed: Aug. 12, 2022. [Online]. Available: http://arxiv.org/abs/2206.05922
+And i think the general scheme, of using reparameterizing, overparameterizing, then regularizing makes sense!
+To unpack:
+	Make much longer programs than necessary.
+	Parameterize them variationally using the gumbell-softmax trick
+	Regularize after 10 epochs to encourage parsimony.
+However, I think amortizing this inference via MLPs is ... no good. Need something more powerful, at least.
+
+Also notable is https://dselsam.github.io/the-terpret-problem/
+"The terpret problem" -- shows how, fundamentally, SGD is liable to getting stuck in local minima.  With a toy problem.
+	What if you break ties better??  Might be better solved by changing the representation / substrate, rather than SGD.
+
+Did end up sending an email to Jascha.  His email + draft is above; for completeness, this was sent:
+	I'm trying to reconcile two ideas:
+
+	One is that algorithms like umap and t-sne are sample efficient and can (sometimes) learn useful compressions/indexes on the data.  They work on distances, like RBF.  These mappings offer implicit allocation of nonlinearities but are slow to interpolate and slow to invert. I think.
+
+	The second is that normalized activations are much more amenable to high-d spaces, like you say, and they can be readily stacked into a hierarchy.
+	This hierarchy is necessary because each layer offers only one explicit hyperplane nonlinearity per output dim.
+
+	Wondering if it's possible to have the advantages of both...
+
+I do think there is some meat there!!!
+Transformers have an advantage in that each layer + head has explicit search!
+& each of the K, Q, V have both activity and bias components (hence allowing static keys, as needed..)
+Wondering outloud, maybe a good approach is to re-engineer transformers to work better or more scalably with image input data.  Since they are so good.
+	Use the same tricks as above.
+
+Other thought that I've been kicking around, since I've been digging into UMAP
+	(which utilizes pyNNdescent for making a K-NN graph of the data
+		(which in turn  based on RP trees)),
+is that perhaps adding appropriate levels of algorithmic complexity (e.g. search, fast tree-based datastructures, iterative organization of maps, iterative regularization / program-extraction) might be the right way to improve representation-learning.
+Really really keen on iterative regularization!  But for that, you absolutely need a substrate that permits the expression of algorithms.
+Which entails, at minimum:
+1. Constants (e.g. weights)
+2. Arithmetic (+,-,*,/)
+		clamp or relu
+		maybe log, exp, sin?
+3. Variables
+		In a MLP, the variables are always bound to a channel = activity.
+		In a transformer the variables are implicit / unnamed & exist in the latent space.  Which is a fixed dimension but so what.
+			Amazing that SGD can pull useful structure out, given that it doesn't commonly change sign in MLPs...
+				And probably never does with ReLus, let's try leaky ReLu.
+			(Suggestive that it's just finding existing workable structure from the random initialization)
+		In a hypothetical K-Q network, again the variables aren't named; instead, they are addressed. Which leads to..
+4. Computed addressing
+		aka pointers.
+		If you can address variables, you can variably bind them, do scatter / gather, etc
+		Maps -- and especially maps with vector representation, so that you can do vector math ( = pointer arithmetic) seem like a good substrate for this)
+5. Conditional execution / If-then-else
+		This can be accomplished via nonlinearity and then computed addressing, probably as happens in Transformers.
+6. Loops?
+		Can be constructed via recursion and conditional execution, which is elegant but ...
+		These are used in programming languages for reductions (sum), which is a built-in in all neural networks.
+		They are also used for projections, another built-in.
+		Projections can in turn be used for expansions and outer products.  All built-in.
+7. Search?
+8. Nice datastructures, like trees, maps, dictionaries etc?
+		These are of course both built in to high-level languages such as Python.
+		And took a good bit for humans to invent them.
+			There are undoubtably more datastructures to be invented
+		Seems useful to have them available.
+		See also: https://news.ycombinator.com/item?id=32186203
+		Union-find?
+
+Seems like the sort of problems that we need to solve, namely make an auto-associative, self-organizing, invariance-finding, compositional-disentangling memory or artificial cortex
+	Might be solvable with the right (set of) datastructures?
+
+Most of the datastructures / algorithms in that link above approximate space fractionally, e.g. with a tree.  Sometimes stochastically, sometimes using the curse of dimensionality (eg hash tables), always with some end-use in mind.
+Union trees are nice in that they amortize parent finding during the search itself!
+
+The real visual world is of course much more entangled than any of these datastructures can support; they are all more-or-less bijective, whereas in pixel space, everything is super highly multijective.
+One initial concept would be to have built-in 'transforms', and have a system that can estimate the parameters to those transforms based on search and later shortcut connections (and if these fail, some sort of complexifying map).
+E.g. a map which transforms, controlled by a map that iteratively complexifies.
+For this to work, I think, we do need 'computed addressing' ... problem is, that RBF type stuff does not work that well in high-D
+	Solution would be to
+	-- use dot-products,
+	-- stick with lower dimentsionality,
+	-- do smarter normalization as is likely happening in the cortex.
+Looks sorta like capsule networks
+	What ever happened to these?  Why have they not taken off?
+	Looks like people implemented them a while ago, and the repos haven't been touched / updated.
+	Ah, seems as from here:
+	https://analyticsindiamag.com/what-happened-with-capsule-neural-networks/
+	that transformers offer a less clunky and more generalized routing algorithm.
+
+August 16 2022
+
+From https://www.nature.com/articles/d41586-022-00018-5
+	Janelia separates its large-scale projects, which are professionally staffed and managed, from its academic research projects. The latter are staffed by students and postdocs in small labs led by principal investigators. But such institutes are few and expensive, and are difficult to create. Furthermore, their nimbleness is hard to sustain. Janelia’s first director, Gerald Rubin, wrote in 2019 that “without an opposing force provided by management, there is a slow, steady drift toward a more conventional environment increasingly focused on maintaining successful programs and documenting individual achievement at the expense of risk-taking and collaborative, interdisciplinary work”4.
+
+August 17 2022
+
+Changing direction: rather than trying to figure out a new network architecture / new datastructure / new way of training both,
+I'm going to merge these three:
++ Kevin Ellis, DreamCoder
++ d'Ascoli, Deep symbolic regression
++ Ye, Efficient Zero
+
+Namely, to change the MLP in DreamCoder to a Transformer,
+	then incorporate RL to guide the program synthesis search.
+
+Todo: make more sense of the program, probably by tracing it out via PDB.
+What are the grammar neural nets?  How do they work?  What data is passed between the different modules?
+	See: https://github.com/ellisk42/ec/blob/master/docs/software-architecture.md
+	from: https://github.com/ellisk42/ec
+
+August 18 2022
+
+Ben S: Nextflow seems really cool!  Works well for the methylseq information.
+The reads are 90 million characters long --hence need to run the analyses massively parallelized.
+Use AWS batch for this, via the Netxflow / Nextflow tower / Docker image with the requisite software.  Smart!
+
+August 19 2022
+
+Ok, so I'm a big dummy, and removed the Jane Street capital 'core' library and replaced it with the standard library .. .duh.
+Turns out the type signatures for the two are quite different, and at this point probably best to stick with the presumably mature JS lib!
+Well, at least I have a better understanding of the code -- and have refreshed my Ocaml knonwledge.
+
+
+August 23 2022
+
+Running into ocaml configuration issues recompiling DreamCoder ... very annoying.
+trying a fresh install of ocaml via opam.
+run
+eval $(opam env --switch=4.14.0)
+To select the non-debian-supplied version.
+to update an environment after installing things:
+eval $(opam env)
+
+September 4 2022
+Tuxedo NY
+Have the dreamcoder solver directory fully compiling,
+and the list / text tasks seem to be running fine --
+but the logo task is not working.  It bombs while reading in a huge huge block of json -- something too large for kate to work with.  Way too many parentheses!
+
+Been reading a lot of program synthesis literature; dreamcoder is good (need to revisit the E-graph or equivalence-graph enumeration ideas + the version space algebra (which is?) plus the fragment grammars
+	All these seem like essential and clever means of managing the exponential search space of programs.
+	Which otherwise is insurmountable.
+My instinct is that we need an datastructure + algorithm that is some intermediate between symbolic logic (discrete), programmimng languages (discrete / terse, good generalization) and super easy to fit (liner regression / MLPs etc.
+Transformers of course exist in this intermediate space; they can evince algorithms, but can be trained via gradient descent.
+Program synthesis of course uses much much fewer examples, compresses greatly, and there are efficient means of search (SAT solvers), but does not have the fluidity and robustness that comes from opearting on features in high-dimensional spaces.
+	Of course, part of the effectiveness is synthesized programs have relatively few parameters;
+	The complexity is in their *structure*
+		Again this is exponential to search.
+
+I keep wondering if there is a way to have a continuous relaxation of "maps" to "algorithms" to "linear classification and projection"
+	(to try to tie in some of my older work on unsupervised / compressional learing..)
+	Are there ways to hierarchically tag and label datapoints?
+	Turn a map or u-map into an algorithm?
+	Make functions that operate on high-d spaces?
+		Then again, not perfectly clear how essential recurrence is for important things like vision.. ?
+
+Anyway, a more important proximal thing to do is to merge DreamCoder with transformers!!
+See https://veo.io/index.pl?pid=1571
+Need a demo!!
+Then also need to pull in Github codes, ala Copilot.
+	And think about using transformers on other axes of the task..
+
+September 10 2022
+	Back at it -- logo task is not working, need to debug it.
+
+Note:
+– General to specific learning. Start from all true and refine
+with the maximal (consistent) generalization.
+– Specific to general learning. Start from all false and refine
+with the most restrictive specialization.
+– Version space learning. Keep all consistent hypothesis
+around – the combination of the above two cases.
+
+"Fringe" used in DreamCoder refers to the version space algorithm.
+(reference is in Dropbox and Zotero, search for "CS 2750". 
+
+September 13 2022
+Ok, so the logo task is working!  
+At least, it's stably producing drawings ..
+Does not seem to be evolving in any respectable way toward a functional library.  That is, the drawings are getting no more complex, and it's solving none of the 160-odd tasks. 
+Still, I'm using the ocaml compressor, and not the pypy compressor as orginally applied. 
+Also, when I tried the rust compressor, it errored out -- perhaps there is something wrong with the ocaml compressor / library generator?? 
+Suppose I should re-try this with pypy, again ~overnight. 
+	(Wonder why they need to use the huge memory instances on google cloud -- maybe the pypy compressor uses a ton of memory? )
+	(Also, maybe I should just wait longer?  It's been 10 epochs out of 20, so about consistent with the reported wall time (one day with 64 cpus), but a resonable expectation would be that in this time, it will make progress toward the goal: at least some of the tasks (e.g. drawing squares) will be completed, rather than bopping around with curves and such. 
+	Hmm.  Will stop it after swimming.  
+	Might be noted that the ocaml runtime is probably not that efficient..
+
+
+September 15 2022
+Ah!  Where does the time go?
+Seems like my blocks of time keep getting broken up, and that work is always the last prority..
+Anyway.  What I've been meaning to write for a while:
+Why not *learn* both the equivalence graphs
+	with, e.g. memorization of common semantic structure / dataflow graphs?
+		This is more similar to the way that humans do it.  Looking for analogies / loose matches in the dataflow graph, and backing that to semantics and associated syntax.
+	or, with a map from the details of the language under test (e.g. python)
+	to an underlying e-graph datastructure, which can then be factorized.
+	The factorized representation can subsequently be converted back to the written programming language.
+
+Need a datastructure for mapping between domains (syntax, semantics, dataflow) and performing approximate key-query match (with segmentation) on the database.
+	Said datastructure needs some degree of compression, ala E-graph (egg library) (redundancy reduction, very smart) or hash consing (with again the segmentation problem.)
+		The PAC learning paradigm (upper fringe, lower fringe) offers a good means of learning equivalences based on experimentation.
+	Ideally only want ~1 fundamental datastructure, approximately independent of language (modulo functional languages?), and most representative of underlying best-practice computation...
+		Then can have multiple maps to and from it.
+			I think that this is sorta what transformers are doing internally.
+
+This datastructure or algorithm needs to allow for *abstraction* aka library (or motor primitive learning), as shown powerfully in DreamCoder.
+You can only conquer the curse of infinite dimensionality by hierarchically breaking up the problem.
+
+Sept 16 2022
+
+Serious problem with DreamCoder: the dreams are insane!! Some of them are 100kb long!  There is basically no way in hell to learn input-output relations from such complicated and cleary chaotic behavior. 
+A human would never go about things in this way.. 
+I wonder if I've messed something up.  Well, I can fix it. 
+	Right: doesn't the paper say that programs are enumerated, rather than sampled stochastically? 
+	Seems like many of them are total run-ons, huge chunks of meaningless code or code that does not affect the output & should be culled. 
+	Also it's clear that the syntax of the logo tasks are very loose, e.g. "FWRT" (forward, right turn, which should take a length and an angle) has all sorts of extra arguments, which may or may not be executed??
+Idk, this is a bit of insanity, the search should definitely be tree based and breadth-first, with some sort of culling based on equivalence.  
+Also, it takes much too long to execute the tasks.  
+I will instrument this. 
+
+Sept 19 2022
+
+Trying to understand the implementation of lambda calculus. 
+slanted square task. 
+Input to parser: 
+(
+	(move 0d (/a 1a 3))
+	(loop k 4 
+		(move 1d (/a 1a 4))
+	)
+)
+pretty smiple.  Rotate, then draw a square. 
+move takes distance and angle arguments; aka logo_FWRT
+Output of parser: 
+(lambda 
+	(logo_FWRT logo_ZL (logo_DIVA logo_UA 3) 
+	(logo_forLoop 4 
+		(lambda (lambda 
+			(logo_FWRT logo_UL (logo_DIVA logo_UA 4) $0)
+		)) $0
+	)
+	)
+)
+So, where does that $0 come from, and what does it mean? 
+Is it a continuation or something? 
+ANd why do we need two lambda's there? 
+
+Try again. 
+Input: 
+(
+	(move 0d (/a 1a 6))
+	(loop i 7 
+		(move (*l 1l i) (/a 1a 4))
+	)
+)
+Output: 
+(lambda 
+	(logo_FWRT logo_ZL (logo_DIVA logo_UA 6) 
+	(logo_forLoop 7 
+		(lambda (lambda 
+			(logo_FWRT (logo_MULL logo_UL $1) (logo_DIVA logo_UA 4) $0)
+		)) 
+	$0
+)))
+Right, the $0 must be part of the syntax .. it's the de Brujin index of the lambda expression or environment that is implicitly returned. 
+Likewise, $1 is the index of the loop counter. 
+
+Now, let's investigate the Grammar generator. 
+Why does it produce runon labda expressions of zero meaning?? 
+Seems that it's initialized to 'uniform' -- which is not (at all) the way that exploration should be proceeding. 
+	(Think I will try a little bit longer to reform DreamCoder before switching to a reimplemenation... 
+	Clearly there is a lot of cruft here that can be removed or refactored!)
+Looks like ocaml 'solver' program never returns any functioning programs. 
+hum. 
+Also seems like it might not have been a great architectural choice to split between python and ocaml?  Forces repetition. Makes debugging harder.  Discourages use of pytorch. 
+Alright, let's start from scratch, sigh. 
+	(Of course need to take as much inspiration from DreamCoder as possible)
+
+Sept 20 2022
+
+I think I'll need to re-implement the interpreter ... the (typed) lambda calculus is too low-level and clunky. 
+I deally we'd just use ocaml directly, but making an interpreter gives far more control over error messages and decompressing the execution graph etc. 
+Which, I think, is essential. 
+Should be pretty easy for just Logo tasks.  
+	MAy eventually head back to the DreamCoder implemenation, but for now this will be fun! 
+	Realized that last night: snice I'm not really being paid for this, it damn well better be fun! 
