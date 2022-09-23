@@ -17,6 +17,7 @@ type token =
 val menhir_begin_marker : int
 val xv_value : Logo.prog
 val xv_two_elements : Logo.prog * Logo.prog
+val xv_three_elements : int * Logo.prog * Logo.prog
 val xv_seq_elements : Logo.prog list
 val xv_separated_nonempty_list_SEMICOLON_value_ : Logo.prog list
 val xv_separated_list_SEMICOLON_value_ : Logo.prog list

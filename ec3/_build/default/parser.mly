@@ -29,10 +29,10 @@ value:
 		{ `Var v   }
   | MOVE; obj = two_elements; 
       { `Move( (fst obj), (snd obj) ) }
-  | LOOP; obj = two_elements; 
-      { `Loop( (fst obj), (snd obj) ) }
+  | LOOP; obj = three_elements; 
+      { `Loop( obj ) }
   | UNIT_ANGLE
-		{ `Const( 2.0 *. 3.1415926 ) }
+		{ `Const( 8.0 *. atan 1.0  ) }
   | UNIT_LENGTH
 		{ `Const( 1.0 ) } 
   | a = value; MULT ; b = value
@@ -55,4 +55,8 @@ seq_elements:
 
 two_elements: 
   a  = value; l = value 
-    { (a, l) }
+    { (a, l) } 
+    
+three_elements: 
+  i = INT; a  = value; l = value 
+    { (i, a, l) }

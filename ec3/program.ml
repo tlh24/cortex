@@ -17,7 +17,12 @@ let parse_with_error lexbuf =
     exit (-1)
 
 let parse_and_print lexbuf =
-	parse_with_error lexbuf |> Logo.output_program 
+  let prog = parse_with_error lexbuf in
+  let (_,_,segs) = Logo.eval Logo.start_state prog in
+  Logo.output_program prog; 
+  printf "\n"; 
+  Logo.output_segments segs
+
 
 let loop filename () =
   let inx = In_channel.create filename in
@@ -27,7 +32,7 @@ let loop filename () =
   In_channel.close inx
 
 let () =
-  Command.basic_spec ~summary:"Parse and display JSON"
+  Command.basic_spec ~summary:"Parse and display Logo"
     Command.Spec.(empty +> anon ("filename" %: string))
     loop
   |> Command_unix.run

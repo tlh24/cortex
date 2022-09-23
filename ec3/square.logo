@@ -1,0 +1,4 @@
+(
+	loop 0 4 (
+		move ul (ua / 4) )
+)

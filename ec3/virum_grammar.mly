@@ -36,7 +36,7 @@
 parse_items: item* EOF { $1 }
 
 item:
-| LET left=pattern parameters=parameters? COLON type_=type_ EQUAL right=term
+| LET left=pattern parameters=parameters? COLON type_= type_ EQUAL right=term
   { Let ((left, type_), parameters, right) }
 | DO term=term
   { Do term }
