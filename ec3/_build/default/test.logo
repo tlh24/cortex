@@ -1,6 +1,0 @@
-(
-	(move 0 (ua / 6)) ; 
-	(loop 0 7 
-		(move (ul * v0) (ua / 4))
-	)
-)
