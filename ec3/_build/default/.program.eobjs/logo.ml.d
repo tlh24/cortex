@@ -1,1 +1,1 @@
-logo.ml: Array Base Core Float List Out_channel
+logo.ml: Array Base Core Float List Out_channel VGWrapper

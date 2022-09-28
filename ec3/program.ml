@@ -21,10 +21,12 @@ let parse_and_print lexbuf =
   let (_,_,segs) = Logo.eval Logo.start_state prog in
   Logo.output_program prog; 
   printf "\n"; 
-  Logo.output_segments segs
+  Logo.output_segments segs; 
+  printf "\n"; 
+  Logo.segs_to_png segs 28 "test.png"
 
 
-let loop filename () =
+let parse filename () =
   let inx = In_channel.create filename in
   let lexbuf = Lexing.from_channel inx in
   lexbuf.lex_curr_p <- { lexbuf.lex_curr_p with pos_fname = filename };
@@ -34,5 +36,5 @@ let loop filename () =
 let () =
   Command.basic_spec ~summary:"Parse and display Logo"
     Command.Spec.(empty +> anon ("filename" %: string))
-    loop
+    parse
   |> Command_unix.run

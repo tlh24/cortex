@@ -1,3 +1,7 @@
+(** @canonical Dune__exe.Colors *)
+module Colors = Dune__exe__Colors
+
+
 (** @canonical Dune__exe.Lexer *)
 module Lexer = Dune__exe__Lexer
 
@@ -12,3 +16,7 @@ module Parser = Dune__exe__Parser
 
 (** @canonical Dune__exe.Program *)
 module Program = Dune__exe__Program
+
+
+(** @canonical Dune__exe.VGWrapper *)
+module VGWrapper = Dune__exe__VGWrapper

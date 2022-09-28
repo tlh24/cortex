@@ -5,4 +5,4 @@
 
 (executable
  (name program)
- (libraries core core_unix.command_unix))
+ (libraries core core_unix.command_unix vg vg.cairo))

@@ -1,6 +1,7 @@
 open Core
 open Base.Poly
 open Out_channel
+open VGWrapper
 
 (* variables will be referenced to the stack, de Brujin indexes *)
 (* names are more interpretable by humans ... but that's a big space *)
@@ -123,3 +124,66 @@ let rec eval (st:state) (pr:prog) =
 		) else (
 			(st, (false, 0.0), [])
 		)
+
+let center_segs l =
+	let rec minimum = function
+		| [] -> assert (false)
+		| [x] -> x
+		| h :: t -> min h (minimum t)
+	and maximum = function
+		| [] -> assert (false)
+		| [x] -> x
+		| h :: t -> max h (maximum t)
+	in 
+	match l with
+	| [] -> []
+	| _ ->
+	(* build lists of all the x and y coordinates *)
+		let xs = l |> List.map
+		~f:(function
+			| (x,_,x',_) ->
+				[x-.d_from_origin;
+				x'-.d_from_origin;]) |> List.concat in
+		let ys = l |> List.map
+		~f:(function
+			| (_,y,_,y') ->
+				[y-.d_from_origin;
+				y'-.d_from_origin;]) |> List.concat in
+		let x0 = xs |> minimum in
+		let x1 = xs |> maximum in
+		let y0 = ys |> minimum in
+		let y1 = ys |> maximum in
+		(* find center of min and max, x and y *)
+		let dx = (x1-.x0)/.2.+.x0 in
+		let dy = (y1-.y0)/.2.+.y0 in
+		let d_from_origin = 0. in
+		(* translate all the coordinates *)
+		l |> List.map ~f:(fun(x,y,x',y') ->
+			(x-.dx+.d_from_origin, y-.dy+.d_from_origin,
+						x'-.dx+.d_from_origin, y'-.dy+.d_from_origin))
+		
+		
+let segs_to_canvas segs =
+  let segs = center_segs segs in
+  let c = ref (new_canvas ()) in
+  let lineto x y = (c := (lineto !c x y)) 
+  and moveto x y = (c := (moveto !c x y)) in
+  (* lineto and moveto are defined in VGWrapper.ml *)
+  let total_cost = ref 0. in
+  let eval_instruction (x1,y1,x2,y2) =
+      total_cost := !total_cost +. 
+			(sqrt ((x1-.x2)*.(x1-.x2) +. (y1-.y2)*.(y1-.y2))); 
+			(* length of the line *)
+		moveto x1 y1;
+		lineto x2 y2; ()
+  in
+  List.iter ~f:eval_instruction segs ;
+  !c,!total_cost
+
+let segs_to_png segs resolution filename =
+  let canvas,_ = segs_to_canvas segs in
+  output_canvas_png canvas resolution filename
+
+let segs_to_array_and_cost segs resolution =
+  let canvas,cost = segs_to_canvas segs in
+  (canvas_to_1Darray canvas resolution, cost)

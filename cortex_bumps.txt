@@ -2387,3 +2387,54 @@ Which, I think, is essential.
 Should be pretty easy for just Logo tasks.  
 	MAy eventually head back to the DreamCoder implemenation, but for now this will be fun! 
 	Realized that last night: snice I'm not really being paid for this, it damn well better be fun! 
+
+Sept 28 2022
+
+Tim Hanson <sideskate@gmail.com>	Wed, Sep 28, 2022 at 11:44 AM
+To: Timothy Gardner <timgardner314@gmail.com>
+
+https://www.zdnet.com/article/metas-ai-guru-lecun-most-of-todays-ai-approaches-will-never-lead-to-true-intelligence/
+
+    He has abandoned his prior faith in using generative networks in things such as predicting the next frame in a video. "It has been a complete failure," he says.
+
+
+I think this is a bit extreme -- clearly we humans are doing some degree of predicting what's coming next in our sensory experience. (e.g. expectation mismatch, P300 etc)
+
+    And the reason it's a complete failure is, again, because of the constraints of probabilistic models where it's relatively easy to predict discrete tokens like words because we can compute the probability distribution over all words in the dictionary. That's easy. But if we ask the system to produce the probability distribution over all possible video frames, we have no idea how to parameterize it, or we have some idea how to parameterize it, but we don't know how to normalize it. It hits an intractable mathematical problem that we don't know how to solve.
+
+Sure seems like diffusion models offer a good solution !
+
+    LeCun decries those he calls the "religious probabilists," who "think probability theory is the only framework that you can use to explain machine learning."
+
+Agree.
+
+    JEPA architecture actually tries to find a tradeoff, a compromise, between extracting representations that are maximally informative about the inputs but also predictable from each other with some level of accuracy or reliability
+
+This is a great insight.
+
+    much of the deep learning community seems fine going ahead with something that doesn't have common sense
+
+Which is fine -- there are plenty of humans, and they generally have common sense.  Our moral imperative is to make systems that do things we can't ... right? (like AlphaFold).  We only follow human intelligence because it's one of the few working examples that we have.
+
+    Those signals, they're called conjugate variables in Lagrangian mechanics, but in fact, they are gradients.
+
+Very interesting, I hadn't realized it.  Many forms of optimization are mathematically equivalent ...
+He makes a good point about online optimization of latent variables being an inference problem, and we're definitely doing something like that in our visual system.
+Still, 'optimization' is isomorphic to having a cardinality of solutions (I'll argue), which is where you get the connection with data-structures and ordering.  Ordering offers a different intuition for guiding thinking.
+The great benefit of ordering is that it's inherently multi-dimensional, vs. energy, which is unidimensional afaik.  For example, with a database of motor-action primitives, you can order sequences of activations over joint angles, then over observed endpoints, then even higher things like target of a thrown object; each ordering is non-exclusive and can be combined.
+
+My working hypothesis of what the cortex is doing is something like an ordered map or dictionary, where part of the ordering is supervised from motor variables, and part is purely invented based on combinations of observed variables.  This is the same as the (distributed) latent variables that LeCun talks about.
+
+I've been learning the game 2048 (it was on my computer during a long flight) and have been instrumenting myself as I get better.  It seems that something like a map of (outcome + action) indexed by (decomposed input configuration) is a key component.
+
+    Borrowing language from statistical physics,  energy-based models posit that the energy between two variables rises if they're incompatible and falls the more they are in accord. This can remove the complexity that arises in "normalizing" a probability distribution.
+
+Aha.
+
+Have to think more about this. And check
+https://www.zdnet.com/article/metas-ai-luminary-lecun-explores-deep-learnings-energy-frontier/
+
+On Tue, Sep 27, 2022 at 5:26 PM Timothy Gardner <timgardner314@gmail.com> wrote:
+
+    https://www.zdnet.com/article/metas-ai-guru-lecun-most-of-todays-ai-approaches-will-never-lead-to-true-intelligence/
+
