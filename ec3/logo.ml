@@ -1,7 +1,7 @@
 open Core
 open Base.Poly
 open Out_channel
-open VGWrapper
+open Vgwrapper
 
 (* variables will be referenced to the stack, de Brujin indexes *)
 (* names are more interpretable by humans ... but that's a big space *)

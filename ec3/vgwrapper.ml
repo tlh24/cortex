@@ -108,6 +108,7 @@ let canvas_to_1Darray c desired =
   Cairo.Surface.finish surface ;
   data
 
+
 let display ba =
   let n = int_of_float (sqrt (float_of_int (Bigarray.Array1.dim ba))) in
   for i = 0 to (n-1) do

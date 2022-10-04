@@ -2438,3 +2438,76 @@ On Tue, Sep 27, 2022 at 5:26 PM Timothy Gardner <timgardner314@gmail.com> wrote:
 
     https://www.zdnet.com/article/metas-ai-guru-lecun-most-of-todays-ai-approaches-will-never-lead-to-true-intelligence/
 
+-------
+
+So!  Now have the parser -> png system working fine, apparently. 
+Time for the convnet + transformer. 
+So ... python.
+Want this to be entirely bootstrapping: start with naive grammar generation, learn input-output mapping... 
+Maybe it makes sense to think about this first in terms of databases, rather than transformers.. ? 
+	Transformers might not have the sample efficiency for bootstrapping.. eh, still worth trying.  
+		Scale might be the solution.
+
+Question: Representing a program as a string is pretty inefficent and redundant. 
+Far better to represent as a AST or so. 
+Q is .. how to linearize the AST?  Transformers expect vectors of tokens, not trees of tokens.  
+I guess you can linearize it with either breadth first or depth first. 
+With, perhaps, strict tab rules like python. 
+
+So, a program like: 
+(
+	(move 0 (ua / 6)) ; 
+	(loop 0 7 
+		(move (ul * v0) (ua / 4))
+	)
+)
+is expanded to: 
+(
+	(move 
+		0 
+		(/
+			ua 
+			6)) ; 
+	(loop 
+		0 
+		7 
+		(move 
+			(*
+				ul 
+				v0) 
+			(/
+				ua 4))
+	)
+)
+encoded as: 
+(AST pos) (Argument no) (Token)
+0 0 Seq
+1 0 Move
+2 0 Int 0
+2 1 Divide
+3 0 Unit_angle
+3 1 Int 6
+1 1 Loop
+2 0 Int 0
+2 1 Int 7
+2 2 Move
+3 0 Mul
+4 0 Unit length
+4 1 Variable 0
+3 1 Divide
+4 0 Unit angle
+4 1 Int 4
+
+Since we have more than one channel, can encode the AST location, argument location, and token each separately.  
+Argument No. is of course redundant, but I think this could be useful.  
+
+Now, editing the AST ... hmm. 
+Just adding one token won't really work; need to add multiple, perhaps variable, tokens at once.  
+Or we can use a library, and copy-paste?  
+If not, we need the transformer to sequentially output tokens like
+Insert 1 1 Move (which moves Loop to 1 2)
+Insert 2 ... wait, no. 
+'address' in an AST is variable length. 
+You specify which one of the leaves at each branch you want to access. 
+This is kinda tricky with a transformer, and is probably easier with a datastructure of sorts... 
+Then there is also graph neural networks, which can work on branching datastructures (right?)
