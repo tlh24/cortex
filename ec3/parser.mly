@@ -11,7 +11,6 @@
 %token LEFT_PAREN
 %token RIGHT_PAREN
 %token SEMICOLON
-%token COMMA
 %token EOF
 
 

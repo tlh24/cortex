@@ -12,7 +12,7 @@ type prog = [
 	| `Binop of prog * (float -> float -> float) * prog
 	| `Const of float
 	| `Seq of prog list
-	| `Loop of int* prog * prog (* iterations and body *)
+	| `Loop of int * prog * prog (* iterations and body *)
 (* 	| Call of int *)
 (* 	| Cmp of prog * (float -> float -> bool) * prog *)
 (* no 'let' here yet *)
@@ -23,30 +23,31 @@ let ios = int_of_string
 let foi = float_of_int
 let iof = int_of_float
 
-let rec output_program = function
-	| `Var i -> printf "Var %d " i
-	| `Save(i,a) -> printf "Save %d " i; 
-			output_program a
-	| `Move(a,b) -> printf "Move "; 
-			output_program a; 
+let rec output_program lg g =
+	match g with
+	| `Var i -> Printf.fprintf lg "Var %d " i
+	| `Save(i,a) -> Printf.fprintf lg "Save %d " i; 
+			output_program lg a
+	| `Move(a,b) -> Printf.fprintf lg "Move "; 
+			output_program lg a; 
+			Printf.fprintf lg ", " ; 
+			output_program lg b
+	| `Binop(a,_,b) -> Printf.fprintf lg "Binop "; 
+			output_program lg a; 
+			output_program lg b
+	| `Const(i) -> Printf.fprintf lg "Const %f " i
+	| `Seq l -> output_list lg l
+	| `Loop(i,a,b) -> Printf.fprintf lg "Loop [%d] " i; 
+			output_program lg a; 
 			printf ", " ; 
-			output_program b
-	| `Binop(a,_,b) -> printf "Binop "; 
-			output_program a; 
-			output_program b
-	| `Const(i) -> printf "Const %f " i
-	| `Seq l -> output_list l
-	| `Loop(i,a,b) -> printf "Loop [%d] " i; 
-			output_program a; 
-			printf ", " ; 
-			output_program b
+			output_program lg b
 	
-and output_list l = 
-	printf "("; 
+and output_list lg l = 
+	Printf.fprintf lg "("; 
 	List.iteri ~f:(fun i v -> 
-		if i > 0 then printf "; " ; 
-		output_program v) l ; 
-	printf ")"
+		if i > 0 then Printf.fprintf lg "; " ; 
+		output_program lg v) l ; 
+	Printf.fprintf lg ")"
 	
 
 type state =
@@ -64,9 +65,11 @@ when calling a function -- no, I think not. *)
 
 type segment = float*float*float*float
 
-let output_segments seglist = 
+let output_segments lg seglist = 
 	List.iteri ~f:(fun i (x1,y1,x2,y2) -> 
-		printf "%d %f,%f %f,%f\n" i x1 y1 x2 y2) seglist
+		Printf.fprintf lg 
+			"%d %f,%f %f,%f\n" 
+			i x1 y1 x2 y2) seglist
 
 let start_state = {x=0.0; y=0.0; t=0.0; p=true; r=0}
  

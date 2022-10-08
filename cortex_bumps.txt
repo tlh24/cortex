@@ -2511,3 +2511,120 @@ Insert 2 ... wait, no.
 You specify which one of the leaves at each branch you want to access. 
 This is kinda tricky with a transformer, and is probably easier with a datastructure of sorts... 
 Then there is also graph neural networks, which can work on branching datastructures (right?)
+
+October 4 2022
+
+OK, have the python <--> ocaml interface working somewhat ok now.
+Sure was a lot of plumbing to get this working ... I wonder if it would have been easier to just stay 100% in python (was listening to the Lex Fridman interview of John Carmack, and he emphasized that single-language projects are desireable..) 
+Anyway, it's done, and this interface can now be used for other things as well. 
+	(Clearly I need to temper my ability at both Python and Ocaml.)
+	
+Next up: emit programs. 
+then, have to emit programs that are well-formed. 
+then, have to emit programs that produce images. 
+then, have to emit programs that produce (and conditional on) desired images
+
+ok, need to generate random programs & see if they produce any output. 
+seems like we just need a vocabulary. 
+
+tokens = ["(", ")",";","+ ","- ","* ","/ ", 
+			 "move ","loop ","v","ua ","ul ", 
+			 "0 ","1 ","2 ","3 ","4 ","5 ","6 ","7 ","8 ","9 ", 
+			 "eof"]
+
+also seems that purely unstructured search is not likely to find anything .. ?
+as in, start with ()
+insert each of above.
+the integers work, everything else doesn't
+move plus one extra argument doesn't work
+move plus two arguments works for integers and ua / ul
+two integers doesn't work, but integer binop integer does
+loop needs three arguments 
+ 	variable, count, body
+but even that's complicated, body needs parenthesis
+	yet it can be discovered by having a empty body. 
+	count meanwhile needs an int or something that evaluates to an int
+	likewise for variable. 
+plus, need a semicolon between sequences (after pairs of parens)
+need to think about this.  Enumerating hundreds of thousands of programs is not really a problem, if we have a sane way of going about it -- and can train a transformer / stat model accordingly. 
+
+In the pool was thinking that we need a library -- templates, like an original genome, to modify from. 
+Even if we start from nothing, still want a library of well-formed primitives for directing / constraining the search space / memory for incremental learning (as seen in DreamCoder)
+	Of course, ideally want an efficient datastructure for this... maybe just boosted trees? 
+The point is to make a model (or: datastructure + model) that "knows enough" about the DSL that most of the time it only emits well-formed programs. 
+	Later, agument this to emit well-formed programs that solve a problem. 
+Editing (insert, replace, delete) is a good bit more complicated than the typical transformer sequence-to-sequence learning, but is more inline with what humans do (tweaking; flexibility)
+	I still think it requires an external library
+	and some sort of probabalistic structure. 
+	This is bound to be more data-efficient than a transformer. 
+		Which is of course what I've been working on for a while .. 
+		The crux (& well-known problem) is how to combine statistical / gradient approaches with pure symbolic datastructures. 
+		Maybe do a form of distillation?
+		Nothing really exceeds end-to-end SGD. 
+			For end accuracy.  
+			It's not compute efficient --
+			But it does learn structure, 
+			and it does leverage the lottery-ticket hypothesis, 
+			and it's scalable / there is hardware support
+	OK irregardless the data-representation, do we start with recursive sequence generation (easier)
+	Or with (insert, replace, delete) continuation-based editing? 
+	
+Getting back to dreamcoder, I really like the idea of using upper and lower bounds for constraining probably approximately correct learning.  It seems like a more efficient way to learn a (conditional) manifold when samples are valuable, 
+the space is unconstrained, yet locally there are low-dimensional constraints (e.g. well-form-edness). 
+
+Anyway..  evaluating all possible sequences of 5 tokens is only 5M samples. Not so bad if it can be parallelized. 
+
+October 5 2022
+
+I was thinking in the shower: one reason there is friction is that we are interacting with effectively a AST in it's non-native, linear-string form. 
+If we could interact with the AST directly, add / replace/remove nodes, then the program is much more likely to be well formed. 
+What if in the library each code snippet has an associated hidden vector value (which can be updated via SGD?)
+	This sort of knowledge base seems more interpretable. 
+OTOH, working with strings is more general.
+And easier to shoehorn a transformer into. 
+
+Looking at https://github.com/huggingface/pytorch-openai-transformer-lm, 
+it seems that for a classification head (e.g. class logits output), you just flatten the input over both tokens and embedding dimension, and output n_class. 
+Pretty simple; I guess do the same? 
+For the language model head, I think they just take the very last token (aka truncate), and predict from that. 
+This also makes perfect sense, and might be a better way of going about it
+But need to check actual function w/ pdb.
+
+October 6 2022
+Looking at the pytorch implementation of "Attention is all you need", 
+The relevant bit of code is in Layers.py, DecoderLayer, 
+
+   def forward(
+            self, dec_input, enc_output,
+            slf_attn_mask=None, dec_enc_attn_mask=None):
+        dec_output, dec_slf_attn = self.slf_attn(
+            dec_input, dec_input, dec_input, mask=slf_attn_mask)
+        dec_output, dec_enc_attn = self.enc_attn(
+            dec_output, enc_output, enc_output,  mask=dec_enc_attn_mask) 
+        # query, key, value
+        # query from the decoder output; key and value from the encoder.  we'll need to do the same.
+        dec_output = self.pos_ffn(dec_output)
+        return dec_output, dec_slf_attn, dec_enc_attn
+        
+Where pos_ffn is a position-wise feedforward network. 
+	xf.py does the same thing, simply / implicitly. 
+Hence: 
+	-- query comes from the decoder (e.g. autoregressive), 
+	-- keys and values come from the encoder layer. 
+	-- mask is there to prevent attending to later tokens. 
+	
+I might be lazy, but I don't see why we can't do this with an encoder-only architecture, where the full program (perhaps with vector annotations?) serves as the input, and you only have to make edits. 
+
+Question then is how to get the edit information?  
+Judging from the pytorch-openai-transformer-lm, just flatten over tokens, and use a MLP output layer to map to encoding.. 
+IDK, better to get started? 
+	Probably will have to go back and fix later eh? 
+
+Hmm now seems that I broke something... ocaml interpreter is being called twice.  (?)
+
+Oct 7 2022
+OK, it seems that hte problem is that we're not handling the ocaml response properly - and, moreover, when the python program bonks, it leaves the ocaml program running, which then spits out an unending series of log. 
+
+OK seems to be working fine!! 
+Todo: add in option to not log, speed things up further.
+Also: plug in the transformer :-)

@@ -42,6 +42,5 @@ rule read =
   | '('      { LEFT_PAREN }
   | ')'      { RIGHT_PAREN }
   | ';'      { SEMICOLON }
-  | ','      { COMMA }
   | _ { raise (SyntaxError ("Unexpected char: " ^ Lexing.lexeme lexbuf)) }
   | eof      { EOF }
