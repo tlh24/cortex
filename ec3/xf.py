@@ -70,7 +70,7 @@ class QKVMultiheadAttention(nn.Module):
 
 	def forward(self, qkv):
 		bs, n_ctx, width = qkv.shape # bs = batch size
-		attn_ch = width // self.n_heads // 3 # input is expanded by 3, c_qkv
+		attn_ch = width // self.n_heads // 3 #input is expanded by 3, c_qkv
 		scale = 1 / math.sqrt(math.sqrt(attn_ch))
 		qkv = qkv.view(bs, n_ctx, self.n_heads, -1)
 		q, k, v = th.split(qkv, attn_ch, dim=-1)

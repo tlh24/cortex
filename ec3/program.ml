@@ -4,21 +4,32 @@ open Lexing
 open Printf
 open Unix
 
+let g_logEn = ref true (* yes global but ... *)
+
 let print_position outx lexbuf = (*that's a cool tryck!*)
   let pos = lexbuf.lex_curr_p in
   fprintf outx "%s:%d:%d" pos.pos_fname
     pos.pos_lnum (pos.pos_cnum - pos.pos_bol + 1)
+    
+let print_log lg str = 
+	if !g_logEn then (
+		Printf.fprintf lg "%s" str; 
+		flush lg;
+	) 
 
 let parse_with_error lg serr lexbuf =
 	let prog = try Some (Parser.parse_prog Lexer.read lexbuf) with
 	| SyntaxError msg ->
 		Printf.fprintf serr "%a: %s\n" print_position lexbuf msg;
-		Printf.fprintf lg "%a: %s\n" print_position lexbuf msg;
-		None
+		if !g_logEn then (
+			(* %a doesn't work with sprintf .. *)
+			Printf.fprintf lg "%a: %s\n" print_position lexbuf msg;
+		);  None
 	| Parser.Error ->
 		Printf.fprintf serr "%a: syntax error\n" print_position lexbuf;
-		Printf.fprintf lg "%a: syntax error\n" print_position lexbuf;
-		None in
+		if !g_logEn then (
+			Printf.fprintf lg "%a: syntax error\n" print_position lexbuf;
+		);  None in
 	prog
     
 
@@ -30,21 +41,21 @@ let bigarray_to_bytes arr =
 		(fun i -> Bigarray.Array1.get arr i |> Char.chr)
     
 let parse_and_render lg sout serr lexbuf id res =
-	Printf.fprintf lg "enter parse_and_render\n"; flush lg; 
+	print_log lg "enter parse_and_render\n";
 	let prog = parse_with_error lg serr lexbuf in
 	match prog with
 	| Some(prog) -> (
 		let (_,_,segs) = Logo.eval Logo.start_state prog in
-		Logo.output_program lg prog; 
-		Printf.fprintf lg "\n"; 
-		Logo.output_segments lg segs; 
-		Printf.fprintf lg "\n"; 
-		flush lg; 
+		if !g_logEn then Logo.output_program lg prog; 
+		print_log lg "\n"; 
+		if !g_logEn then Logo.output_segments lg segs; 
+		print_log lg "\n"; 
 		(* Logo.segs_to_png segs res "test.png"; *)
 		let arr,cost = Logo.segs_to_array_and_cost segs res in
+		let stride = (Bigarray.Array1.dim arr) / res in
 		let r = Logo_types.({
 			id = id; 
-			stride = res; 
+			stride = stride; 
 			width = res; 
 			height = res; 
 			segs = List.map (fun (x0,y0,x1,y1) -> 
@@ -60,8 +71,10 @@ let parse_and_render lg sout serr lexbuf id res =
 		Logo_pb.encode_logo_result r encoder; 
 		output_bytes sout (Pbrt.Encoder.to_bytes encoder);
 
-		Printf.fprintf lg "result %s\n" (Format.asprintf "%a" Logo_pp.pp_logo_result r);
-		Printf.fprintf lg "parse_and_render done\n";flush lg; 
+		if !g_logEn then (
+			Printf.fprintf lg "result %s\n" (Format.asprintf "%a" Logo_pp.pp_logo_result r);
+			print_log lg "parse_and_render done\n"
+		); 
 		flush sout; 
 		flush serr; 
 		true)
@@ -77,23 +90,27 @@ let rec loop_input lg sout serr ic buf cnt =
 (*	let (readch, _, _) = select [stdin] [] [] 1.0 in
 	(* select doesn't seem to work .. *)
 	if List.length readch > 0 && cnt < 1000 then (  *)
-	Printf.fprintf lg "waiting for command\n" ;
+	print_log lg "waiting for command\n" ;
 	let len = input ic buf 0 4096 in
-	Printf.fprintf lg "got %d bytes from stdin\n" len ; flush lg; 
+	if !g_logEn then (
+		Printf.fprintf lg "got %d bytes from stdin\n" len 
+	); 
 	if len > 0 then (
 		let lp = try 
 			Some (Logo_pb.decode_logo_program
 				(Pbrt.Decoder.of_bytes (Bytes.sub buf 0 len)))
 		with _ -> ( 
-			Printf.fprintf lg "Could not decode protobuf\n";
+			print_log lg "Could not decode protobuf\n";
 			None
 		) in
 			
 		match lp with 
 		| Some lp -> (
-			Printf.fprintf lg "%s" (Format.asprintf "logo: %a" Logo_pp.pp_logo_program lp);
-			Printf.fprintf lg "\n";
-			flush lg;
+			g_logEn := lp.log_en ; 
+			if lp.log_en then (
+				Printf.fprintf lg "%s" (Format.asprintf "logo: %a" Logo_pp.pp_logo_program lp);
+				print_log lg "\n"
+			); 
 
 			let lexbuf = Lexing.from_string lp.prog in
 			lexbuf.lex_curr_p <- { lexbuf.lex_curr_p with pos_fname = "from stdin" };
@@ -116,12 +133,4 @@ let () =
 	close_out sout; 
 	close_out serr; 
 
-(*
-(* this relies on Core *)
-let () =
-  Command.basic_spec ~summary:"Parse and display Logo"
-    Command.Spec.(empty +> anon ("filename" %: string))
-    parse
-  |> Command_unix.run
 
-*)

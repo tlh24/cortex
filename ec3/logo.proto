@@ -5,6 +5,7 @@ message Logo_program {
 	int32 id = 1 [(ocaml_type) = int_t];
 	string prog = 2; 
 	int32 resolution = 3 [(ocaml_type) = int_t];
+	bool log_en = 4; 
 } 
 
 message Logo_seg {

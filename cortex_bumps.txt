@@ -2623,7 +2623,7 @@ IDK, better to get started?
 Hmm now seems that I broke something... ocaml interpreter is being called twice.  (?)
 
 Oct 7 2022
-OK, it seems that hte problem is that we're not handling the ocaml response properly - and, moreover, when the python program bonks, it leaves the ocaml program running, which then spits out an unending series of log. 
+OK, it seems that the problem is that we're not handling the ocaml response properly - and, moreover, when the python program bonks, it leaves the ocaml program running, which then spits out an unending series of log. 
 
 OK seems to be working fine!! 
 Todo: add in option to not log, speed things up further.

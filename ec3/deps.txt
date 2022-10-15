@@ -1,0 +1,6 @@
+pip3 install protobuf
+sudo apt-get install libprotobuf-dev
+download protoc from https://github.com/protocolbuffers/protobuf/releases/download/v21.7/protoc-21.7-linux-x86_64.zip
+and install the binary protoc as well as the include files
+to /usr/local/bin and /usr/local/include
+	(the version in debian is terribly outdated)
