@@ -4,6 +4,7 @@ import torch as th
 from torch import nn, optim
 import fcntl, os, select, sys
 import pdb
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import subprocess 
@@ -137,7 +138,7 @@ p_indim = toklen + typlen + poslen*2
 p_ctx = 15
 patch_size = 5
 v_ctx = int((image_resolution / patch_size) ** 2 + 1)
-batch_size = 16
+batch_size = 32
 prog_width = 128
 xfrmr = xf.Transformer(p_ctx, prog_width, 8, 8)
 	# p_ctx, width, layers, heads
@@ -190,6 +191,8 @@ def check_formed(prog) :
 	q = prog_to_string(prog)
 	return ocaml_run(q)
 	
+def prog_to_human(prog): 
+	return list(map(lambda i : tokens[i], prog))
 
 def enumerate_programs(n_levels, level, prog): 
 	if level == n_levels: 
@@ -225,10 +228,15 @@ def nonzero_img(b):
 	prog,a = b
 	return np.sum(a) > 0
 valid_nonzero = list(filter(nonzero_img, valid))
-for item in valid_nonzero: 
+vnf = open("valid_nonzero/list.txt", "w")
+for i, item in enumerate(valid_nonzero): 
 	prog, a = item
-	print(prog)
-print(len(valid_nonzero))
+	prog_human = prog_to_human(prog)
+	vnf.write(f"{i} : {prog} : {prog_human}")
+	vnf.write("\n")
+	matplotlib.image.imsave(f'valid_nonzero/out{i}.png', a)
+vnf.close()
+print(f'number of valid non-zero programs {len(valid_nonzero)}')
 
 def build_attention_mask2(v_ctx, p_ctx):
     # lazily create causal attention mask, with full attention between the vision tokens
@@ -275,6 +283,8 @@ class ecTransformer(nn.Module):
 			attn_mask = build_attention_mask2(v_ctx, p_ctx))
 			
 		self.prt_to_tok = nn.Linear(prog_width * (p_ctx + v_ctx), toklen + typlen)
+		self.ln_post = clip_model.LayerNorm(toklen + typlen)
+		self.gelu = clip_model.QuickGELU()
 		self.tok_softmax = nn.Softmax(dim = 1)
 	
 	def forward(self, batch_a, batch_p, mask): 
@@ -289,7 +299,9 @@ class ecTransformer(nn.Module):
 		x = self.prt(x) # bs, v_ctx * p_ctx, prog_width
 		x = th.reshape(x, (batch_size,-1))
 		x = self.prt_to_tok(x)
-		x = self.tok_softmax(x)
+		x = self.ln_post(x) # scale the inputs to softmax
+		x = self.gelu(x)
+		# x = self.tok_softmax(x)
 		return x
 
 model = ecTransformer(image_resolution = image_resolution, 
@@ -300,11 +312,19 @@ model = ecTransformer(image_resolution = image_resolution,
 							 v_ctx = v_ctx, 
 							 p_ctx = p_ctx, 
 							 p_indim = p_indim)
-lossfunc = nn.CrossEntropyLoss(label_smoothing = 0.05, reduction='none')
+
+lossfunc = nn.CrossEntropyLoss(label_smoothing = 0.08, reduction='none')
 optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=5e-4)
 
-# make a batch. 
-for u in range(100): 
+def print_model_params(): 
+	print(model.prt_to_tok.weight[0,:])
+	print(model.prt.resblocks[0].mlp[0].weight[0,:])
+	print(model.vit_to_prt.weight[0,1:20])
+	print(model.vit.transformer.resblocks[0].mlp[0].weight[0,1:20])
+	print(model.vit.conv1.weight[0,:])
+	# it would seem that all the model parameters are changing.
+
+def make_batch(): 
 	indx = np.random.choice(len(valid_nonzero), size=batch_size, replace=False)
 	batch_a = th.zeros((batch_size, image_resolution, image_resolution)) # todo: fp16
 	batch_p = th.zeros((batch_size, p_ctx, p_indim))
@@ -324,28 +344,66 @@ for u in range(100):
 		j = j+1
 		
 	batch_p[:,:,toklen+typlen : p_indim] = posenc
-		
-	# batch_a = th.tensor(batch_a, dtype=th.float32)
-	batch_a = th.unsqueeze(batch_a, dim = 1) # batch, channels, H, W
-	# batch_p = th.tensor(batch_p, dtype=th.float32)
+	batch_a = th.unsqueeze(batch_a, dim = 1) # batch, channels, H,
+	return (batch_a, batch_p, batch_pl)
+
+def make_mask_y(i, batch_p, batch_pl): 
+	y = batch_p[:, i, 0:toklen + typlen]
+	y_mask = th.tensor(batch_pl > i).detach() 
+	mask = th.zeros(batch_size, v_ctx + p_ctx, prog_width)
+	mask[:, 0:v_ctx, :] = 1.0
+	if i > 1: 
+		mask[:, v_ctx:v_ctx+i, :] = 1.0
+	return (mask, y, y_mask)
+
+slowloss = 0.0
+
+for u in range(10000): 
+	batch_a, batch_p, batch_pl = make_batch()
 
 	for i in range(int(np.max(batch_pl))): 
-		y = batch_p[:, i, 0:toklen + typlen]
-		y_mask = th.tensor(batch_pl > i).detach() 
-		mask = th.zeros(batch_size, v_ctx + p_ctx, prog_width)
-		mask[:, 0:v_ctx, :] = 1.0
-		if i > 1: 
-			mask[:, v_ctx:v_ctx+i, :] = 1.0
-			
+		mask, y, y_mask = make_mask_y(i, batch_p, batch_pl)
+		
 		model.zero_grad()
 		x = model(batch_a, batch_p, mask)
 		loss = lossfunc(x,y)
-		loss = th.sum(loss * y_mask)
-		loss.backward()
+		lossflat = th.sum(loss * y_mask)
+		lossflat.backward()
 		optimizer.step()
-		print(i, th.mean(loss))
+		slowloss = 0.99*slowloss + 0.01 * lossflat.detach()
+		if u % 20 == 0 :
+			print(f'{i} loss: {lossflat}; slowloss {slowloss}')
+			# print(i, lossflat, loss[0], y_mask[0])
+			# print(x[0])
+			# print(y[0])
+			# print(x[0] - y[0])
 
+# see if it can create working programs
+softmx = nn.Softmax(dim = 1)
+batch_a, batch_p, batch_pl = make_batch()
+batch_p_orig = batch_p.clone()
+for i in range(int(np.max(batch_pl))):
+	mask, y, y_mask = make_mask_y(i, batch_p, batch_pl)
+	x = model(batch_a, batch_p, mask)
+	# substitute this into batch_p
+	x = softmx(x[:, 0:toklen])
+	indx = th.argmax(x, dim=1)
+	batch_p[:, i] = th.zeros(p_indim)
+	batch_p[:, i, indx] = 1.0
+	for j in range(batch_size): 
+		typ = tktype[indx[j]]
+		batch_p[j, i, toklen+typ] = 1.0
 
+# now process it back to human-readable.
+for j in range(batch_size): 
+	prog_orig = []
+	prog_new = []
+	for i in range(int(np.max(batch_pl))):
+		prog_orig.append(th.argmax(batch_p_orig[j, i, 0:toklen]))
+		prog_new.append(th.argmax(batch_p[j, i, 0:toklen]))
+	prog_orig_h = prog_to_human(prog_orig)
+	prog_new_h = prog_to_human(prog_new)
+	print(f"batch{j}\n\torig {prog_orig_h}\n\tnew {prog_new_h}\n")
 
 logf.close()
 sp.terminate()

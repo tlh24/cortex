@@ -2628,3 +2628,46 @@ OK, it seems that the problem is that we're not handling the ocaml response prop
 OK seems to be working fine!! 
 Todo: add in option to not log, speed things up further.
 Also: plug in the transformer :-)
+
+October 17 2022
+
+Transformer is plugged in!  
+But it's not training -- probably because many sequences map to the same image, so there is no way for the transformer to determine which of the many sequences made the image. 
+So, we need equivalence classes of some sort.. 
+I guess do it now in the form of a datastructure?? 
+Problem is that this is not probabalistic. (Whereas neural networks /are/)
+Right, so this would suggest an 'equivalence' transformer as well as a translation transformer; or that the whole stack is not penalized until it's done, aka RL. 
+	(As usual, I'll think about this for a bit before probably deciding that the simplest / most obvious solution is best..)
+	
+Well... the transformer really should average, right?  
+Even if the printed loss is not zero, the actual loss ( in producing a program ) should be near zero.
+	That is, it will learn equivalences implicitly ? 
+	This is probably also why just GELU works better than softmax for ultimately reducing the loss. 
+Thought: train contrastively?? 
+	Yeah, that makes a lot of sense. 
+	But first need to extend the database of images to something much much larger. 
+	Probably this should be done in ocaml
+		but then the issue is communicating between ocaml and python.. thousands of records might be slow? 
+		Some sort of fast database, SQLlite?? 
+			eh, one thing at a time. 
+
+October 19 2022
+	
+OK, per notes -- need a better source of training images (at least to start .. want to train a transformer to convert images to segs, segs to programs. )
+Definitely need some sort of 'library' ala dreamcoder to boostrap structure .. yes?  But then need an e-graph? 
+How to even order them?? 
+What would a library look like? 
+Say, for drawing a polygon: 
+def poly n (
+	loop i, n, 
+		( move (ul) (ua / n) ) )
+and a circle: 
+def poly n s (
+	loop i, n, 
+		(move (ul/n *s) (ua/n) )
+def circle r (
+	call poly inf r)
+
+Right, so drawing a circle required a specialization to the poly drawing routine. 
+Maybe I should implement procedures before getting any further ..
+there is a lot riding on the type system in logo now! 

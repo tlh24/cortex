@@ -4,3 +4,13 @@ download protoc from https://github.com/protocolbuffers/protobuf/releases/downlo
 and install the binary protoc as well as the include files
 to /usr/local/bin and /usr/local/include
 	(the version in debian is terribly outdated)
+
+	
+Postgres: 
+sudo apt-get install postgresql postgresql-contrib phppgadmin
+sudo nano /etc/postgresql/14/main/pg_hba.conf 
+change IPv4 and IPv6 local connections to 'trust'
+sudo /etc/init.d/postgresql restart
+
+navigate to localhost/phppgadmin
+Make tables. 

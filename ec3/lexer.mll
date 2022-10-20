@@ -5,6 +5,9 @@ exception SyntaxError of string
 
 let remove_first_char s =
   String.sub s 1 ((String.length s) - 1) 
+  
+let ios_tok s =
+  remove_first_char s |> int_of_string
 }
 
 
@@ -20,15 +23,16 @@ let white = [' ' '\t']+
 let newline = '\r' | '\n' | "\r\n"
 let id = ['a'-'z' 'A'-'Z' '_'] ['a'-'z' 'A'-'Z' '0'-'9' '_']*
 let var = 'v' digit
-(*let fun = 'f' digit+
-let call = 'c' digit+*)
+let call = 'c' digit+
+let def = 'd' digit+ (* lazy but i don't care *)
 
 rule read =
   parse
   | white    { read lexbuf }
   | newline  { Lexing.new_line lexbuf; read lexbuf }
-  | var		 { 
-      VAR (int_of_string (remove_first_char (Lexing.lexeme lexbuf))) }
+  | var		 { VAR  (ios_tok (Lexing.lexeme lexbuf)) }
+  | call		 { CALL (ios_tok (Lexing.lexeme lexbuf)) }
+  | def		 { DEF  (ios_tok (Lexing.lexeme lexbuf)) }
   | int      { INT (int_of_string (Lexing.lexeme lexbuf)) }
 (*  | float    { FLOAT (float_of_string (Lexing.lexeme lexbuf)) }*)
   | "move"  { MOVE }
@@ -41,6 +45,8 @@ rule read =
   | '-'		{ MINUS }
   | '('      { LEFT_PAREN }
   | ')'      { RIGHT_PAREN }
+  | ':'      { COLON }
   | ';'      { SEMICOLON }
+  | ','      { COMMA }
   | _ { raise (SyntaxError ("Unexpected char: " ^ Lexing.lexeme lexbuf)) }
   | eof      { EOF }
