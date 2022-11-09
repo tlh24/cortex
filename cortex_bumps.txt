@@ -2671,3 +2671,212 @@ def circle r (
 Right, so drawing a circle required a specialization to the poly drawing routine. 
 Maybe I should implement procedures before getting any further ..
 there is a lot riding on the type system in logo now! 
+
+October 21 2022
+
+Alright, procedures are implemented, and seem to be working well.  
+	Along with comments, I might add -- needed because of the implicit stack-based (annoying) calling conventions. 
+		Might need to change that in the future. 
+		At least there are no stack collisions per se. 
+	Also need to enforce recursion limits. 
+	
+Let's see, steps for 'evolving' a program. 
+1.  Learn which constructs are syntatically / semantically permissible.  
+	That is, learn the syntax of the programming language, typically from examples. 
+	We can supply these examples; or, in the case the atoms are supplied directly, we search for syntatically permissible constructs / examples. 
+		With, notably, analogistic generalization from other domains (e.g. human language)
+	Remember those permissible constructs and -importantly- their effects. In basically a database. 
+2.  Do heuristic line search on the constructs to try to improve them / fit them to the specification. 
+	Typcially in human learning, there is a cirriculum of increasing complexity to mirror the staged complexity of the world and to allow progressive growth of the library + heuristics. 
+	-- Interesting here would be to -bootstrap- this: is there enough guidance from either readily-available data to gain complexity
+		Or, can you supply meta-heuristics for directing elaboration (e.g. beauty?)
+		Maybe probably, that's how humans work.
+	+ Also want to store this in a "cortical database of types" (or, in the meantime, transformer..)
+3. Observe patterns (how?) in the execution graph, and refactor (e.g. replace, with specialization) long descriptions with shorter, more 'elegant' modes. 
+	This heavily involves analogy-making. 
+	Deep nets are seemingly good at analogies through vector algebra / arithmetic, 
+		But no guarantees on data efficiency. 
+		Things like SVD on sparse matricies of document word-occurrence etc also seem to work, so could be that there are many ways to uncover structures (hence axes / analogies) in datasets. 
+		Something that I've been thinking about for a long time ... 
+	For example, when converting a specification to a progam, one first step would be to just generate a whole list of line segments. 
+	Take this program as an example, it plots 5 cricles. 
+	
+(d0 : ( // arguments: 0: n sides ; 1: size
+	loop 2, v0, ( // 2 is loopvar (unused)
+		move ((ul / v0) * v1), (ua / v0))) ;
+move 0, (ua / 40) ; // center the circles
+c0 20, 3; // these are empirical.. 
+c0 20, 5;
+c0 20, 8;
+c0 20, 12;
+c0 20, 17
+)
+	Those 5 circles are composed of 20 segments each, so we have 100 segments.  
+	Each segment, if chained (which it can be) consists of 2 floats, 4 bytes each. 
+	So the whole list of segments is 800 bytes. 
+	The minimum resolution required to see this image is about 64 x 64, and even then segments of the smaller circles are not legible. 
+	64x64 is 4k bytes, so the 100 segments is a decent approximation. 
+	This same program is 137 bytes without comments (which again is not currently accurate, those comments are needed -- but if we had a better interpreter / runtime, they could be elided)
+		Also, of course, some of the smaller circles are best approximated by lower-count polys. 
+	
+-------
+Alright, given an image, can we output a series of segments? 
+Then later, given a series of segments, can we output a program? 
+Seems like, to bootstrap, you need a large list of segments to predict or something.  
+I guess we can just run the stochastic evaluator and make some heuristics on 'good' images, then train up a transformer .. ? 
+This does not avoid the invariance problem (segment order is invariant to starting position ; programs may output the same image with differing starting positions, depending on centration.)
+	(Convnets permit a degree of translation invariance of course, but the ViT starts out withthout a whole-field convolution.)
+	
+Maybe there are clues?  
+The mypaint test seemed to figure out stroke directionality OK, somehow.
+
+October 27 2022
+
+From the reading yesterday: invariance across different (task) domains implies causation.  
+Not sure how general it is, but the example is a duck: it's form is invariant (up to perspective and lighting) across any number of contexts.  Can be a pond or the air or whatnot. 
+Interesting idea. 
+
+Think I just need to evolve the programs to produce something 'useful' -- and pay attention to how I do it, so that we can learn this E2E in the future. 
+
+And really need to figure out the stack overflow. 
+
+October 31 2022
+
+Halloween!  
+OK, made the edit-ast (as opposed to generate wholly new one); now need to integrate with the python code, to allow python to order the database of images -- 
+images for training.. 
+
+Nov 2 2022
+Ok, that mostly works ... debugging, ever debugging. 
+Time to itch the half-formed idea (hedon) that has been gradually forming.  
+
+1. Humans default to data-efficient solution of problems, not highly statistical data-intensive random-explorers.  I think this is a fact to lean on.  
+2. Humans start with examples (templates), and typically modify them incrementally (linear approximations..).  These examples are typically memorized. 
+3. **Examples themselves are little bits of code** -- that is, you can ‘execute’ or trigger memories to modify workspace representations & create intermediate representations.
+	In the programming world, these mappings can be learned via experimentation. 
+	This probably should hold for the rest of the world too?  Small-network power-law causality? 
+		I don’t know about the visual world.. causes are much broader and more entangled.  Probably better to not think about that for now. 
+4. These intermediate representations are often essential to the process of compression. 
+5. Memory exists for the IR to aide in iterative search
+6. Iterative search proceeds across different levels of representation. 
+7. Slow reasoning is gradually converted to long-term memory, just the same as statistical regularities in aggregate experience. 
+8. The system is meta-aware: statistical regularities in its own processes are converted to long-term memory for shortcut reasoning. 
+
+X. Aesthetics is absolutely essential for open-ended, unguided search. 
+	-- Though this may or may not work so well for biology... it would have to be a meta-parameter. 
+
+How a human programmer would solve the logo task
+1. Iteratively convert an image to a set of line segments or ‘move’ commands
+2. Sort / order those line segments into continuous curves and shapes
+	In the case of commands, might need to alternately append / prepend / insert as needed? 
+	This is a little bit more complicated
+3. Reproject sequences of segments into length and angle space (per logo protocol)
+	This is perhaps the most interesting and critical thing to learn from experimentation -- the causal disentangled space is not coordinates, but angle and distance. 
+	Seemingly can learn this by forcing computation in the program space, rather than segment intermediate space (the parameters are length and angle)
+4. Iteratively search, perhaps based on analogy or something like DNA-alignment algorithms, for encountered programs that generate parts of the sequence.  
+	Segmentation (clustering) can be based on region of space, or similarity in coordinate / length / angle spaces.  
+5. Memorize virtually everything, and use that for jump-off points for iterative compressive search.
+
+I’m fairly confident that I can get all this working (except 5) with some tweaking on all of the logo tasks described in DreamCoder. 
+But it’s still me doing the reasoning, forward-backward passes through the simulation that constitutes planning. 
+Ideally we don’t want to do that, we want to make something that is very open-ended and can be used for arbitrary problems. 
+e.g. inverse graphics -- if we can do that, then virtually anything is possible! (And is a substantial step toward AGI, or at least narrow information pumps.) 
+
+5 above is the hardest, but also the most critical -- it’s how humans can take on infinite-dimensional problems, and tackle them iteratively 
+	Not that this is easy -- much discussion over the past few days has been the vast challenges of ‘automating’ or speeding up scientific research.
+How do you store these memories? 
+DreamCoder takes the sensible approach of storing knowledge in both libraries (commonly used and useful code) and neural networks (low-N prototypical networks, could be better).  
+Humans of course do both, we remember nice little snippets of code, motifs and templates, and can deploy them by modifying in-place to fit the need at hand. 
+Libraries are a bit higher bar for abstraction, and usually serve based on code-and data-flow analysis to see common patterns. 
+	They supplement human memory capacity.  
+		Even AI will probably need such multi-level memory (with of course vectoral comments or something to make is searchable)
+		Yet I think it’s not required for initial POC. 
+	This can be trivial or can potentially take large quantities of compute, raw experimentation; not every forward computable function has a computable inverse. (Most don’t , probably!)
+	Learning things like polar coordinates requires both experimentation and aesthetics ... which atm is really hard to quantify. 
+
+Also of importance is setting up proximal goals: when fitting the segments, you can have a proximal goal of matching the angle, then a goal of matching the length. 
+	Seems to require a bunch of machinery, but that’s the way things are. 
+
+Human programmer input:
+Atoms -- these are the things you can say. 
+Syntax -- this is how you can say it. 
+Examples -- these are well-formed expressions in the language. 
+Specifications -- these are well-formed outputs from executing the language.
+Breakpoints, debug etc -- yield intermediate representations of what the program is doing.
+Similarity metric -- some way of knowing if you’re getting closer (even if it’s dumb..)
+
+I think, with atoms, syntax/examples, specifications, and similarity, it should be possible to bootstrap & solve all logo tasks. 
+This is kind-of a RL task?  Output a series of actions to solve a given task... only the problem formalism is messier than what’s assumed in RL (MDP task)
+	Hence, need to refine the formalism.  
+
+Ok, formalism: 
+Given: 
+	a current program fragment (possibly none)
+	a current set of example programs (not none)
+	a set of atoms (small, finite)
+	a specification (in this case, an image)
+create a program that generates an image that better matches the specification. 
+and
+do this in such a way that search is amortized. (bootstrapping)
+then
+operate on the program to maximally compress it. 
+
+The example programs and atoms serve as ‘actions’ to modify the current program. 
+The role of the network/memory is to form a policy: given the specification and prog fragment, select an action, consisting of tuple: { atom / example + ast location + add/replace/remove }
+
+Later, an email to Richard: 
+Should you care to read, I'll try to un-muddy my explanation today of what I'm working on: 
+
+1. Humans can learn through memorizing cause-effect pairs.   (In the realm of program synthesis, this is through experimentation)
+2. This memory hence serves as causal or temporal inversion: given an effect, infer causes. 
+3. Causes can be converted into actions (e.g. more experimentation) which serves to bootstrap (1)
+4. Cause-effect pairs and their inverses can be stacked hierarchically, inline with the compositional (computational) structure of the world (computers)
+5. Effects that can't be inverted via memory can be inverted via search (which solves all problems, just slowly).  Search then emits more examples for (1). 
+6. Making the system re-entrant allows for larger patterns to be found and compressed. (eg. refactoring large codebases) 
+
+
+
+There is a lot more icing to put on that already many-layered cake, but if there were a data structure that supports 'fluid' association of cause-effect chains, then it seems likely you'd be able to implement many of the layers.  
+
+I'm proposing that the human cortex does something like this, vis the consistently polarized nature of pyramidal neurons (basal dendrites = causes; apical = effects / addresses) & it does so in a way (default-memorization) that supports data efficiency.  Representations would be vectors, same as in deep learning, though it's somewhat unsatisfying.  (The world is much more discrete than a bunch of vectors in an isotropic high-d space ... but if it works it works right?)
+
+Nov 3 2022
+Why can’t we use something like a LLM for solving this problem? GPT-3 has some truly remarkable properties! 
+----
+I think we can’t readily use it because 
+(1) We want to bootstrap; the initial dataset is too small. 
+(2) Because we’re bootstrapping, the dataset is also non-stationary and non-ergodic
+(3) This is not how humans learn; they do experiments. 
+(4) Humans learn an expanding pallette of examples to draw from. 
+(5) Aesthetics matter significantly 
+(6) Transformers don’t have a default way of dealing with equivariance / invariance; contrastive training is inefficient.
+
+Responses: 
+(1) Why not just hammer-train with small datasets, memorize it, see what happens?  
+The vector hypothesis is really very strong & makes a lot of sense & seems to work super well! 
+However, in current networks, the general idea is that the dataset is static, ergodic, and the network is a static size too. 
+Why not expand the size of the network as need arises?  
+	Well, because that’s another thing to account for; static allocation is usually simpler... 
+
+Back to the basics; what exactly is a transformer doing? 
+It’s executing a message-passing and ‘search’ (through query-key) routing algorithm for calculating next-tokens. 
+That is, transformers are usually autoregressive. 
+As Andrej Karpathy accurately points out, it means that they are effectively being ‘programmed’ through examples.  
+The FAIR number-sequence paper shows that, given enough examples & enough capacity, a transformer can learn approximate-inverse heuristic algorithms to invert even hard autoregressive numeric algorithms. 
+	Very very surprising & something to lean upon! 
+Maybe one way of dealing with (1) & (2) is to successively train new transformers of differing sizes as the distribution changes?? 
+
+(3) We can incorporate experiments by using search to iteratively broaden the training corpus. 
+Still, this is not what humans do -- they do linear approximations, and beam search or Newton’s method based on locally linear approximations.
+	I suppose this can just be hard-coded. 
+	Getting something that makes good experiments will require some experiments! 
+
+(4) I think the default -- labeling the examples with random-parameter vectors (which can be changed through SGD - maybe? have to experiment) is one way of making it work.. 
+
+(5) I don’t know how to enforce this, other than putting a strong prior on simplicity of code, e.g. store only the shortest examples that produce certain output.  Again, experimentation! 
+
+(6) This seems like as large a problem as (2) and (4).  The way that it evinced earlier was that the fully-trained transformer would output “move move ul, ul ..” because there could be a leading space.  
+Of course, that’s not actually in the dataset; the transformer is improperly doing interpolation. 
+	Maybe just train it for longer? 
+	Or likely I have a bug in the code somewhere?  
+		Aside: god I love ocaml, too bad most of the libraries are in python (though certainly I can learn to use datastructures better in python?)

@@ -5,6 +5,21 @@ open Printf
 open Unix
 open Logo
 
+type pdata = 
+	{ pro  : Logo.prog
+	; img  : (int, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
+	; cost : float
+	; segs : Logo.segment list
+	}
+	
+let nulpdata = 
+	{ pro  = `Nop 
+	; img  = Bigarray.Array1.create Bigarray.int8_unsigned Bigarray.c_layout 1
+	; cost = -1.0 
+	; segs = [] 
+	}
+	
+
 let g_logEn = ref true (* yes global but ... *)
 
 let print_position outx lexbuf = (*that's a cool tryck!*)
@@ -17,6 +32,11 @@ let print_log lg str =
 		Printf.fprintf lg "%s" str; 
 		flush lg;
 	) 
+	
+let print_prog p = 
+	let bf = Buffer.create 30 in
+	Logo.output_program_p bf p; 
+	Printf.printf "%s\n" (Buffer.contents bf)
 
 let parse_with_error lg serr lexbuf =
 	let prog = try Some (Parser.parse_prog Lexer.read lexbuf) with
@@ -40,13 +60,22 @@ let bigarray_to_bytes arr =
 	let len = Bigarray.Array1.dim arr in
 	Bytes.init len 
 		(fun i -> Bigarray.Array1.get arr i |> Char.chr)
+
+let intlist_to_string e =
+	let offs = 20 + (Char.code ' ') in
+	let cof_int i =
+		Char.chr (i + offs) in
+	let bf = Buffer.create 10 in
+	List.iter (fun a -> Buffer.add_char bf (cof_int a)) e;
+	Buffer.contents bf
+
     
 let parse_and_render lg sout serr lexbuf id res =
 	print_log lg "enter parse_and_render\n";
 	let prog = parse_with_error lg serr lexbuf in
 	match prog with
 	| Some(prog) -> (
-		let (_,_,segs) = Logo.eval Logo.start_state prog in
+		let (_,_,segs) = Logo.eval (Logo.start_state ()) prog in
 		if !g_logEn then Logo.output_program_h lg prog; 
 		print_log lg "\n"; 
 		if !g_logEn then Logo.output_segments lg segs; 
@@ -54,6 +83,11 @@ let parse_and_render lg sout serr lexbuf id res =
 		Logo.segs_to_png segs res "test.png";
 		let arr,cost = Logo.segs_to_array_and_cost segs res in
 		let stride = (Bigarray.Array1.dim arr) / res in
+		let bf = Buffer.create 30 in
+		Logo.output_program_p bf prog; 
+		let progenc = Logo.encode_program prog
+			|> intlist_to_string in
+		let progstr = Buffer.contents bf in
 		let r = Logo_types.({
 			id = id; 
 			stride = stride; 
@@ -62,6 +96,8 @@ let parse_and_render lg sout serr lexbuf id res =
 			segs = List.map (fun (x0,y0,x1,y1) -> 
 				Logo_types.({x0=x0; y0=y0; x1=x1; y1=y1;})) segs; 
 			cost = cost; 
+			prog = progstr; 
+			progenc = progenc;
 		}) in
 		(* write the data to stderr, message to stdout *)
 		let arr = bigarray_to_bytes arr in
@@ -88,132 +124,326 @@ let parse_and_render lg sout serr lexbuf id res =
 			 
 (* now, wait a second here ... we can evaluate programs much more efficiently than in python, since we have the ASTs here *)
 (* will return a list of list of progs. *)
-let select_loopvar loopvar = 
-	let len = Array.length loopvar in
-	let sum = Array.fold_left (fun a b -> if b then a+1 else a) 0 loopvar in
-	let avail = ref [] in
-	Array.iteri (fun i a -> if not a then avail := i :: !avail) loopvar ; 
+
+let num_actvar actvar =
+	Array.fold_left (fun a b -> if b then a+1 else a) 0 actvar
+
+let select_writevar actvar =
+	let len = Array.length actvar in
+	let sum = num_actvar actvar in
 	if sum = len then (
 		Random.int len
 	) else (
-		List.nth !avail (Random.int (List.length !avail))
+		let sel = ref (len-1) in
+		for i = len-1 downto 0 do (
+			if not actvar.(i) then sel := i;
+		) done;
+		!sel
 	)
 
-let select_actvar actvar = 
+let select_readvar actvar =
 	let len = Array.length actvar in
-	let sum = Array.fold_left (fun a b -> if b then a+1 else a) 0 actvar in
+	let sum = num_actvar actvar in
 	let avail = ref [] in
-	Array.iteri (fun i a -> if a then avail := i :: !avail) actvar ;
+	Array.iteri (fun i a -> if a then (
+		avail := i :: !avail) ) actvar ;
 	if sum = 0 then (
 		Random.int len (* degenerate *)
 	) else (
 		List.nth !avail (Random.int (List.length !avail))
 	)
 
-let rec enumerate_ast return_val state = 
+
+let rec gen_ast return_val state = 
 	(* stochastic AST generation ! *)
-	let r, br, av, lv = state in 
+	let r, br, av = state in
 	(* recurs lim, binop recursion limit, active variables, loop variables *)
 	if not return_val then (
 		match Random.int 5 with 
 		| 0 -> 
-			let i = Random.int (Array.length av) in
+			(* generate the rhs before updating available variables *)
+			let b = gen_ast true (r-1,br,av) in
+			let i = select_writevar av in
 			av.(i) <- true; 
-			`Save(i, enumerate_ast true (r-1,br,av,lv))
+			`Save(i, b, nulptag)
 		| 1 -> 
-			`Move(enumerate_ast true (r-1,br,av,lv), enumerate_ast true (r-1,br,av,lv))
+			`Move(gen_ast true (r-1,br,av), gen_ast true (r-1,br,av), nulptag)
 		| 2 -> 
 			let len = (Random.int 3) + 1 in
-			let ls = List.init len (fun _i -> enumerate_ast false (r-1,br,av,lv)) in
-			`Seq(ls)
+			let ls = List.init len (fun _i -> gen_ast false (r-1,br,av)) in
+			`Seq(ls,nulptag)
 		| 3 -> 
-			let i = select_loopvar lv in
-			av.(i) <- true; lv.(i) <- true; 
-			let n = `Const(foi(Random.int 12)) in
-			`Loop(i, n, enumerate_ast false (r-1,br,av,lv))
+			let i = select_writevar av in
+			av.(i) <- true;
+			let n = `Const(foi(Random.int 12),nulptag) in
+			`Loop(i, n, gen_ast false (r-1,br,av),nulptag)
 		| _ -> `Nop
 	) else (
 		(* if recursion limit, emit a constant / terminal*)
-		let q = if br > 0 then 
-			Random.int 3 else Random.int 2 in
+		let uplim = if br > 0 then 3 else 2 in
+		let q = if (num_actvar av = 0) then (
+			(Random.int (uplim-1)) + 1
+		) else Random.int uplim in
 		match q with 
 		| 0 -> 
-			`Var(select_actvar av)
+			`Var(select_readvar av, nulptag)
 		| 1 -> (
 			match Random.int 3 with
-			| 0 -> `Const(8.0 *. atan 1.0) (* unit angle *)
-			| 1 -> `Const(1.0) (* unit length *)
-			| _ -> `Const(Random.int 5 |> foi)
+			| 0 -> `Const(8.0 *. atan 1.0,nulptag) (* unit angle *)
+			| 1 -> `Const(1.0,nulptag) (* unit length *)
+			| _ -> `Const(Random.int 5 |> foi,nulptag)
 			)
 		| 2 -> 
-			let a = enumerate_ast true (r-1,br-1,av,lv) in
-			let b = enumerate_ast true (r-1,br-1,av,lv) in
+			let a = gen_ast true (r-1,br-1,av) in
+			let b = gen_ast true (r-1,br-1,av) in
 			(match (Random.int 4) with 
-				| 0 -> `Binop( a, "+", ( +. ), b)
-				| 1 -> `Binop( a, "-", ( -. ), b)
-				| 2 -> `Binop( a, "*", ( *. ), b)
-				| _ -> `Binop( a, "/", ( /. ), b) )
+				| 0 -> `Binop( a, "+", ( +. ), b,nulptag)
+				| 1 -> `Binop( a, "-", ( -. ), b,nulptag)
+				| 2 -> `Binop( a, "*", ( *. ), b,nulptag)
+				| _ -> `Binop( a, "/", ( /. ), b,nulptag) )
 		| _ -> `Nop
 	)
+
+let rec count_ast ast = 
+	match ast with
+	| `Var(_,_) -> 1
+	| `Save(_,a,_) -> 1 + count_ast a
+	| `Move(a,b,_) -> 1 + (count_ast a) + (count_ast b)
+	| `Binop(a,_,_,b,_) -> (count_ast a) + (count_ast b)
+	| `Const(_,_) -> 1
+	| `Seq(l,_) -> List.fold_left (fun a e -> a + count_ast e) 0 l
+	| `Loop(_,a,b,_) -> 1 + (count_ast a) + (count_ast b)
+	| `Call(_,l,_) -> List.fold_left (fun a e -> a + count_ast e) 1 l
+	| `Def(_,a,_) -> 1 + count_ast a
+	| `Nop -> 0
+	
+	
+(* We need to tag the AST -- counting won't work b/c the tree is changing. *)
+let rec mark_ast ast n sel = 
+	match ast with
+	| `Var(i,_) -> ( if !n = sel then 
+		(incr n; `Var(i,1) ) else 
+		(incr n; `Var(i,nulptag) ) )
+	| `Save(i,a,_) -> ( if !n = sel then
+		(incr n; `Save(i,(mark_ast a n sel),1) ) else 
+		(incr n; `Save(i,(mark_ast a n sel),nulptag) ) )
+	| `Binop(a,s,f,b,_) -> ( if !n = sel then
+		(incr n; `Binop((mark_ast a n sel),s,f,(mark_ast b n sel),1) ) else 
+		(incr n; `Binop((mark_ast a n sel),s,f,(mark_ast a n sel),nulptag) ) )
+	| `Const(f,_) -> ( if !n = sel then 
+		(incr n; `Const(f,1) ) else
+		(incr n; `Const(f,nulptag) ) ) 
+	| `Seq(l,_) -> ( if !n = sel then 
+		(incr n; `Seq(List.map (fun a -> mark_ast a n sel) l, 1) ) else
+		(incr n; `Seq(List.map (fun a -> mark_ast a n sel) l, nulptag) ) )
+	| `Loop(i,a,b,_) -> ( if !n = sel then 
+		(incr n; `Loop(i,(mark_ast a n sel),(mark_ast b n sel),1) ) else 
+		(incr n; `Loop(i,(mark_ast a n sel),(mark_ast a n sel),nulptag) ) )
+	| `Call(i,l,_) -> ( if !n = sel then 
+		(incr n; `Call(i,List.map (fun a -> mark_ast a n sel) l, 1) ) else
+		(incr n; `Call(i,List.map (fun a -> mark_ast a n sel) l, nulptag) ) )
+	| `Def(i,a,_) -> ( if !n = sel then
+		(incr n; `Def(i,(mark_ast a n sel),1) ) else 
+		(incr n; `Def(i,(mark_ast a n sel),nulptag) ) )
+	| `Nop -> `Nop
+
+let rec chng_ast ast st = 
+	let r, _, av = st in
+	match ast with
+	| `Var(i,w) -> (if w > 0 then 
+		( gen_ast true st ) else 
+		( `Var(i,nulptag) ) )
+	| `Save(i,a,w) -> ( if w > 0 then
+		( let ii = Random.int 5 in
+		  av.(i) <- false; 
+		  av.(ii) <- true; 
+		  `Save(ii, chng_ast a st, nulptag) ) else 
+		( av.(i) <- true; 
+		  `Save(i, chng_ast a st, nulptag) ) )
+	| `Move(a,b,w) -> ( if w > 0 then
+		( gen_ast false st ) else 
+		( `Move(chng_ast a st, chng_ast b st, nulptag) ) )
+	| `Binop(a,s,f,b,w) -> ( if w > 0 then 
+		( let st2 = r, 2, av in
+		  gen_ast true st2 ) else
+		( `Binop(chng_ast a st, s, f, chng_ast b st, nulptag) ) )
+	| `Const(f,w) -> (if w > 0 then 
+		( gen_ast true st ) else 
+		( `Const(f, nulptag) ) )
+	| `Seq(l,w) -> (if w > 0 then 
+		( gen_ast false st ) else
+		( `Seq(List.map (fun a -> chng_ast a st) l, nulptag) ) ) 
+	| `Loop(i,a,b,w) -> (if w > 0 then 
+		( gen_ast false st ) else
+		( av.(i) <- true ;
+		  `Loop(i, chng_ast a st, chng_ast b st, nulptag) ) )
+	| `Call(i,l,w) -> (if w > 0 then 
+		( gen_ast false st ) else 
+		( `Call(i, List.map (fun a -> chng_ast a st) l, nulptag) ) )
+	| `Def(i,a,w) -> (if w > 0 then 
+		( gen_ast false st ) else 
+		( `Def(i, chng_ast a st, nulptag ) ) )
+	| `Nop -> `Nop
+	
+let change_ast ast = 
+	let cnt = count_ast ast in
+	let n = ref 0 in
+	let sel = Random.int cnt in
+	let marked = mark_ast ast n sel in
+	let actvar = Array.init 5 (fun _i -> false) in
+	let st = (2,3,actvar) in
+	chng_ast marked st
+(* I wonder if there is a better, learning-aware means of doing above... something that operates directly at the character level ( like a LLM) and learns the constraints / syntax implicitly. *)
+	
+	
 (* see also: https://stackoverflow.com/questions/71718527/can-you-pattern-match-integers-to-ranges-in-ocaml *)
 let rec compress ast change = 
 	(* recusively copy an ast, removing obvious nops *)
+	let eps = 0.0001 in
+	let neps = -1.0 *. eps in
 	match ast with
-	| `Var(i) -> `Var(i)
-	| `Save(i, a) -> (
+	| `Var(i,w) -> `Var(i,w)
+	| `Save(i,a,w) -> (
 		match a with 
 		| `Nop -> ( change := true; `Nop )
-		| `Var(j) -> 
+		| `Var(j,_) -> 
 			if i = j then( change := true; `Nop )
-			else `Save(i, a)
-		| _ -> `Save(i, compress a change))
-	| `Move(a,b) -> (
+			else `Save(i,a,w)
+		| _ -> `Save(i, compress a change,w))
+	| `Move(a,b,w) -> (
 		match a,b with
 		| `Nop, _ -> change := true; `Nop
 		| _,`Nop -> change := true; `Nop
-		| _ -> `Move(compress a change, compress b change) )
-	| `Binop(a,s,f,b) -> (
+		| _ -> `Move(compress a change, compress b change,w) )
+	| `Binop(a,s,f,b,w) -> (
 		match a,b with 
 		| `Nop, _ -> ( change := true; `Nop )
 		| _, `Nop -> ( change := true; `Nop )
-		| `Const(aa), `Const(bb) -> (
+		| `Const(aa,_), `Const(bb,_) -> (
+			match s with
+			| "+" -> (
+				match aa,bb with
+				| a3,_ when a3 > neps && a3 < eps -> 
+					(change := true;`Const(bb,nulptag))
+				| _,b3 when b3 > neps && b3 < eps -> 
+					(change := true;`Const(aa,nulptag))
+				| _ -> `Binop(compress a change, s,f, compress b change,w) )
+			| "-" -> (
+				match aa,bb with
+				| _,b3 when b3 > neps && b3 < eps -> 
+					(change := true;`Const(aa,nulptag))
+				| a3,b3 when a3-.b3 > neps && a3-.b3 < eps -> 
+					(change := true;`Const(0.0,nulptag))
+				| _ -> `Binop(compress a change, s,f, compress b change,w) )
+			| "*" -> (
+				match aa,bb with
+				| a3,_ when a3 > neps && a3 < eps -> 
+					(change := true;`Nop)
+				| _,b3 when b3 > neps && b3 < eps -> 
+					(change := true;`Nop)
+				| a3,_ when a3 > 1.0-.eps && a3 < 1.0+.eps ->
+					(change := true;`Const(bb,nulptag))
+				| _,b3 when b3 > 1.0-.eps && b3 < 1.0+.eps ->
+					(change := true;`Const(aa,nulptag))
+				| _ -> `Binop(compress a change, s,f, compress b change,w) )
+			| "/" -> (
+				match aa,bb with
+				| a3,_ when a3 > neps && a3 < eps -> 
+					(change := true;`Nop)
+				| _,b3 when b3 > neps && b3 < eps -> 
+					(change := true;`Nop)
+				| _,b3 when b3 > 1.0-.eps && b3 <1.0+.eps -> 
+					(change := true;`Const(aa,nulptag))
+				| a3,b3 when a3-.b3 > neps && a3-.b3 < eps -> 
+					(change := true;`Const(1.0,nulptag))
+				| _ -> `Binop(compress a change, s,f, compress b change,w) )
+			| _ -> `Nop )
+		| `Var(aa,_), `Var(bb,_) -> (
 			if aa = bb then (
 				match s with 
-				| "/" -> (change := true; `Const(1.0))
-				| "-" -> (change := true; `Const(0.0))
-				| _ -> `Binop(a,s,f,b) 
-			) else (`Binop(a,s,f,b) ))
-		| `Var(aa), `Var(bb) -> (
-			if aa = bb then (
-				match s with 
-				| "/" -> (change := true; `Const(1.0))
-				| "-" -> (change := true; `Const(0.0))
-				| _ -> `Binop(a,s,f,b) 
-			) else (`Binop(a,s,f,b) ))
-		| _ -> `Binop(compress a change, s,f, compress b change) )
-	| `Const(i) -> `Const(i)
-	| `Loop(indx, niter, body) -> (
+				| "/" -> (change := true; `Const(1.0,nulptag))
+				| "-" -> (change := true; `Const(0.0,nulptag))
+				| _ -> `Binop(compress a change, s,f, compress b change,w) 
+			) else ( `Binop(compress a change, s,f, compress b change,w) ))
+		| _, `Const(bb,_) -> (
+			match s with
+			| "+" -> (
+				match bb with
+				| b3 when b3 > neps && b3 < eps -> 
+					(change := true; a)
+				| _ -> `Binop(compress a change, s,f, compress b change,w) )
+			| "-" -> (
+				match bb with
+				| b3 when b3 > neps && b3 < eps -> 
+					(change := true; a)
+				| _ -> `Binop(compress a change, s,f, compress b change,w) )
+			| "*" -> (
+				match bb with
+				| b3 when b3 > neps && b3 < eps -> 
+					(change := true;`Const(0.0,nulptag))
+				| b3 when b3 > 1.0-.eps && b3 < 1.0+.eps ->
+					(change := true; a)
+				| _ -> `Binop(compress a change, s,f, compress b change,w) )
+			| "/" -> (
+				match bb with
+				| b3 when b3 > neps && b3 < eps ->
+					(change := true;`Nop)
+				| b3 when b3 > 1.0-.eps && b3 < 1.0+.eps ->
+					(change := true; a)
+				| _ -> `Binop(compress a change, s,f, compress b change,w) )
+			| _ -> `Nop )
+		| `Const(aa,_), _ -> (
+			match s with
+			| "+" -> (
+				match aa with
+				| a3 when a3 > neps && a3 < eps -> 
+					(change := true; b)
+				| _ -> `Binop(compress a change, s,f, compress b change,w) )
+			| "-" -> (
+				match aa with
+				| a3 when a3 > neps && a3 < eps -> 
+					(change := true; b)
+				| _ -> `Binop(compress a change, s,f, compress b change,w) )
+			| "*" -> (
+				match aa with
+				| a3 when a3 > neps && a3 < eps -> 
+					(change := true;`Nop)
+				| a3 when a3 > 1.0-.eps && a3 < 1.0+.eps -> 
+					(change := true; b)
+				| _ -> `Binop(compress a change, s,f, compress b change,w) )
+			| "/" -> (
+				match aa with
+				| a3 when a3 > neps && a3 < eps -> 
+					(change := true;`Nop)
+				| _ -> `Binop(compress a change, s,f, compress b change,w) )
+			| _ -> `Nop )
+		| _ -> `Binop(compress a change, s,f, compress b change,w) )
+	| `Const(i,w) -> `Const(i,w)
+	| `Loop(indx, niter, body,w) -> (
 		match body with 
 		| `Nop -> (change := true; `Nop)
-		| _ -> `Loop(indx, niter, compress body change) )
-	| `Seq(l) -> (
+		| _ -> `Loop(indx, niter, compress body change,w) )
+	| `Seq(l,w) -> (
 		let l2 = List.filter (fun a -> match a with
 			| `Nop -> (change := true; false)
 			| _ -> true) l in
-		if List.length l2 > 0 then 
-		`Seq( List.map (fun a -> compress a change) l2 )
-		else( change := true; `Nop ) )
-	| `Call(i,l) -> `Call(i,l)
-	| `Def(i,body) -> `Def(i,body)
+		match List.length l2 with
+		| 0 -> ( change := true; `Nop )
+		| 1 -> ( change := true; 
+			compress (List.hd l2) change ) (*dont need seq*)
+		| _ -> `Seq( List.map (fun a -> compress a change) l2, w )
+		)
+	| `Call(i,l,w) -> `Call(i,l,w)
+	| `Def(i,body,w) -> `Def(i,body,w)
 	| `Nop -> `Nop
 
 let rec has_move ast = 
 	match ast with
-	| `Save(_,a) -> has_move a
-	| `Move(_,_) -> true
-	| `Binop(a,_,_,b) -> ( has_move a || has_move b )
-	| `Seq(l) -> List.exists (fun q -> has_move q) l
-	| `Loop(_,a,b) -> ( has_move a || has_move b )
+	| `Save(_,a,_) -> has_move a
+	| `Move(_,_,_) -> true
+	| `Binop(a,_,_,b,_) -> ( has_move a || has_move b )
+	| `Seq(l,_) -> List.exists (fun q -> has_move q) l
+	| `Loop(_,a,b,_) -> ( has_move a || has_move b )
 	| _ -> false
 	
 let rec compress_ast ast = 
@@ -224,7 +454,6 @@ let rec compress_ast ast =
   
   
 let rec loop_input lg sout serr ic buf cnt = 
-	Unix.clear_nonblock stdin; (* this probably is not necessary *)
 (*	let (readch, _, _) = select [stdin] [] [] 1.0 in
 	(* select doesn't seem to work .. *)
 	if List.length readch > 0 && cnt < 1000 then (  *)
@@ -267,36 +496,201 @@ let run_logo_file lg sout serr fname =
 	lexbuf.lex_curr_p <- { lexbuf.lex_curr_p with pos_fname = fname };
 	ignore(parse_and_render lg sout serr lexbuf 0 256 )
 
-let generate_random_logo lg n =
-	for i = 0 to n do (
-		Printf.fprintf lg "program %d : \n" i;
-		let actvar = Array.init 5 (fun _i -> false) in
-		let loopvar = Array.init 5 (fun _i -> false) in
-		let prog = enumerate_ast false (3,3,actvar,loopvar) in
-		Logo.output_program_p lg prog;
-		Printf.fprintf lg "\ncompressed %d : \n" i;
-		let progc = compress_ast prog in
-		Logo.output_program_p lg progc;
-		Printf.fprintf lg "\n\n";
-		let (_,_,segs) = Logo.eval Logo.start_state progc in
-		Logo.segs_to_png segs 128 (Printf.sprintf "png/test%d.png" i);
-	) done
+let segs_bbx segs = 
+	let minx = List.fold_left 
+		(fun c (x0,_,x1,_) -> min (min x0 x1) c) 0.0 segs in
+	let maxx = List.fold_left 
+		(fun c (x0,_,x1,_) -> max (max x0 x1) c) 0.0 segs in
+	let miny = List.fold_left 
+		(fun c (_,y0,_,y1) -> min (min y0 y1) c) 0.0 segs in
+	let maxy = List.fold_left 
+		(fun c (_,y0,_,y1) -> max (max y0 y1) c) 0.0 segs in
+	(minx,maxx,miny,maxy)
+	
+let rec generate_random_logo lg id res =
+	if !g_logEn then Printf.fprintf lg "program %d : \n" id;
+	let actvar = Array.init 5 (fun _i -> false) in
+	(*Printf.printf "=======\n";*) 
+	let prog = gen_ast false (3,3,actvar) in
+	if !g_logEn then Logo.output_program_plg lg prog;
+	if !g_logEn then Printf.fprintf lg "\ncompressed %d : \n" id;
+	let pro = compress_ast prog in
+	if !g_logEn then Logo.output_program_plg lg pro;
+	if !g_logEn then Printf.fprintf lg "\n\n";
+	
+	let (_,_,segs) = Logo.eval (Logo.start_state ()) pro in
+	(* heuristics for selecting programs... *)
+	let seglen (x0,y0,x1,y1) = 
+		Float.hypot (x0-.x1) (y0-.y1) in
+	let cost = List.fold_left 
+		(fun c s -> c +. (seglen s)) 0.0 segs in
+	let lx,hx,ly,hy = segs_bbx segs in
+	let dx = hx-.lx in
+	let dy = hy-.ly in
+	if dx >= 2. && dx <= 8. && dy >= 2. && dy <= 8. && cost >= 4. && cost <= 64. && List.length segs < 10 then (
+		if !g_logEn && id < 1024 then
+			Logo.segs_to_png segs res (Printf.sprintf "png/test%d.png" id);
+		let img, _ = Logo.segs_to_array_and_cost segs res in
+		{pro; img; cost; segs}
+	) else ( 
+		generate_random_logo lg id res
+	)
+
+let transmit_result channels data id res = 
+	let sout, serr, _ic, lg = channels in
+	let stride = (Bigarray.Array1.dim data.img) / res in
+	let bf = Buffer.create 30 in
+	Logo.output_program_p bf data.pro; 
+	let progenc = Logo.encode_program data.pro 
+		|> intlist_to_string in
+	let r = Logo_types.({
+		id = id; 
+		stride = stride; 
+		width = res; 
+		height = res; 
+		segs = List.map (fun (x0,y0,x1,y1) -> 
+			Logo_types.({x0=x0; y0=y0; x1=x1; y1=y1;})) data.segs; 
+		cost = data.cost; 
+		prog = Buffer.contents bf; 
+		progenc = progenc
+	}) in
+	(* write the data to stderr, message to stdout *)
+	let arr = bigarray_to_bytes data.img in
+	output_bytes serr arr ;
+
+	(* Create a Protobuf encoder and encode value *)
+	let encoder = Pbrt.Encoder.create () in 
+	Logo_pb.encode_logo_result r encoder; 
+	output_bytes sout (Pbrt.Encoder.to_bytes encoder);
+
+	if !g_logEn then (
+		Printf.fprintf lg "result %s\n" (Format.asprintf "%a" Logo_pp.pp_logo_result r);
+		print_log lg "transmit_result done\n"
+	); 
+	flush sout; 
+	flush serr 
+	
+let transmit_ack channels id = 
+	let sout, _serr, _ic, _lg = channels in
+	let r = Logo_types.({ going=true; ackid=id;}) in
+	let encoder = Pbrt.Encoder.create () in 
+	Logo_pb.encode_logo_ack r encoder; 
+	output_bytes sout (Pbrt.Encoder.to_bytes encoder);
+	flush sout 
+
+let render_simplest db dosort =
+	(* render the shortest 1024 programs in the database.*)
+	let dba = Vector.to_array db in
+	if dosort then Array.sort (fun a b ->
+		let la = List.length a.segs in
+		let lb = List.length b.segs in
+		let na = count_ast a.pro in
+		let nb = count_ast b.pro in
+		if la = lb then compare na nb else compare la lb ) dba; 
+		(* in-place sorting *)
+	let res = 48 in
+	let lg = open_out "png/log.txt" in
+	for id = 0 to 1023 do (
+		let data = dba.(id) in
+		let (_,_,segs) = Logo.eval (Logo.start_state ()) data.pro in
+		Logo.segs_to_png segs res (Printf.sprintf "png/test%d.png" id);
+		let bf = Buffer.create 30 in
+		Logo.output_program_p bf data.pro;
+		fprintf lg "%d %s\n" id (Buffer.contents bf);
+	) done;
+	close_out lg
+	
+let read_protobuf lg ic pfunc = 
+	(* polymorphic! so cool *)
+	let buf = Bytes.create 256 in
+	let len = input ic buf 0 256 in
+	if !g_logEn then (
+		Printf.fprintf lg "got %d bytes from stdin\n" len ); 
+	if len > 0 then (
+		let lp = try 
+			Some ( pfunc
+				(Pbrt.Decoder.of_bytes (Bytes.sub buf 0 len)))
+		with _ -> ( 
+			print_log lg "Could not decode protobuf\n";
+			None
+		) in
+		lp
+	) else (
+		Unix.sleepf 0.01; 
+		None
+	)
+
+let rec loop_random channels cnt db = 
+	(* unlike loop_input, we generate the program here *)
+	if cnt > (100 * 20000) then () else (
+	let _sout, _serr, ic, lg = channels in
+	if !g_logEn then ( print_log lg "waiting for command\n" );
+	let lp = read_protobuf lg ic Logo_pb.decode_logo_request in
+	match lp with 
+	| Some lp -> (
+		g_logEn := lp.log_en ; 
+		let data = generate_random_logo lg lp.id lp.res in
+		transmit_result channels data lp.id lp.res ; 
+		let lp2 = read_protobuf lg ic Logo_pb.decode_logo_last in
+		match lp2 with
+		| Some lp2 -> (
+			if lp2.keep && data.cost > 0. then (
+				if lp2.where = Vector.length db then (
+					if !g_logEn then Printf.fprintf lg "db saving %d push\n" lp2.where; 
+					Vector.push db data
+				) else (
+					if !g_logEn then Printf.fprintf lg "db saving %d set\n" lp2.where; 
+					Vector.set db lp2.where data
+				)
+			); 
+			if lp2.render_simplest then (
+				render_simplest db true
+			);
+			transmit_ack channels lp.id ; 
+			loop_random channels (cnt+1) db )
+		| _ -> (
+			loop_random channels (cnt+1) db ) )
+	| _ -> (
+		loop_random channels (cnt+1) db )
+	)
+(* 
+TODO:: 
+1. Demonstrate that we can point modify existing programs to generate new ones. 
+	** this is still untested **
+2. Sort programs based on image similarity
+3. Demonstrate transformer intermediates for image <--> segments <--> programs .. ??? 
+*)
+(*
+let () = 
+	Unix.clear_nonblock stdin; (* this might not be needed *)
+	(*run_logo_file lg sout serr "semicircle.logo" ;*)
+	Random.self_init (); 
+	let lg = open_out "logo_log.txt" in
+	let sout = out_channel_of_descr stdout in
+	let serr = out_channel_of_descr stderr in 
+	run_logo_file lg sout serr "badvar.logo" ;
+	(*let data = generate_random_logo lg 0 48 in
+	print_prog data.pro; *)
+	close_out lg; 
+*)
 
 let () = 
-	let lg = open_out "logo_log.txt" in
-(* 	let ic = in_channel_of_descr stdin in *)
-	let sout = out_channel_of_descr stdout in
-	let serr = out_channel_of_descr stderr in
+	Unix.clear_nonblock stdin; (* this might not be needed *)
 	Random.self_init (); 
+	let lg = open_out "logo_log.txt" in
+	let ic = in_channel_of_descr stdin in
+	let sout = out_channel_of_descr stdout in
+	let serr = out_channel_of_descr stderr in 
+	let channels = (sout, serr, ic, lg) in
 	Printf.fprintf lg "hello\n";
 
-	run_logo_file lg sout serr "poly.logo" ;
+	let _data = generate_random_logo lg 0 in
+	let db = Vector.create ~dummy:nulpdata in
+	loop_random channels 0 db ;
 
-	(*let buf = Bytes.create 4096 in
-	ignore(loop_input lg sout serr ic buf 0); *)
+	(*ignore(loop_input lg sout serr ic buf 0);*) 
 
 	close_out sout; 
-(* 	close_out serr; *)
+	close_out serr;
 	close_out lg; 
-
 

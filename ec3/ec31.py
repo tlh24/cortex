@@ -8,6 +8,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import subprocess 
+import time
 
 import logod_pb2
 import xf
@@ -20,7 +21,6 @@ th.cuda.set_device(torch_device)
 th.set_default_tensor_type('torch.cuda.FloatTensor')
 
 
-#Ok, first step is to generate some images. 
 ocamlLogoPath = "./_build/default/program.exe"
 sp = subprocess.Popen(ocamlLogoPath, shell=False, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=False)
 
@@ -32,92 +32,8 @@ make_nonblock(sp.stdout.fileno())
 make_nonblock(sp.stderr.fileno())
 
 
-# write a program to the subprocess
-
-square_prog = """
-(
-	loop 0 4 (
-		move (ul * 2) (ua / 4) )
-)
-"""
-g_lp_count = 10
 image_resolution = 30
-image_count = 5 # how many images to keep around
-
-def ocaml_run(prog_str):
-	global g_lp_count
-	lp = logod_pb2.Logo_program()
-	lp.id = g_lp_count
-	g_lp_count = g_lp_count + 1
-	lp.prog = prog_str
-	lp.resolution = image_resolution
-	lp.log_en = False # logging off = 14.2 sec; on = 23.6 sec
-	q = lp.SerializeToString()
-	# print(f"sending len {len(q)}", lp)
-	sp.stdin.write(q)
-	sp.stdin.flush()
-	print("\n")
-
-	streams = [ sp.stdout ]
-	temp0 = []
-	readable, writable, exceptional = select.select(streams, temp0, temp0, 5)
-	if len(readable) == 0:
-		raise Exception("Timeout of 5 seconds reached!")
-	
-	buff = bytearray(256)
-	nrx = sp.stdout.readinto(buff)
-	if nrx <= 0:
-		print("No data received on stdout! stderr: ", sp.stderr.peek())
-	# convert the bytearray to a protobuf.. 
-	result = logod_pb2.Logo_result()
-	try: 
-		result.ParseFromString(bytes(buff[0:nrx]))
-		# print(result)
-	except Exception as inst: 
-		print("ParseFromString; stderr: ", sp.stderr.peek())
-		# print("stdout:", bytes(buff))
-		# print(f"error! could not parse protobuf; saving {nrx} bytes to bad_buffer.pb")
-		# print("debug with cat bad_buffer.pb | protoc --decode Logo_result --proto_path ./_build/default/ logod.proto")
-		# fil = open("bad_buffer.pb", "wb")
-		# fil.write(bytes(buff[0:nrx]))
-		# fil.close()
-		# print(inst)
-		# # make a comparison
-		# lr = logod_pb2.Logo_result()
-		# lr.id = lp.id
-		# lr.stride = 32
-		# lr.width = 32
-		# lr.height = 32
-		# seg = lr.segs.add()
-		# seg.x0 = 0.0
-		# seg.y0 = 0.0
-		# seg.x1 = 1.0
-		# seg.y1 = 0.0
-		# lr.cost = 1.0
-		# q = lr.SerializeToString()
-		# print(f"should be {len(q)}: ", lr.SerializeToString())
-		# fil = open("good_buffer.pb", "wb")
-		# fil.write(lr.SerializeToString())
-		# fil.close()
-
-
-	buff2 = bytearray(1500)
-	n = sp.stderr.readinto(buff2)
-	if n != result.stride * result.height: 
-		# print("unexpected number of bytes in image, ", n)
-		return None
-	else: 
-		# do something else with this image..
-		a = np.frombuffer(buff2, dtype=np.uint8, count=n)
-		a = np.reshape(a, (result.height, result.stride))
-		a = a[:, 0:result.width]
-		# plt.imshow(a)
-		# plt.colorbar()
-		# plt.show()
-		return a
-
-ocaml_run(square_prog)
-ocaml_run("( move 1 1 )")
+image_count = 4*4096 # how many images to keep around
 
 
 tokens = [" ", "(", ")",";","+ ","- ","* ","/ ", 
@@ -195,49 +111,24 @@ def check_formed(prog) :
 def prog_to_human(prog): 
 	return list(map(lambda i : tokens[i], prog))
 
-def enumerate_programs(n_levels, level, prog): 
-	if level == n_levels: 
-		a = check_formed(prog)
-		if a is not None: 
-			# logf.write(prog_to_string(prog))
-			# logf.write("\n")
-			return (prog, a)
-		else:
-			return None
-	lst = []
-	for i in range(toklen - 1): 
-		q = enumerate_programs(n_levels, level+1, prog + [i])
-		if q is not None: 
-			if type(q) is tuple: # leaf call
-				lst.append(q)
-			if type(q) is list: 
-				lst = lst + q # list of (list, np_array). 
-	if len(lst) > 0: 
-		return lst
-	else : 
-		return None
 
-# valid = enumerate_programs(4, 0, [])
-# print(valid)
-# for item in valid: 
-# 	prog, a = item
-# 	print(prog)
-# print(len(valid))
-
-db_img = th.zeros(image_count, image_resolution, image_resolution)
+db_img = th.ones(image_count, image_resolution, image_resolution)*-100 # prevent spurious matches
 db_prog = []
+db_progenc = []
 db_segs = []
 db_cnt = 0
 
+num_rejections = 0
+num_replacements = 0
 while db_cnt < image_count: 
-	lp = logod_pb2.Logo_last()
-	lp.last_id = db_cnt
-	lp.last_keep = False
-	lp.log_en = True
+	lp = logod_pb2.Logo_request()
+	lp.id = db_cnt
+	lp.log_en = False
+	lp.res = image_resolution
 	q = lp.SerializeToString()
 	sp.stdin.write(q)
 	sp.stdin.flush()
-	print("\n")
+	#print("requesting a new program + image pair; bytes",len(q))
 	
 	streams = [ sp.stdout ]
 	temp0 = []
@@ -245,7 +136,7 @@ while db_cnt < image_count:
 	if len(readable) == 0:
 		raise Exception("Timeout of 5 seconds reached!")
 	
-	buff = bytearray(512)
+	buff = bytearray(1024)
 	nrx = sp.stdout.readinto(buff)
 	if nrx <= 0:
 		print("No data received on stdout! stderr: ", sp.stderr.peek())
@@ -255,7 +146,7 @@ while db_cnt < image_count:
 		result.ParseFromString(bytes(buff[0:nrx]))
 		# print(result)
 	except Exception as inst: 
-		print("ParseFromString; stderr: ", sp.stderr.peek())
+		print("ParseFromString; ", nrx, buff[0:nrx], "stderr:", sp.stderr.peek())
 		
 	buff2 = bytearray(1500)
 	n = sp.stderr.readinto(buff2)
@@ -266,22 +157,75 @@ while db_cnt < image_count:
 		a = np.frombuffer(buff2, dtype=np.uint8, count=n)
 		a = np.reshape(a, (result.height, result.stride))
 		a = a[:, 0:result.width]
+		a = th.tensor(a)
 		if db_cnt > 0 : 
 			d = th.sum((db_img - a)**2, (1,2))
-			m = th.min(d)
-			if m > 5: 
-				# add to the database. 
-				db_img[db_cnt, :, :] = a
-				db_prog[db_cnt] = result.prog
-				# need to convert pb to native
-				pdb.set_trace()
-				db_segs[db_cnt] = result.segs
-				db_cnt = db_cnt + 1
-				
-				plt.imshow(a)
+			mindex = th.argmin(d)
+			dist = d[mindex]
+		else: 
+			mindex = 0
+			dist = 15.0
+			
+		lpr = logod_pb2.Logo_last()
+		if dist > 10: 
+			# add to the database. 
+			db_img[db_cnt, :, :] = a
+			db_prog.append(result.prog)
+			db_progenc.append(result.progenc)
+			db_segs.append(result.segs.reverse())
+			
+			lpr.keep = True
+			lpr.where = db_cnt
+			lpr.render_simplest = (db_cnt == image_count-1)
+			
+			print(db_cnt, num_rejections, num_replacements, result.prog)
+			
+			db_cnt = db_cnt+1
+			
+			if False: 
+				plt.imshow(a.cpu().numpy())
 				plt.colorbar()
 				plt.show()
+		else: 
+			num_rejections = num_rejections+1
+			# reject the more complex representation.
+			if len(db_progenc[mindex]) > len(result.progenc) :
+				print(f"replacing {mindex} with {db_cnt}")
+				lpr.keep = True
+				lpr.where = mindex
+				db_img[mindex, :, :] = a
+				db_prog[mindex] = result.prog
+				db_progenc[mindex] = result.progenc
+				db_segs[mindex] = result.segs.reverse()
+				num_replacements += 1
+			else: 
+				lpr.keep = False
+				lpr.where = -1
+		q = lpr.SerializeToString()
+		#print("responding; bytes", len(q))
+		sp.stdin.write(q)
+		sp.stdin.flush()
+		
+		streams = [ sp.stdout ]
+		temp0 = []
+		readable, writable, exceptional = select.select(streams, temp0, temp0, 5)
+		if len(readable) == 0:
+			raise Exception("Timeout of 5 seconds reached!")
+		
+		nrx = sp.stdout.readinto(buff)
+		if nrx <= 0:
+			print("No data received on stdout! stderr: ", sp.stderr.peek())
+		result = logod_pb2.Logo_ack()
+		try: 
+			result.ParseFromString(bytes(buff[0:nrx]))
+			# print(result)
+		except Exception as inst: 
+			print("ParseFromString; ", nrx, buff[0:nrx], "stderr:", sp.stderr.peek())
 
+
+print(f"done with {image_count} unique image-program pairs")
+print(f"there were {num_rejections} rejections due to image space collisions")
+print(f"of these, {num_replacements} were simplifications")
 
 # how many of these are actually interesting? 
 def nonzero_img(b): 

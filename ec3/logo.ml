@@ -4,16 +4,19 @@ open Vgwrapper
 
 (* variables will be referenced to the stack, de Brujin indexes *)
 (* names are more interpretable by humans ... but that's a big space *)
+type ptag = int (* future-proof *)
+let nulptag = 0
+
 type prog = [
-	| `Var of int 
-	| `Save of int * prog
-	| `Move of prog * prog (* angle and distance *)
-	| `Binop of prog * string * (float -> float -> float) * prog
-	| `Const of float
-	| `Seq of prog list
-	| `Loop of int * prog * prog (* iterations and body *)
-	| `Call of int * prog list (* list of arguments *)
-	| `Def of int * prog (* same sig as `Save *)
+	| `Var of int * ptag
+	| `Save of int * prog * ptag
+	| `Move of prog * prog * ptag(* angle & distance *)
+	| `Binop of prog * string * (float -> float -> float) * prog * ptag
+	| `Const of float * ptag
+	| `Seq of prog list * ptag
+	| `Loop of int * prog * prog * ptag(* iterations & body *)
+	| `Call of int * prog list * ptag (* list of arguments *)
+	| `Def of int * prog * ptag(* same sig as `Save *)
 (* 	| Cmp of prog * (float -> float -> bool) * prog *)
 	| `Nop
 ]
@@ -25,71 +28,165 @@ let iof = int_of_float
 
 let rec output_program_h lg g =
 	match g with
-	| `Var i -> Printf.fprintf lg "Var %d " i
-	| `Save(i,a) -> Printf.fprintf lg "Save %d " i; 
+	| `Var(i,_) -> Printf.fprintf lg "Var %d " i
+	| `Save(i,a,_) -> Printf.fprintf lg "Save %d " i; 
 			output_program_h lg a
-	| `Move(a,b) -> Printf.fprintf lg "Move "; 
+	| `Move(a,b,_) -> Printf.fprintf lg "Move "; 
 			output_program_h lg a; 
 			Printf.fprintf lg ", " ; 
 			output_program_h lg b
-	| `Binop(a,s,_,b) -> Printf.fprintf lg "Binop "; 
+	| `Binop(a,s,_,b,_) -> Printf.fprintf lg "Binop "; 
 			output_program_h lg a; 
 			Printf.fprintf lg " %s " s; 
 			output_program_h lg b
-	| `Const(i) -> Printf.fprintf lg "Const %f " i
-	| `Seq l -> output_list lg l true "; "
-	| `Loop(i,a,b) -> Printf.fprintf lg "Loop [%d] " i; 
+	| `Const(i,_) -> Printf.fprintf lg "Const %f " i
+	| `Seq(l,_) -> output_list_h lg l "; "
+	| `Loop(i,a,b,_) -> Printf.fprintf lg "Loop [%d] " i; 
 			output_program_h lg a; 
 			Printf.fprintf lg ", " ; 
 			output_program_h lg b
-	| `Call(i, l) -> Printf.fprintf lg "Call %d " i;
-		output_list lg l true ", "
-	| `Def(i, a) -> Printf.fprintf lg "Def %d " i;
+	| `Call(i, l,_) -> Printf.fprintf lg "Call %d " i;
+		output_list_h lg l ", "
+	| `Def(i,a,_) -> Printf.fprintf lg "Def %d " i;
 		output_program_h lg a
 	| `Nop -> Printf.fprintf lg "Nop "
 			
-and output_program_p lg g = (* p is for parseable *)
+and output_program_p bf g = (* p is for parseable *)
 	match g with
-	| `Var i -> Printf.fprintf lg "v%d " i
-	| `Save(i,a) -> Printf.fprintf lg "v%d = ( " i; 
-			output_program_p lg a; 
-			Printf.fprintf lg ") "; 
-	| `Move(a,b) -> Printf.fprintf lg "move "; 
-			output_program_p lg a; 
-			Printf.fprintf lg ", " ; 
-			output_program_p lg b
-	| `Binop(a,s,_,b) -> 
-			Printf.fprintf lg "( "; 
-			output_program_p lg a; 
-			Printf.fprintf lg " %s " s; 
-			output_program_p lg b; 
-			Printf.fprintf lg ") "
-	| `Const(i) -> (
+	| `Var(i,_) -> Printf.bprintf bf "v%d " i
+	| `Save(i,a,_) -> Printf.bprintf bf "v%d = " i; 
+			output_program_p bf a; 
+			Printf.bprintf bf " "; 
+	| `Move(a,b,_) -> Printf.bprintf bf "move "; 
+			output_program_p bf a; 
+			Printf.bprintf bf ", " ; 
+			output_program_p bf b
+	| `Binop(a,s,_,b,_) -> 
+			Printf.bprintf bf "( "; 
+			output_program_p bf a; 
+			Printf.bprintf bf " %s " s; 
+			output_program_p bf b; 
+			Printf.bprintf bf ") "
+	| `Const(i,_) -> (
 		match i with
-		| x when x > 0.99 && x < 1.01 -> Printf.fprintf lg "ul "; 
-		| x when x > 6.28 && x < 6.29 -> Printf.fprintf lg "ua "; 
-		| x -> Printf.fprintf lg "%d " (int_of_float x); 
+		| x when x > 0.99 && x < 1.01 -> Printf.bprintf bf "ul "; 
+		| x when x > 6.28 && x < 6.29 -> Printf.bprintf bf "ua "; 
+		| x -> Printf.bprintf bf "%d " (int_of_float x); 
 		)
-	| `Seq l -> output_list lg l false "; "
-	| `Loop(i,a,b) -> Printf.fprintf lg "loop %d , " i; 
-			output_program_p lg a; 
-			Printf.fprintf lg ", (" ; 
-			output_program_p lg b; 
-			Printf.fprintf lg ") " 
-	| `Call(i, l) -> Printf.fprintf lg "c%d " i;
-		output_list lg l false ", "
-	| `Def(i, a) -> Printf.fprintf lg "d%d " i;
-		output_program_p lg a
+	| `Seq(l,_) -> output_list_p bf l "; "
+	| `Loop(i,a,b,_) -> Printf.bprintf bf "loop %d , " i; 
+			output_program_p bf a; 
+			Printf.bprintf bf ", (" ; 
+			output_program_p bf b; 
+			Printf.bprintf bf ") " 
+	| `Call(i,l,_) -> Printf.bprintf bf "c%d " i;
+		output_list_p bf l ", "
+	| `Def(i,a,_) -> Printf.bprintf bf "d%d " i;
+		output_program_p bf a
 	| `Nop -> ()
 	
-and output_list lg l h sep =
+and output_list_h lg l sep =
 	Printf.fprintf lg "("; 
 	List.iteri ~f:(fun i v -> 
 		if i > 0 then Printf.fprintf lg "%s" sep ;
-		if h then output_program_h lg v
-		else output_program_p lg v) l ; 
+		output_program_h lg v) l ; 
 	Printf.fprintf lg ")"
 	
+and output_list_p bf l sep =
+	Printf.bprintf bf "("; 
+	List.iteri ~f:(fun i v -> 
+		if i > 0 then Printf.bprintf bf "%s" sep ;
+		output_program_p bf v) l ; 
+	Printf.bprintf bf ")"
+	
+and output_program_plg lg g = 
+	let bf = Buffer.create 64 in
+	output_program_p bf g; 
+	Printf.fprintf lg "%s" (Buffer.contents bf)
+
+let enc_char1 c = 
+	match c with
+	| "(" -> 0
+	| ")" -> 1
+	| "," -> 2
+	| ";" -> 3
+	| "+" -> 4
+	| "-" -> 5
+	| "*" -> 6
+	| "/" -> 7
+	| "var" -> 8
+	| "save" -> 9
+	| "move" -> 10
+	| "ua" -> 11
+	| "ul" -> 12
+	| "loop" -> 13
+	| "def" -> 14
+	| _ -> 15
+	
+let enc_char c s = 
+	s := (enc_char1 c) :: !s
+	
+let enc_int i s = 
+	s := (-1*i) :: !s
+	
+let rec enc_prog g s = 
+	(* convert a program to integers.  For the transformer. *)
+	(* output list is in REVERSE order *)
+	match g with 
+	| `Var(i,_) -> ( 
+		enc_char "var" s; 
+		enc_int i s)
+	| `Save(i,a,_) -> ( 
+		enc_char "save" s; 
+		enc_int i s; 
+		enc_prog a s )
+	| `Move(a,b,_) -> (
+		enc_char "move" s; 
+		enc_prog a s; 
+		enc_char "," s; 
+		enc_prog b s ) 
+	| `Binop(a,sop,_,b,_) -> (
+		enc_char "(" s; 
+		enc_prog a s; 
+		enc_char sop s;
+		enc_prog b s ; 
+		enc_char ")" s)
+	| `Const(i,_) -> (
+		match i with
+		| x when x > 0.99 && x < 1.01 -> enc_char "ul" s; 
+		| x when x > 6.28 && x < 6.29 -> enc_char "ua" s; 
+		| x -> enc_int (iof x) s; 
+		)
+	| `Seq(l,_) -> (
+		enc_char "(" s; 
+		List.iteri ~f:(fun i a ->
+			if i > 0 then (enc_char ";" s);
+			enc_prog a s) l ; 
+		enc_char ")" s )
+	| `Loop(i,a,b,_) -> (
+		enc_char "loop" s; 
+		enc_int i s; 
+		enc_char "," s; 
+		enc_prog a s; 
+		enc_char "(" s; 
+		enc_prog b s; 
+		enc_char ")" s )
+	| `Call(i,l,_) -> (
+		enc_char "call" s; 
+		enc_int i s; 
+		List.iteri ~f:(fun i a ->
+			if i > 0 then (enc_char "," s);
+			enc_prog a s) l )
+	| `Def(i,a,_) -> (
+		enc_char "def" s; 
+		enc_int i s; 
+		enc_prog a s )
+	| `Nop -> ()
+	
+let encode_program g = 
+	let s = ref [] in
+	enc_prog g s; 
+	List.rev !s
 
 type state =
   { x : float
@@ -110,71 +207,93 @@ let output_segments lg seglist =
 			"%d %f,%f %f,%f\n" 
 			i x1 y1 x2 y2) seglist
 
-let start_state = {x=0.0; y=0.0; t=0.0; p=true; r=0;
-		stk=Array.create ~len:10 0.0}
+let start_state () = 
+	{x=0.0; y=0.0; t=0.0; p=true; r=0;
+		stk=Array.create ~len:10 (-1.0e9)}
  
 (* eval needs to take a state & program
 and return new state & (bool * float) result & segment list *)
-let rec eval (st:state) (pr:prog) = 
+let rec eval (st0:state) (pr:prog) = 
+	let reclim = 512 in
+	let overlim = reclim+10 in
+	let nullret () = 
+		(*Printf.printf "nulret!\n"; *)
+		({st0 with r=overlim}, (false, (-1e9)), []) in
+	if st0.r < reclim then (
+	let st = {st0 with r=st0.r+1} in
 	match pr with 
-	| `Var(i) -> 
+	| `Var(i,_) -> 
 		if i >= 0 && i < 10 then (
-			(st, (true, st.stk.(i)), [])
+			if st.stk.(i) < -1e6 then (
+				nullret()
+			) else (st, (true, st.stk.(i)), [])
 		) else (
-			(st, (false, 0.0), [])
+			nullret()
 		)
-	| `Save(i, a) -> 
+	| `Save(i,a,_) -> 
 		if i >= 0 && i < 10 then (
 			let (sta, resa, seg) = eval st a in
 			sta.stk.(i) <- (snd resa) ;
 			(sta, resa, seg)
 		)  else (
-			(st, (false, 0.0), [])
+			nullret()
 		)
-	| `Move(a, b) -> (* distance, angle -- applied in that order *)
+	| `Move(a,b,_) -> (* distance, angle -- applied in that order *)
 		let (sta, resa, _) = eval st a in
 		let (stb, resb, _) = eval sta b in
-		let dist = snd resa in
-		let ang = snd resb in
-		let x' = stb.x +. (dist *. Float.cos(stb.t)) in 
-		let y' = stb.y +. (dist *. Float.sin(stb.t)) in 
-		let t' = stb.t +. ang in
-		let st2 = {stb with x = x'; y = y'; t = t' } in
-		let seg = st.x, st.y, st2.x, st2.y in
-		(st2, (true, dist), [seg])
-	| `Binop(a, s, f, b) -> 
+		if stb.r < reclim then (
+			let dist = snd resa in
+			let dist = if dist < 0. then 0. else dist in (* not necc...*)
+			let ang = snd resb in
+			let x' = stb.x +. (dist *. Float.cos(stb.t)) in 
+			let y' = stb.y +. (dist *. Float.sin(stb.t)) in 
+			let t' = stb.t +. ang in
+			let st2 = {stb with x = x'; y = y'; t = t' } in
+			let seg = st.x, st.y, st2.x, st2.y in
+			(*Printf.printf "emitting seg (%d)\n" st2.r; *)
+			(*Out_channel.flush stdout;*)
+			(st2, (true, dist), [seg])
+		) else nullret()
+	| `Binop(a, s, f, b,_) -> 
 		let (sta, resa, _) = eval st a in
 		let (stb, resb, _) = eval sta b in
-		let ra = snd resa in
-		let rb = snd resb in
-		let r = match s with
-		| "/" -> (
-			if rb < 0.001 && rb > -0.001 
-			then ra (* don't divide by zero *)
-			else f ra rb )
-		| _ -> f ra rb in
-		(stb, (true, r), [])
-	| `Const(f) -> 
+		if stb.r < reclim then (
+			let ra = snd resa in
+			let rb = snd resb in
+			let r = match s with
+			| "/" -> (
+				if rb < 0.001 && rb > -0.001 
+				then ra (* don't divide by zero *)
+				else f ra rb )
+			| _ -> f ra rb in
+			(stb, (true, r), [])
+		) else nullret()
+	| `Const(f,_) -> 
 		(st, (true, f), [])
-	| `Seq(program_list) -> 
-			List.fold_left ~f:(fun (st2,_,segments) sub_prog -> 
-				let st3, res3, seg = eval st2 sub_prog in
-				(st3, res3, (List.append seg segments) ) )
+	| `Seq(program_list,_) -> 
+			List.fold_left ~f:(fun (st2,res2,segments) sub_prog -> 
+				if st2.r < reclim then (
+					let st3, res3, seg = eval st2 sub_prog in
+					(st3, res3, (List.append seg segments) ) 
+				) else (st2,res2,segments) )
 				~init:(st, (true,0.0), []) program_list
-	| `Loop(indx, niter, body) -> 
+	| `Loop(indx, niter, body,_) -> 
 		if indx >= 0 && indx < 10 then (
 			let (sta, resa, _) = eval st niter in
 			let n = iof (snd resa) in
 			let cntlist = List.init n ~f:(fun i -> i) in
-			List.fold_left ~f:( fun(st2,_,segments) i -> 
-				st2.stk.(indx) <- foi i;
-				let st3, res3, seg = eval st2 body in
-				(st3, res3, (List.append seg segments) ) )
-				~init:(sta, (true,0.0), []) cntlist
-		) else (
-			(st, (false, 0.0), [])
-		)
-	| `Call(indx, program_list) ->
+			(*Printf.printf "loop of %d using v%d (%d)\n" n indx (st.r);*) 
+			(*Out_channel.flush stdout;*)
+			List.fold_left ~f:(fun (st2,res2,segments) i -> 
+				if st2.r < reclim then (
+					st2.stk.(indx) <- foi i;
+					let st3, res3, seg = eval st2 body in
+					(st3, res3, (List.append seg segments) ) 
+				) else (st2,res2,segments) )
+				~init:(sta, (true,0.0),[]) cntlist
+		) else nullret()
+	| `Call(indx, program_list,_) ->
+		(* this needs to be updated for the recursion limit *)
 		if defs.(indx) <> `Nop then (
 			if List.length program_list < 5 then (
 				(* make a new stack and populate it *)
@@ -182,19 +301,19 @@ let rec eval (st:state) (pr:prog) =
 				let res = List.map ~f:(fun subprog ->
 					let _st, res2, _seg = eval st subprog in
 					res2 ) program_list in
-				let st3 = {x=st.x; y=st.y; t=st.t; p=st.p; r=st.r;
-					stk=Array.create ~len:10 0.0 } in
+				let st3 = {x=st.x;y=st.y;t=st.t;p=st.p;r=st.r; stk=(Array.create ~len:10 (-1e9)) } in
 				List.iteri ~f:(fun i v -> st3.stk.(i) <- snd v) res ;
 				let _st4, res4, seg4 = eval st3 defs.(indx) in
 				(* call does not affect state *)
 				(st, res4, seg4)
-			) else (st, (false, 0.0), [])
-		) else (st, (false, 0.0), [])
-	| `Def(indx, body) ->
+			) else nullret()
+		) else nullret()
+	| `Def(indx, body, _) ->
 		if (indx >= 0 && indx < 10) then (
 			defs.(indx) <- body ) ;
 		(st, (false, 0.0), [])
 	| `Nop -> (st, (false, 0.0), [])
+	) else (st0, (false, 0.0), [])
 
 let center_segs l =
 	let rec minimum = function

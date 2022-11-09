@@ -1,5 +1,6 @@
 {
 open Parser
+open Lexing
 
 exception SyntaxError of string
 
@@ -8,6 +9,13 @@ let remove_first_char s =
   
 let ios_tok s =
   remove_first_char s |> int_of_string
+
+let next_line lexbuf =
+  let pos = lexbuf.lex_curr_p in
+  lexbuf.lex_curr_p <-
+    { pos with pos_bol = lexbuf.lex_curr_pos;
+              pos_lnum = pos.pos_lnum + 1
+    }
 }
 
 
@@ -48,5 +56,12 @@ rule read =
   | ':'      { COLON }
   | ';'      { SEMICOLON }
   | ','      { COMMA }
+  | '='     { EQUALS }
+  | "//"    { read_single_line_comment lexbuf }
   | _ { raise (SyntaxError ("Unexpected char: " ^ Lexing.lexeme lexbuf)) }
   | eof      { EOF }
+
+and read_single_line_comment = parse
+  | newline { next_line lexbuf; read lexbuf }
+  | eof { EOF }
+  | _ { read_single_line_comment lexbuf }

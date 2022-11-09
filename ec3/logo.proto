@@ -10,16 +10,35 @@ message Logo_program {
 
 message Logo_seg {
 	float x0 = 1; 
-	float y0 = 2; 
+	float y0 = 2;  
 	float x1 = 3; 
 	float y1 = 4; 
 }
 
-message Logo_result {
+message Logo_result { 
 	int32 id = 1  [(ocaml_type) = int_t];
 	int32 stride = 2  [(ocaml_type) = int_t];
 	int32 width = 3  [(ocaml_type) = int_t];
 	int32 height = 4  [(ocaml_type) = int_t];
 	repeated Logo_seg segs = 5;  
-	float cost = 6 ;
+	float cost = 6;
+	string prog = 7; 
+	string progenc = 8; 
+}
+
+message Logo_request {
+	int32 id = 1 [(ocaml_type) = int_t];
+	bool log_en = 2; 
+	int32 res = 3 [(ocaml_type) = int_t];
+}
+
+message Logo_last {
+	bool keep = 22 ; 
+	int32 where = 23 [(ocaml_type) = int_t];
+	bool render_simplest = 24;
+}
+
+message Logo_ack {
+	bool going = 25 ; 
+	int32 ackid = 1 [(ocaml_type) = int_t];
 }
