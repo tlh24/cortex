@@ -6,14 +6,18 @@ open Unix
 open Logo
 
 type pdata = 
-	{ pro  : Logo.prog
+	{ pid : int
+	; pro  : Logo.prog
+	; progenc : string
 	; img  : (int, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
 	; cost : float
 	; segs : Logo.segment list
 	}
 	
 let nulpdata = 
-	{ pro  = `Nop 
+	{ pid = -1
+	; pro  = `Nop 
+	; progenc = ""
 	; img  = Bigarray.Array1.create Bigarray.int8_unsigned Bigarray.c_layout 1
 	; cost = -1.0 
 	; segs = [] 
@@ -69,18 +73,47 @@ let intlist_to_string e =
 	List.iter (fun a -> Buffer.add_char bf (cof_int a)) e;
 	Buffer.contents bf
 
+let encode_program_str prog = 
+	Logo.encode_program prog |> intlist_to_string 
+	
+let read_protobuf lg ic pfunc = 
+	(* polymorphic! so cool *)
+	let buf = Bytes.create 256 in
+	let len = input ic buf 0 256 in
+	if !g_logEn && len > 0 then (
+		Printf.fprintf lg "read_protobuf: got %d bytes from stdin\n" len ); 
+	if len > 0 then (
+		let lp = try 
+			Some ( pfunc
+				(Pbrt.Decoder.of_bytes (Bytes.sub buf 0 len)))
+		with _ -> ( 
+			print_log lg "Could not decode protobuf\n";
+			None
+		) in
+		lp
+	) else (
+		Unix.sleepf 0.01; 
+		None
+	)
+	
+let write_protobuf sout pfunc r = 
+	let encoder = Pbrt.Encoder.create () in 
+	pfunc r encoder; 
+	output_bytes sout (Pbrt.Encoder.to_bytes encoder);
+	flush sout
     
-let parse_and_render lg sout serr lexbuf id res =
-	print_log lg "enter parse_and_render\n";
-	let prog = parse_with_error lg serr lexbuf in
+let run_prog lg sout serr prog id res =
+	print_log lg "enter run_prog\n";
 	match prog with
 	| Some(prog) -> (
 		let (_,_,segs) = Logo.eval (Logo.start_state ()) prog in
-		if !g_logEn then Logo.output_program_h lg prog; 
-		print_log lg "\n"; 
-		if !g_logEn then Logo.output_segments lg segs; 
-		print_log lg "\n"; 
-		Logo.segs_to_png segs res "test.png";
+		if !g_logEn then ( 
+			Logo.output_program_h lg prog; 
+			print_log lg "\n"; 
+			Logo.output_segments lg segs; 
+			print_log lg "\n"; 
+			Logo.segs_to_png segs res "test.png"
+		); 
 		let arr,cost = Logo.segs_to_array_and_cost segs res in
 		let stride = (Bigarray.Array1.dim arr) / res in
 		let bf = Buffer.create 30 in
@@ -104,13 +137,11 @@ let parse_and_render lg sout serr lexbuf id res =
 		output_bytes serr arr ;
 
 		(* Create a Protobuf encoder and encode value *)
-		let encoder = Pbrt.Encoder.create () in 
-		Logo_pb.encode_logo_result r encoder; 
-		output_bytes sout (Pbrt.Encoder.to_bytes encoder);
+		write_protobuf sout Logo_pb.encode_logo_result r; 
 
 		if !g_logEn then (
-			Printf.fprintf lg "result %s\n" (Format.asprintf "%a" Logo_pp.pp_logo_result r);
-			print_log lg "parse_and_render done\n"
+			Printf.fprintf lg "run_prog result %s\n" (Format.asprintf "%a" Logo_pp.pp_logo_result r);
+			print_log lg "run_prog done\n"
 		); 
 		flush sout; 
 		flush serr; 
@@ -121,9 +152,21 @@ let parse_and_render lg sout serr lexbuf id res =
 		flush serr; 
 		false )
 
-			 
-(* now, wait a second here ... we can evaluate programs much more efficiently than in python, since we have the ASTs here *)
-(* will return a list of list of progs. *)
+let parse_logo_string lg serr s = 
+	let lexbuf = Lexing.from_string s in
+	lexbuf.lex_curr_p <- { lexbuf.lex_curr_p with pos_fname = "from string" };
+	parse_with_error lg serr lexbuf
+	
+let parse_logo_file lg serr fname = 
+	let ic = open_in fname in
+	let s = really_input_string ic (in_channel_length ic) in
+	close_in ic;
+	parse_logo_string lg serr s
+
+let run_logo_file lg sout serr fname =
+	let prog = parse_logo_file lg serr fname in
+	ignore(run_prog lg sout serr prog 0 256 )
+
 
 let num_actvar actvar =
 	Array.fold_left (fun a b -> if b then a+1 else a) 0 actvar
@@ -227,6 +270,9 @@ let rec mark_ast ast n sel =
 	| `Save(i,a,_) -> ( if !n = sel then
 		(incr n; `Save(i,(mark_ast a n sel),1) ) else 
 		(incr n; `Save(i,(mark_ast a n sel),nulptag) ) )
+	| `Move(a,b,_) -> ( if !n = sel then
+		(incr n; `Move((mark_ast a n sel),(mark_ast b n sel),1) ) else 
+		(incr n; `Move((mark_ast a n sel),(mark_ast b n sel),nulptag) ) )
 	| `Binop(a,s,f,b,_) -> ( if !n = sel then
 		(incr n; `Binop((mark_ast a n sel),s,f,(mark_ast b n sel),1) ) else 
 		(incr n; `Binop((mark_ast a n sel),s,f,(mark_ast a n sel),nulptag) ) )
@@ -285,11 +331,13 @@ let rec chng_ast ast st =
 		( `Def(i, chng_ast a st, nulptag ) ) )
 	| `Nop -> `Nop
 	
-let change_ast ast = 
+let change_ast ast lg = 
 	let cnt = count_ast ast in
 	let n = ref 0 in
 	let sel = Random.int cnt in
+	printf "count_ast %d labelling %d\n" cnt sel;
 	let marked = mark_ast ast n sel in
+	Logo.output_program_h lg marked ; 
 	let actvar = Array.init 5 (fun _i -> false) in
 	let st = (2,3,actvar) in
 	chng_ast marked st
@@ -452,8 +500,7 @@ let rec compress_ast ast =
 	let ast3 = if !change then compress_ast ast2 else ast2 in
 	if has_move ast3 then ast3 else `Nop
   
-  
-let rec loop_input lg sout serr ic buf cnt = 
+(*let rec loop_input lg sout serr ic buf cnt = 
 (*	let (readch, _, _) = select [stdin] [] [] 1.0 in
 	(* select doesn't seem to work .. *)
 	if List.length readch > 0 && cnt < 1000 then (  *)
@@ -479,22 +526,13 @@ let rec loop_input lg sout serr ic buf cnt =
 				print_log lg "\n"
 			); 
 
-			let lexbuf = Lexing.from_string lp.prog in
-			lexbuf.lex_curr_p <- { lexbuf.lex_curr_p with pos_fname = "from stdin" };
-			ignore(parse_and_render lg sout serr lexbuf lp.id lp.resolution ) )
+			let prog = parse_logo_string lg serr lp.prog in 
+			ignore(run_prog lg sout serr prog lp.id lp.resolution ) )
 		| None -> ()
 	) ;
 	if cnt < 10000000 then (
 		loop_input lg sout serr ic buf (cnt+1)
-	) else true
-
-let run_logo_file lg sout serr fname =
-	let ic = open_in fname in
-	let s = really_input_string ic (in_channel_length ic) in
-	close_in ic;
-	let lexbuf = Lexing.from_string s in
-	lexbuf.lex_curr_p <- { lexbuf.lex_curr_p with pos_fname = fname };
-	ignore(parse_and_render lg sout serr lexbuf 0 256 )
+	) else true*)
 
 let segs_bbx segs = 
 	let minx = List.fold_left 
@@ -508,15 +546,16 @@ let segs_bbx segs =
 	(minx,maxx,miny,maxy)
 	
 let rec generate_random_logo lg id res =
-	if !g_logEn then Printf.fprintf lg "program %d : \n" id;
+	(*if !g_logEn then Printf.fprintf lg "program %d : \n" id;*)
 	let actvar = Array.init 5 (fun _i -> false) in
 	(*Printf.printf "=======\n";*) 
 	let prog = gen_ast false (3,3,actvar) in
-	if !g_logEn then Logo.output_program_plg lg prog;
-	if !g_logEn then Printf.fprintf lg "\ncompressed %d : \n" id;
+	(*if !g_logEn then Logo.output_program_plg lg prog;*)
+	(*if !g_logEn then Printf.fprintf lg "\ncompressed %d : \n" id;*)
 	let pro = compress_ast prog in
-	if !g_logEn then Logo.output_program_plg lg pro;
-	if !g_logEn then Printf.fprintf lg "\n\n";
+	let progenc = Logo.encode_program pro |> intlist_to_string in
+	(*if !g_logEn then Logo.output_program_plg lg pro;
+	if !g_logEn then Printf.fprintf lg "\n\n";*)
 	
 	let (_,_,segs) = Logo.eval (Logo.start_state ()) pro in
 	(* heuristics for selecting programs... *)
@@ -531,20 +570,18 @@ let rec generate_random_logo lg id res =
 		if !g_logEn && id < 1024 then
 			Logo.segs_to_png segs res (Printf.sprintf "png/test%d.png" id);
 		let img, _ = Logo.segs_to_array_and_cost segs res in
-		{pro; img; cost; segs}
+		{pid=id; pro; progenc; img; cost; segs}
 	) else ( 
 		generate_random_logo lg id res
 	)
 
-let transmit_result channels data id res = 
+let transmit_result channels data res = 
 	let sout, serr, _ic, lg = channels in
 	let stride = (Bigarray.Array1.dim data.img) / res in
 	let bf = Buffer.create 30 in
 	Logo.output_program_p bf data.pro; 
-	let progenc = Logo.encode_program data.pro 
-		|> intlist_to_string in
 	let r = Logo_types.({
-		id = id; 
+		id = data.pid; 
 		stride = stride; 
 		width = res; 
 		height = res; 
@@ -552,35 +589,30 @@ let transmit_result channels data id res =
 			Logo_types.({x0=x0; y0=y0; x1=x1; y1=y1;})) data.segs; 
 		cost = data.cost; 
 		prog = Buffer.contents bf; 
-		progenc = progenc
+		progenc = data.progenc
 	}) in
 	(* write the data to stderr, message to stdout *)
 	let arr = bigarray_to_bytes data.img in
 	output_bytes serr arr ;
-
-	(* Create a Protobuf encoder and encode value *)
-	let encoder = Pbrt.Encoder.create () in 
-	Logo_pb.encode_logo_result r encoder; 
-	output_bytes sout (Pbrt.Encoder.to_bytes encoder);
+	flush serr; 
+	
+	write_protobuf sout Logo_pb.encode_logo_result r; 
 
 	if !g_logEn then (
-		Printf.fprintf lg "result %s\n" (Format.asprintf "%a" Logo_pp.pp_logo_result r);
+		Printf.fprintf lg "transmit_result %s\n" (Format.asprintf "%a" Logo_pp.pp_logo_result r);
 		print_log lg "transmit_result done\n"
 	); 
-	flush sout; 
-	flush serr 
+	flush sout
 	
 let transmit_ack channels id = 
 	let sout, _serr, _ic, _lg = channels in
 	let r = Logo_types.({ going=true; ackid=id;}) in
-	let encoder = Pbrt.Encoder.create () in 
-	Logo_pb.encode_logo_ack r encoder; 
-	output_bytes sout (Pbrt.Encoder.to_bytes encoder);
-	flush sout 
+	write_protobuf sout Logo_pb.encode_logo_ack r
 
 let render_simplest db dosort =
 	(* render the shortest 1024 programs in the database.*)
 	let dba = Vector.to_array db in
+	let dbal = Array.length dba in
 	if dosort then Array.sort (fun a b ->
 		let la = List.length a.segs in
 		let lb = List.length b.segs in
@@ -590,7 +622,7 @@ let render_simplest db dosort =
 		(* in-place sorting *)
 	let res = 48 in
 	let lg = open_out "png/log.txt" in
-	for id = 0 to 1023 do (
+	for id = 0 to min (4*1024-1) (dbal-1) do (
 		let data = dba.(id) in
 		let (_,_,segs) = Logo.eval (Logo.start_state ()) data.pro in
 		Logo.segs_to_png segs res (Printf.sprintf "png/test%d.png" id);
@@ -600,63 +632,103 @@ let render_simplest db dosort =
 	) done;
 	close_out lg
 	
-let read_protobuf lg ic pfunc = 
-	(* polymorphic! so cool *)
-	let buf = Bytes.create 256 in
-	let len = input ic buf 0 256 in
-	if !g_logEn then (
-		Printf.fprintf lg "got %d bytes from stdin\n" len ); 
-	if len > 0 then (
-		let lp = try 
-			Some ( pfunc
-				(Pbrt.Decoder.of_bytes (Bytes.sub buf 0 len)))
-		with _ -> ( 
-			print_log lg "Could not decode protobuf\n";
-			None
-		) in
-		lp
-	) else (
-		Unix.sleepf 0.01; 
-		None
-	)
+let make_batch lg db nbatch = 
+	(* make a batch of pre, post, edits *)
+	(* image is saved in python, no need to duplicate *)
+	Printf.fprintf lg "entering make_batch, req %d\n" nbatch; 
+	let dba = Vector.to_array db in
+	Array.sort (fun a b ->
+		let la = List.length a.segs in
+		let lb = List.length b.segs in
+		let na = count_ast a.pro in
+		let nb = count_ast b.pro in
+		if la = lb then compare na nb else compare la lb ) dba;
+	let ndba = Array.length dba in
+	let batch = ref [] in
+	while List.length !batch < nbatch do (
+		let na = (Random.int (ndba-21)) + 10 in
+		let nb = (Random.int 21) - 10 in
+		let nb = if nb=0 then (Random.int 2)*2-1 else nb in
+		let nb = na + nb in
+		let a = dba.(na) in
+		let b = dba.(nb) in
+		let dist,_ = Levenshtein.distance a.progenc b.progenc false in
+		if dist > 0 && dist < 4 then (
+			let _, edits = Levenshtein.distance a.progenc b.progenc true in
+			(* verify ..*)
+			let re = Levenshtein.apply_edits a.progenc edits in
+			if re <> b.progenc then (
+				Printf.fprintf lg "error! %s edits should be %s was %s\n"
+					a.progenc b.progenc re
+			); 
+			batch := (a.pid, b.pid, a.progenc, b.progenc, edits) 
+				:: !batch; 
+			Printf.fprintf lg "adding [%d] %s [%d] %s to batch\n" 
+				na a.progenc nb b.progenc; 
+			Levenshtein.print_edits edits
+		)
+	) done;
+	flush lg; 
+	!batch
 
 let rec loop_random channels cnt db = 
 	(* unlike loop_input, we generate the program here *)
 	if cnt > (100 * 20000) then () else (
-	let _sout, _serr, ic, lg = channels in
-	if !g_logEn then ( print_log lg "waiting for command\n" );
+	let sout, _serr, ic, lg = channels in
+	if !g_logEn then ( print_log lg "`" );
 	let lp = read_protobuf lg ic Logo_pb.decode_logo_request in
-	match lp with 
+	( match lp with 
 	| Some lp -> (
 		g_logEn := lp.log_en ; 
-		let data = generate_random_logo lg lp.id lp.res in
-		transmit_result channels data lp.id lp.res ; 
-		let lp2 = read_protobuf lg ic Logo_pb.decode_logo_last in
-		match lp2 with
-		| Some lp2 -> (
-			if lp2.keep && data.cost > 0. then (
-				if lp2.where = Vector.length db then (
-					if !g_logEn then Printf.fprintf lg "db saving %d push\n" lp2.where; 
-					Vector.push db data
-				) else (
-					if !g_logEn then Printf.fprintf lg "db saving %d set\n" lp2.where; 
-					Vector.set db lp2.where data
-				)
-			); 
-			if lp2.render_simplest then (
-				render_simplest db true
-			);
-			transmit_ack channels lp.id ; 
-			loop_random channels (cnt+1) db )
-		| _ -> (
-			loop_random channels (cnt+1) db ) )
-	| _ -> (
-		loop_random channels (cnt+1) db )
+		if lp.batch > 0 then (
+			(* generate a batch of data instead *)
+			let batch = make_batch lg db lp.batch in
+			let r = Logo_types.({
+				count = lp.batch; 
+				btch = List.map (fun (aid,bid,ape,bpe,editz) -> 
+					Logo_types.({
+						a_pid = aid; 
+						a_progenc = ape; 
+						b_pid = bid; 
+						b_progenc = bpe; 
+						edits = List.map (fun (s,ri,c) -> 
+							Logo_types.({
+								typ = s; 
+								pos = ri; 
+								chr = String.make 1 c ; }) ) editz; 
+						}) ) batch ; 
+				}) in
+			write_protobuf sout Logo_pb.encode_logo_batch r
+		) 
+		else (
+			let data = generate_random_logo lg lp.id lp.res in
+			transmit_result channels data lp.res ; 
+			let lp2 = read_protobuf lg ic Logo_pb.decode_logo_last in
+			match lp2 with
+			| Some lp2 -> (
+				if lp2.keep && data.cost > 0. then (
+					if lp2.where = Vector.length db then (
+						if !g_logEn then Printf.fprintf lg "db saving %d push\n" lp2.where; 
+						Vector.push db data
+					) else (
+						if !g_logEn then Printf.fprintf lg "db saving %d set\n" lp2.where; 
+						Vector.set db lp2.where data
+					)
+				); 
+				if lp2.render_simplest then (
+					if !g_logEn then Printf.fprintf lg "render_simplest\n";
+					render_simplest db true
+				);
+				transmit_ack channels lp.id )
+			| _ -> ()
+		) ) 
+	| _ -> () ); 
+	loop_random channels (cnt+1) db 
 	)
 (* 
 TODO:: 
 1. Demonstrate that we can point modify existing programs to generate new ones. 
-	** this is still untested **
+	Done; not perfect. 
 2. Sort programs based on image similarity
 3. Demonstrate transformer intermediates for image <--> segments <--> programs .. ??? 
 *)
@@ -674,6 +746,34 @@ let () =
 	close_out lg; 
 *)
 
+(*
+let () = 
+	(* this tests change_ast *)
+	Unix.clear_nonblock stdin; (* this might not be needed *)
+	Random.self_init (); 
+	let lg = open_out "logo_log.txt" in
+	(*let ic = in_channel_of_descr stdin in*)
+	(*let sout = out_channel_of_descr stdout in*)
+	let serr = out_channel_of_descr stderr in 
+	(*let channels = (sout, serr, ic, lg) in*)
+	Printf.fprintf lg "hello\n";
+	let origp = parse_logo_string lg serr "move ul, ul" in
+	match origp with
+	| Some prog -> (
+		let newp = change_ast prog lg in
+		let newp = compress_ast newp in
+		print_prog prog ; 
+		printf "\n"; 
+		print_prog newp ; 
+		printf "----\n"; 
+		printf "%s\n" (encode_program_str prog); 
+		printf "%s\n" (encode_program_str newp); )
+	| _ -> printf "failed to parse\n";
+	Printf.fprintf lg "\n"; 
+	close_out serr;
+	close_out lg; 
+*)
+
 let () = 
 	Unix.clear_nonblock stdin; (* this might not be needed *)
 	Random.self_init (); 
@@ -684,9 +784,9 @@ let () =
 	let channels = (sout, serr, ic, lg) in
 	Printf.fprintf lg "hello\n";
 
-	let _data = generate_random_logo lg 0 in
 	let db = Vector.create ~dummy:nulpdata in
 	loop_random channels 0 db ;
+	let _b = make_batch lg db 1 in
 
 	(*ignore(loop_input lg sout serr ic buf 0);*) 
 

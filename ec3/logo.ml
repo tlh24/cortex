@@ -26,28 +26,33 @@ let ios = int_of_string
 let foi = float_of_int
 let iof = int_of_float
 
+let pmark lg w = 
+	if w>0 then Printf.fprintf lg "<marked> "
+
 let rec output_program_h lg g =
 	match g with
-	| `Var(i,_) -> Printf.fprintf lg "Var %d " i
-	| `Save(i,a,_) -> Printf.fprintf lg "Save %d " i; 
+	| `Var(i,w) -> Printf.fprintf lg "Var %d " i; pmark lg w
+	| `Save(i,a,w) -> Printf.fprintf lg "Save %d " i; pmark lg w; 
 			output_program_h lg a
-	| `Move(a,b,_) -> Printf.fprintf lg "Move "; 
+	| `Move(a,b,w) -> Printf.fprintf lg "Move "; pmark lg w;
 			output_program_h lg a; 
 			Printf.fprintf lg ", " ; 
 			output_program_h lg b
-	| `Binop(a,s,_,b,_) -> Printf.fprintf lg "Binop "; 
+	| `Binop(a,s,_,b,w) -> Printf.fprintf lg "Binop "; pmark lg w;
 			output_program_h lg a; 
 			Printf.fprintf lg " %s " s; 
 			output_program_h lg b
-	| `Const(i,_) -> Printf.fprintf lg "Const %f " i
-	| `Seq(l,_) -> output_list_h lg l "; "
-	| `Loop(i,a,b,_) -> Printf.fprintf lg "Loop [%d] " i; 
+	| `Const(i,w) -> Printf.fprintf lg "Const %f " i; pmark lg w
+	| `Seq(l,w) -> (
+		Printf.fprintf lg "Seq "; pmark lg w; 
+		output_list_h lg l "; " )
+	| `Loop(i,a,b,w) -> Printf.fprintf lg "Loop [%d] " i; pmark lg w;
 			output_program_h lg a; 
 			Printf.fprintf lg ", " ; 
 			output_program_h lg b
-	| `Call(i, l,_) -> Printf.fprintf lg "Call %d " i;
+	| `Call(i, l,w) -> Printf.fprintf lg "Call %d " i; pmark lg w;
 		output_list_h lg l ", "
-	| `Def(i,a,_) -> Printf.fprintf lg "Def %d " i;
+	| `Def(i,a,w) -> Printf.fprintf lg "Def %d " i; pmark lg w;
 		output_program_h lg a
 	| `Nop -> Printf.fprintf lg "Nop "
 			

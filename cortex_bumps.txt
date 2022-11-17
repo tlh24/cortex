@@ -2751,19 +2751,21 @@ Ok, that mostly works ... debugging, ever debugging.
 Time to itch the half-formed idea (hedon) that has been gradually forming.  
 
 1. Humans default to data-efficient solution of problems, not highly statistical data-intensive random-explorers.  I think this is a fact to lean on.  
-2. Humans start with examples (templates), and typically modify them incrementally (linear approximations..).  These examples are typically memorized. 
-3. **Examples themselves are little bits of code** -- that is, you can ‘execute’ or trigger memories to modify workspace representations & create intermediate representations.
+2. Humans use examples (templates), and typically modify them incrementally (templates are functions that are approximately linear in their parameters).  These examples are typically memorized; some approximation of the Jacobian is stored, too. 
+3. **Examples themselves are little bits of code (functions)** -- that is, you can ‘execute’ or trigger memories to modify workspace representations & create intermediate representations.
 	In the programming world, these mappings can be learned via experimentation. 
 	This probably should hold for the rest of the world too?  Small-network power-law causality? 
 		I don’t know about the visual world.. causes are much broader and more entangled.  Probably better to not think about that for now. 
-4. These intermediate representations are often essential to the process of compression. 
-5. Memory exists for the IR to aide in iterative search
+		Also: many snippets of code cannot be readily inverted; they must be run to see what they do. 
+			We’re more interested in the computationally invertible snippets.
+4. Intermediate representations are often essential to the process of compression. 
+5. Humans cache all the representations, especially the IR, to aid in compression.
 6. Iterative search proceeds across different levels of representation. 
-7. Slow reasoning is gradually converted to long-term memory, just the same as statistical regularities in aggregate experience. 
-8. The system is meta-aware: statistical regularities in its own processes are converted to long-term memory for shortcut reasoning. 
-
-X. Aesthetics is absolutely essential for open-ended, unguided search. 
-	-- Though this may or may not work so well for biology... it would have to be a meta-parameter. 
+7. Slow reasoning & search is gradually converted to long-term memory. Statistical regularities in aggregate experience are abstracted away / compressed (how?!). 
+8. The system is meta-aware: statistical regularities in its own processes are also converted to long-term memory for shortcut reasoning. 
+9. Aesthetics is absolutely essential for open-ended, unguided search. 
+	Though this may or may not work so well for biology... where beauty arises spontaneously, by necessity - rather than as a heuristic to speed creation.   
+	Aesthetics would have to be controlled via a meta-parameter. 
 
 How a human programmer would solve the logo task
 1. Iteratively convert an image to a set of line segments or ‘move’ commands
@@ -2782,46 +2784,62 @@ But it’s still me doing the reasoning, forward-backward passes through the sim
 Ideally we don’t want to do that, we want to make something that is very open-ended and can be used for arbitrary problems. 
 e.g. inverse graphics -- if we can do that, then virtually anything is possible! (And is a substantial step toward AGI, or at least narrow information pumps.) 
 
-5 above is the hardest, but also the most critical -- it’s how humans can take on infinite-dimensional problems, and tackle them iteratively 
+Human #5 above is the hardest, but also the most critical -- it’s how humans can take on infinite-dimensional problems, and tackle them iteratively 
 	Not that this is easy -- much discussion over the past few days has been the vast challenges of ‘automating’ or speeding up scientific research.
+		And one must remember that, even with data-efficient humans, you need 10,000 hours of practice at something to become an “expert”. 
 How do you store these memories? 
 DreamCoder takes the sensible approach of storing knowledge in both libraries (commonly used and useful code) and neural networks (low-N prototypical networks, could be better).  
 Humans of course do both, we remember nice little snippets of code, motifs and templates, and can deploy them by modifying in-place to fit the need at hand. 
 Libraries are a bit higher bar for abstraction, and usually serve based on code-and data-flow analysis to see common patterns. 
 	They supplement human memory capacity.  
-		Even AI will probably need such multi-level memory (with of course vectoral comments or something to make is searchable)
+		Even AI will probably need such multi-level memory (with of course (vectoral?) comments or something to make is searchable)
 		Yet I think it’s not required for initial POC. 
-	This can be trivial or can potentially take large quantities of compute, raw experimentation; not every forward computable function has a computable inverse. (Most don’t , probably!)
+	This can be trivial or can potentially take large quantities of compute, raw experimentation; as mentioned, not every forward computable function has a computable inverse. (Most don’t , probably!)
 	Learning things like polar coordinates requires both experimentation and aesthetics ... which atm is really hard to quantify. 
 
 Also of importance is setting up proximal goals: when fitting the segments, you can have a proximal goal of matching the angle, then a goal of matching the length. 
 	Seems to require a bunch of machinery, but that’s the way things are. 
 
 Human programmer input:
-Atoms -- these are the things you can say. 
+Atoms -- these are the things you can say.  
+	Pretty sure this has to be provided; otherwise it’s unknowable.
 Syntax -- this is how you can say it. 
+	Can be learned from examples and from experimentation
 Examples -- these are well-formed expressions in the language. 
 Specifications -- these are well-formed outputs from executing the language.
 Breakpoints, debug etc -- yield intermediate representations of what the program is doing.
+	Seems to require “reasoning”!
 Similarity metric -- some way of knowing if you’re getting closer (even if it’s dumb..)
+	And ways of making local similarity, eg angle
 
 I think, with atoms, syntax/examples, specifications, and similarity, it should be possible to bootstrap & solve all logo tasks. 
-This is kind-of a RL task?  Output a series of actions to solve a given task... only the problem formalism is messier than what’s assumed in RL (MDP task)
+This is an RL task?  Output a series of actions to solve a given task... only the problem formalism is messier than what’s assumed in RL (MDP task)
 	Hence, need to refine the formalism.  
+		Pure supervised doesn’t work well because of the invariances / equivariances. 
+		Model-based RL might work, ala AlphaZero / MuZero / EfficientZero?  With BPPT, i think. 
+		You ignore the complexity of the program to segments space by simply exploring only a small part of it; 
+		When using random enumeration, transformers or whatnot might become confused because the function they are trying to map is degenerate (many programs can generate the same image). 
+
 
 Ok, formalism: 
 Given: 
-	a current program fragment (possibly none)
-	a current set of example programs (not none)
-	a set of atoms (small, finite)
-	a specification (in this case, an image)
+	A - a current program fragment (possibly none)
+	B - a current set of example programs (not none)
+	C - a set of atoms (small, finite)
+	D - a specification (in this case, an image)
 create a program that generates an image that better matches the specification. 
 and
 do this in such a way that search is amortized. (bootstrapping)
 then
 operate on the program to maximally compress it. 
 
-The example programs and atoms serve as ‘actions’ to modify the current program. 
+Analogies to MuZero: 
+	A - state of the game board
+	B - examples would need to be turned into action sequences
+	C - action vocabulary is predefined (if much larger than games -- includes the option of ‘moving’; see below)
+	D - to win against an opponent (or not, in the case of Atari). This is more complicated than a fixed specification, from a game-theoretic standpoint. 
+
+The example programs and atoms serve as ‘actions’ to modify the current program. (through fuzzy difference-taking?)
 The role of the network/memory is to form a policy: given the specification and prog fragment, select an action, consisting of tuple: { atom / example + ast location + add/replace/remove }
 
 Later, an email to Richard: 
@@ -2834,11 +2852,9 @@ Should you care to read, I'll try to un-muddy my explanation today of what I'm w
 5. Effects that can't be inverted via memory can be inverted via search (which solves all problems, just slowly).  Search then emits more examples for (1). 
 6. Making the system re-entrant allows for larger patterns to be found and compressed. (eg. refactoring large codebases) 
 
-
-
 There is a lot more icing to put on that already many-layered cake, but if there were a data structure that supports 'fluid' association of cause-effect chains, then it seems likely you'd be able to implement many of the layers.  
 
-I'm proposing that the human cortex does something like this, vis the consistently polarized nature of pyramidal neurons (basal dendrites = causes; apical = effects / addresses) & it does so in a way (default-memorization) that supports data efficiency.  Representations would be vectors, same as in deep learning, though it's somewhat unsatisfying.  (The world is much more discrete than a bunch of vectors in an isotropic high-d space ... but if it works it works right?)
+I'm proposing that the human cortex does something like this, vis the consistently polarized nature of pyramidal neurons (basal dendrites = causes; apical = effects / addresses) & it does so in a way (default-memorization) that supports data efficiency.  Representations would be vectors, same as in deep learning, though it's somewhat unsatisfying.  (The world is much more discrete than a bunch of vectors in an isotropic high-d space ... yet if it works it works right?)
 
 Nov 3 2022
 Why can’t we use something like a LLM for solving this problem? GPT-3 has some truly remarkable properties! 
@@ -2849,18 +2865,18 @@ I think we can’t readily use it because
 (3) This is not how humans learn; they do experiments. 
 (4) Humans learn an expanding pallette of examples to draw from. 
 (5) Aesthetics matter significantly 
-(6) Transformers don’t have a default way of dealing with equivariance / invariance; contrastive training is inefficient.
+(6) Transformers don’t have a default way of dealing with equivariance / invariance / degeneracy; contrastive training is inefficient.
 
 Responses: 
 (1) Why not just hammer-train with small datasets, memorize it, see what happens?  
 The vector hypothesis is really very strong & makes a lot of sense & seems to work super well! 
 However, in current networks, the general idea is that the dataset is static, ergodic, and the network is a static size too. 
 Why not expand the size of the network as need arises?  
-	Well, because that’s another thing to account for; static allocation is usually simpler... 
+	Well, because that’s another thing to account for; static allocation is simpler... 
 
 Back to the basics; what exactly is a transformer doing? 
 It’s executing a message-passing and ‘search’ (through query-key) routing algorithm for calculating next-tokens. 
-That is, transformers are usually autoregressive. 
+& transformers are typically autoregressive. 
 As Andrej Karpathy accurately points out, it means that they are effectively being ‘programmed’ through examples.  
 The FAIR number-sequence paper shows that, given enough examples & enough capacity, a transformer can learn approximate-inverse heuristic algorithms to invert even hard autoregressive numeric algorithms. 
 	Very very surprising & something to lean upon! 
@@ -2874,9 +2890,124 @@ Still, this is not what humans do -- they do linear approximations, and beam sea
 (4) I think the default -- labeling the examples with random-parameter vectors (which can be changed through SGD - maybe? have to experiment) is one way of making it work.. 
 
 (5) I don’t know how to enforce this, other than putting a strong prior on simplicity of code, e.g. store only the shortest examples that produce certain output.  Again, experimentation! 
+	Pretty much did this, it’s still slightly unsatisfying? 
 
 (6) This seems like as large a problem as (2) and (4).  The way that it evinced earlier was that the fully-trained transformer would output “move move ul, ul ..” because there could be a leading space.  
 Of course, that’s not actually in the dataset; the transformer is improperly doing interpolation. 
 	Maybe just train it for longer? 
 	Or likely I have a bug in the code somewhere?  
-		Aside: god I love ocaml, too bad most of the libraries are in python (though certainly I can learn to use datastructures better in python?)
+		Aside: I love ocaml, too bad most of the libraries are in python (though certainly I can learn to use datastructures better in python?)
+
+November 10 2022
+
+Some discoveries!  
+Upside-down RL, invented about three years ago -- seems to have a bit of traction in the form of using a Transformer to model. 
+Idea is that, you have a bunch of trajectories (state, action, reward) in your replay buffer; rather than taking those and producing a policy of Q(s,a), you instead indicate the desired return and the present state, and use the model to produce an action -- the policy is implicit. 
+They have showed that, in some cases (SeaQuest), you can even get better performance than what’s in the training buffer!  E.g. the transformer generalizes out-of-distribution.  (In most cases, it does not generalize).  
+The transformer paper does not explicitly tune the replay buffer.  In the Schmidhuber paper, there is truncation selection in that the model is trained only on the to N past trajectories, as organized by total reward.  
+Even then, they show the system can remember old rewards and produce appropriate trajectories when appropriately queried. 
+
+Another discovery: https://ogma.ai/2019/08/acting-without-rewards/
+This mirrors the UDRL idea, sorta. 
+The idea is that you learn tuples: 
+(state1, action, state2) 
+& from this derive a change in state d_state so 
+(state1, state2, action, dstate12).  
+Now, say you are in state1 again, and want to get to state2 (maybe approximately)
+Simply look it up in your memory store!  And viola, you have an action.  
+	Actions generate a change in state, hence can be indexed & memory-inverted by setting a goal state and delta state. 
+Add in reward and something like truncation selection, with interpolation, and you can do some reinforcement learning & presumably bootstrapping.  
+
+This gets back to a core feature: most things a neural network can do can be accomplished by a database & suitable search-ordering system.  
+Neural networks are generally fast access & afford interpolation, though. 
+Transformers are unique in that they exist partway between database / look-up table and algorithm. 
+As argued above, the cortex probably does the same; memories as bits of code etc. 
+	Additionally, imho the cortex is a ‘more effective’ form of self-organizing database & has systems for fast, parallelized search (which maybe takes advantage of entropy). 
+	The cortex implements forms of algorithmic compression maybe by exploiting this innate search + self organization to yield ‘causes’ or ‘addresses’. 
+Also to note: even if this general database conception is correct, it still does not obviate the need for great skill in constructing the database & indexing mechanisms
+	Or in great skill in constructing the neural network & training mechanisms, as is clear from history 
+		(And is emphasized in the UDRL paper, which says that the algorithm works OK even despite not having a decade of research put into it.)
+
+Ogma AI seems to have solved the inter-layer coordination problem, perhaps ala Sidney Lowe (just ignore it?), which is otherwise solved by backprop. 
+	Not really a lot of details of his implementation, and indeed no math, which is troubling.. the code is a bit meh tbh.  But he does seem to be a clear thinker at least. 
+
+OK, say we were going to solve this problem exclusively in ocaml. 
+can easily make a database of: (state1, state2, action, dstate12)
+	Even though I’ve been lax with testing it.. 
+There are a LOT of actions that simply do nothing, and hence should not be added to the database.  
+Say for solving a task with only 2 segments, this is not hard: you just do a look-up table.  
+If you’re approximating the function using a transformer or vision transformer, real problem in that the mapping is not smooth (I think?). 
+	And as mentioned above, it’s not how humans do it. 
+	Also, a lot of these Atari tasks are not smooth, and yet people have been chipping away at them, quite productively! 
+I think instead you want a flexible database, where by default you search the whole thing & later you do some sort of faster associative lookup. 
+OK, start with (move ua, ua) -> one horizontal line & the associated segment. 
+options are to change move (to a binop?  does nothing)
+or change the arguments (to other constants, to binops, or to other variables; the latter does nothing..)
+or introduce a loop (which will likely be very confusing to the system); this is an action to refactor the code, really. 
+
+Now, we have the problem that the data looks pretty heterogeneous: images, variable length lists, tree structures, libraries of tree structures...
+	e.g. we’d need to do 
+	reprojection via Inception for the images;
+		Or some BYOL approach.  
+	BLAST for the variable length list; 
+	some sort of graph matching for the tree structures; 
+		maybe later; transformers for now? 
+	iterative matching for the libraries. 
+Searching and matching on any of these seems highly non-trivial; how is the brain so good at it? 
+One obvious thing it does is to serialize otherwise difficult searches (spread the problem out in time) via attention. 
+	Maybe attention is just holding one target in memory & seeing what auto-associates with it. 
+	I really like the analogy to protein docking in solution.  Takes advantage of entropy! 
+
+
+November 11 2022
+
+Right, change_ast does seem to do something; ‘appears’ to work properly, though likely have to constrain this a good bit more.  
+I like the idea of keeping it encoded as strings -- this is much more manageable than a tree (for the time being). 
+Pretty easy to build up a library of these minimum-edits, i guess.  
+	In the case of needing to do multiple edit operations before the DUT program works again,
+	think that the UDRL + transformer approach might work fine? 
+Next task is to allow genetic-algorithm like copying of one segment into another. 
+	This needs to be from a bunch of templates.. 
+	How to determine the edges of the edits? 
+	Think we need a good string library (or regexp library??)
+Then, the task is to search over the templates.
+	Looked at the Smith-waterman algorithm, idk, almost want to initially take a brute force approach? 
+
+I had better run before it gets dark.  Also need to do some upper-body workout..
+
+November 12 2022
+
+Alright, painted the laptop (Creator 17) for the second time!  This time it will look good! Hopefully.  Have to let it dry very completely (>3 days) if i need to repaint it.  
+
+So, regarding yesterday, I was thinking: 
+	1 -- The edges of the edits.  This takes a long time for even humans to learn!  It can be clear based on pauses in speech, but the phonemes  take time to disentangle.  
+		Might be as simple as pattern matching (blind signal separation or sparsification) on the input stream, 
+		Which is of course something that many people have been working on for a long time; neural networks might well be OK at this.  
+		Other sequence alignment spaces, eg temporal convolution used in matching protein motifs, could work well - ? 
+		Sequence alignment itself is an intensely studied problem. 
+	2 -- If you have small enough convolutional filters, you could do something like the BLAST algorithm (which uses i think a fixed vocabulary?)
+	3 -- Should investigate some of these tree RL and tree transformer algorithms.  
+
+November 14 2022
+
+UDRL + transformer approach to solving the problem.  
+Can presently easily generate a database of small, well-formed and productive logo programs. 
+Take this database, select a subset of it (biased toward smaller samples), and find the closest different program. 
+Call them progA and progB. 
+Given this, input to the transformer the context (imageA, imageB, deltaAB, progA, progB)
+	Add in segments too?  hmm.  seems like too much data. 
+Add in location coding for both the images and the strings. 
+Add in a cursor location so the model can remember what it was doing
+Supervise the model to output delta progA progB <end-of-edit>.  
+Pray that it generalizes from the experiences. 
+Allow some bootstrapping -- generate random programs, hence imageB, and ask it to suggest edits to recreate the image. 
+Keep it around if it happens to run and produce ‘interesting’ output. 
+
+Do this, if it works somewhat OK, then worry about adding in compressional edits. 
+
+Thoughts: 
+	Seems like it’s pretty easy to make a system that doesn’t work at the beginning. 
+	For example, in the self-predictive representations RL paper (basically BYOL), 
+	They find that only using the L2 loss causes representation loss, 
+	whereas using cosine loss (normalized L2) seems to work fine & does not collapse. 
+	Little things like this differentiate an experienced practicitoner vs .. me haha. 

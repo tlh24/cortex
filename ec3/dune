@@ -25,6 +25,6 @@
 
 (executable
 	(name program)
-	(modules logo_pb logo_pp logo_types logo parser lexer vgwrapper colors program)
+	(modules logo_pb logo_pp logo_types logo parser lexer vgwrapper colors levenshtein program)
 	(libraries core core_unix.command_unix vg vg.cairo pbrt vector)
 	)

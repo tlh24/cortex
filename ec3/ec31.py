@@ -33,7 +33,7 @@ make_nonblock(sp.stderr.fileno())
 
 
 image_resolution = 30
-image_count = 4*4096 # how many images to keep around
+image_count = 4096 # how many images to keep around
 
 
 tokens = [" ", "(", ")",";","+ ","- ","* ","/ ", 
@@ -117,14 +117,18 @@ db_prog = []
 db_progenc = []
 db_segs = []
 db_cnt = 0
+ocount = 0
 
 num_rejections = 0
 num_replacements = 0
-while db_cnt < image_count: 
+
+while db_cnt < image_count : 
+	ocount = ocount + 1
 	lp = logod_pb2.Logo_request()
 	lp.id = db_cnt
-	lp.log_en = False
+	lp.log_en = True
 	lp.res = image_resolution
+	lp.batch = 0
 	q = lp.SerializeToString()
 	sp.stdin.write(q)
 	sp.stdin.flush()
@@ -151,7 +155,8 @@ while db_cnt < image_count:
 	buff2 = bytearray(1500)
 	n = sp.stderr.readinto(buff2)
 	if n != result.stride * result.height: 
-		print("unexpected number of bytes in image, ", n)
+		print(ocount,"unexpected number of bytes in image, ", n)
+		print(ocount,"stride ", result.stride, " height ", result.height)
 	else: 
 		# do something else with this image..
 		a = np.frombuffer(buff2, dtype=np.uint8, count=n)
@@ -226,6 +231,42 @@ while db_cnt < image_count:
 print(f"done with {image_count} unique image-program pairs")
 print(f"there were {num_rejections} rejections due to image space collisions")
 print(f"of these, {num_replacements} were simplifications")
+
+# request a batch. 
+lp = logod_pb2.Logo_request()
+lp.id = 0
+lp.log_en = True
+lp.res = 0
+lp.batch = 1
+q = lp.SerializeToString()
+sp.stdin.write(q)
+sp.stdin.flush()
+
+streams = [ sp.stdout ]
+temp0 = []
+readable, writable, exceptional = select.select(streams, temp0, temp0, 5)
+if len(readable) == 0:
+	raise Exception("Timeout of 5 seconds reached!")
+
+buff = bytearray(4*1024)
+nrx = sp.stdout.readinto(buff)
+if nrx <= 0:
+	print("No data received on stdout! stderr: ", sp.stderr.peek())
+# convert the bytearray to a protobuf.. 
+result = logod_pb2.Logo_batch()
+try: 
+	result.ParseFromString(bytes(buff[0:nrx]))
+	# print(result)
+except Exception as inst: 
+	print("ParseFromString; ", nrx, buff[0:nrx], "stderr:", sp.stderr.peek())
+	
+print("batch result count:", result.count)
+for res in result.btch: 
+	print(res.a_pid, res.a_progenc, res.b_pid, res.b_progenc)
+	for e in res.edits: 
+		print("edit ", e.typ, e.pos, e.chr)
+
+print("=== done for now ===")
 
 # how many of these are actually interesting? 
 def nonzero_img(b): 

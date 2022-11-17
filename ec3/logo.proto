@@ -30,6 +30,7 @@ message Logo_request {
 	int32 id = 1 [(ocaml_type) = int_t];
 	bool log_en = 2; 
 	int32 res = 3 [(ocaml_type) = int_t];
+	int32 batch = 4 [(ocaml_type) = int_t];
 }
 
 message Logo_last {
@@ -41,4 +42,23 @@ message Logo_last {
 message Logo_ack {
 	bool going = 25 ; 
 	int32 ackid = 1 [(ocaml_type) = int_t];
+}
+
+message Logo_edits { 
+	string typ = 1 ;
+	int32 pos = 2 [(ocaml_type) = int_t];
+	string chr = 3; 
+}
+
+message Logo_bat {
+	int32 a_pid = 1 [(ocaml_type) = int_t]; 
+	string a_progenc = 2 ;
+	int32 b_pid = 3 [(ocaml_type) = int_t]; 
+	string b_progenc = 4 ; 
+	repeated Logo_edits edits = 5; 
+}
+
+message Logo_batch {
+	int32 count = 1 [(ocaml_type) = int_t]; 
+	repeated Logo_bat btch = 2; 
 }
