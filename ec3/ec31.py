@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import subprocess 
 import time
+from threading import Thread
 
 import logod_pb2
 import xf
@@ -48,21 +49,23 @@ tktype = [0, 1, 1, 2, 3, 3, 3, 3,
 			# better for MLP encoder
 			
 		
-toklen = len(tokens)
-typlen = 10
+toklen = 30
 poslen = 6
-p_indim = toklen + typlen + poslen*2
-p_ctx = 15
+p_indim = toklen + 1 + poslen*2 
+	# the 1 indicates if it's been edited.
+e_indim = 5 + toklen + poslen*2
+p_ctx = 32
+e_ctx = 5
 patch_size = 5
 v_ctx = int((image_resolution / patch_size) ** 2 + 1)
-batch_size = 32
+batch_size = 16
 prog_width = 128
-xfrmr = xf.Transformer(p_ctx, prog_width, 8, 8)
-	# p_ctx, width, layers, heads
-encoder = nn.Linear(p_indim, prog_width)
-	# just a simple linear layer to put into transformer latent space. 
-	# how are these weights initialized?? 
-gelu = nn.GELU()
+# xfrmr = xf.Transformer(p_ctx, prog_width, 8, 8)
+# 	# p_ctx, width, layers, heads
+# encoder = nn.Linear(p_indim, prog_width)
+# 	# just a simple linear layer to put into transformer latent space. 
+# 	# how are these weights initialized?? 
+# gelu = nn.GELU()
 
 # positional encoding. 
 posenc = th.zeros(p_ctx, poslen*2)
@@ -73,20 +76,20 @@ for i in range(p_ctx):
 		
 posenc = posenc.expand(batch_size, p_ctx, poslen*2) 
 
-prog = [0 for i in range(p_ctx)]
-prog_human = list(map(lambda i : tokens[i], prog))
-x = th.zeros(p_ctx, p_indim)
-for i in range(p_ctx): # might be faster way? 
-	x[i, prog[i]] = 1.0
-	typ = tktype[prog[i]]
-	x[i, toklen+typ] = 1.0
-	# add positional encoding too. 
-
-x = x.expand(batch_size, p_ctx, p_indim).contiguous()
-x[:,:,toklen + typlen : p_indim] = posenc
-x = encoder(x)
-x = gelu(x)
-x = xfrmr(x)
+# prog = [0 for i in range(p_ctx)]
+# prog_human = list(map(lambda i : tokens[i], prog))
+# x = th.zeros(p_ctx, p_indim)
+# for i in range(p_ctx): # might be faster way? 
+# 	x[i, prog[i]] = 1.0
+# 	typ = tktype[prog[i]]
+# 	x[i, toklen+typ] = 1.0
+# 	# add positional encoding too. 
+# 
+# x = x.expand(batch_size, p_ctx, p_indim).contiguous()
+# x[:,:,toklen : p_indim] = posenc
+# x = encoder(x)
+# x = gelu(x)
+# x = xfrmr(x)
 # that works pretty seamlessly! 
 # x.shape is now [1, 32, 128] 
 # -- the output of a decoder section
@@ -126,7 +129,7 @@ while db_cnt < image_count :
 	ocount = ocount + 1
 	lp = logod_pb2.Logo_request()
 	lp.id = db_cnt
-	lp.log_en = True
+	lp.log_en = False
 	lp.res = image_resolution
 	lp.batch = 0
 	q = lp.SerializeToString()
@@ -232,56 +235,158 @@ print(f"done with {image_count} unique image-program pairs")
 print(f"there were {num_rejections} rejections due to image space collisions")
 print(f"of these, {num_replacements} were simplifications")
 
-# request a batch. 
-lp = logod_pb2.Logo_request()
-lp.id = 0
-lp.log_en = True
-lp.res = 0
-lp.batch = 1
-q = lp.SerializeToString()
-sp.stdin.write(q)
-sp.stdin.flush()
+print("first 10 programs:")
+for j in range(10): 
+	print(j, ": ", db_prog[j])
 
-streams = [ sp.stdout ]
-temp0 = []
-readable, writable, exceptional = select.select(streams, temp0, temp0, 5)
-if len(readable) == 0:
-	raise Exception("Timeout of 5 seconds reached!")
+# what we need to do is train with a series of edits, 
+# # and replace the entries that have already emitted 'done'. 
 
-buff = bytearray(4*1024)
-nrx = sp.stdout.readinto(buff)
-if nrx <= 0:
-	print("No data received on stdout! stderr: ", sp.stderr.peek())
-# convert the bytearray to a protobuf.. 
-result = logod_pb2.Logo_batch()
-try: 
-	result.ParseFromString(bytes(buff[0:nrx]))
-	# print(result)
-except Exception as inst: 
-	print("ParseFromString; ", nrx, buff[0:nrx], "stderr:", sp.stderr.peek())
+def apply_edits(result,edited): 
+	# everything being mutable makes this much easier.. 
+	getnew = []
+	for j in range(len(result)): 
+		res = result[j]
+		pl = len(res.a_progenc)
+		if len(res.edits) > 0: 
+			e = res.edits.pop(0)
+			sl = list(res.a_progenc)
+			if e.typ == "sub": 
+				sl[e.pos] = e.chr
+				edited[j][e.pos] = 1
+				edited[j][e.pos+pl+1] = 1
+			if e.typ == "del": 
+				del sl[e.pos] # interesting python has this sugar
+				edited[j][e.pos] = 1
+			if e.typ == "ins": 
+				sl.insert(e.pos, e.chr)
+				edited[j][e.pos+pl+1] = 1
+				# also note the semantics for these three operations are different! 
+			if e.typ == "fin":
+				# print(f"apply_edits: getting a new prog at {j}")
+				getnew.append(j)
+			res.a_progenc = "".join(sl)
+		else: 
+			getnew.append(j)
+	# replace the expired results.
+	if len(getnew) > 0: 
+		newres,newedit = new_batch_result(len(getnew))
+		for j in range(len(getnew)): 
+			k = getnew[j]
+			result[k] = newres[j]
+			edited[k] = newedit[j]
+	return result,edited
+
+def result_to_batch(result, edited): 
+	# convert the results datastructure (as partly returned from ocaml / protobufs) into torch tensors. 
+	batch_a = th.zeros(batch_size, 3, image_resolution, image_resolution)
+	batch_p = th.zeros(batch_size, p_ctx, p_indim)
+	batch_e = th.zeros(batch_size, e_indim)
+	for j in range(len(result)): 
+		res = result[j]
+		batch_a[j,0,:,:] = db_img[res.a_pid, :, :]
+		batch_a[j,1,:,:] = db_img[res.b_pid, :, :]
+		batch_a[j,2,:,:] = batch_a[j,0,:,:] - batch_a[j,1,:,:]
+		# print("result_to_batch: python database for programs:")
+		# print(res.a_pid, db_prog[res.a_pid])
+		# print(res.b_pid, db_prog[res.b_pid])
+		# encode the input string twice -- the second time is for editing (& will need to be redone during the training )
+		l = len(res.a_progenc)
+		for i in range(len(res.a_progenc)): 
+			c = ord(res.a_progenc[i]) - ord('0')
+			if c >= 0 and c < p_indim: 
+				batch_p[j, i, c] = 1
+				batch_p[j, i+l+1, c] = 1
+			# delimeter
+			batch_p[j, l, toklen-1] = 1
+		# copy over the edit tags 
+		batch_p[j,:,toklen] = edited[j]
+		
+		e = res.edits[0]
+		if e.typ == "sub": 
+			batch_e[j,0] = 1
+		if e.typ == "del": 
+			batch_e[j,1] = 1
+		if e.typ == "ins": 
+			batch_e[j,2] = 1
+		if e.typ == "fin": 
+			batch_e[j,3] = 1
+		c = ord(e.chr) - ord('0')
+		if c >= 0 and c < p_indim: 
+			batch_e[j,c+4] = 1
+		#position encoding
+		ofst = 5 + toklen
+		batch_e[j,ofst:] = posenc[0,e.pos,:]
+
+	# add positional encoding to program one-hot
+	batch_p[:, :, toklen+1:] = posenc
 	
-print("batch result count:", result.count)
-for res in result.btch: 
-	print(res.a_pid, res.a_progenc, res.b_pid, res.b_progenc)
-	for e in res.edits: 
-		print("edit ", e.typ, e.pos, e.chr)
+	return batch_a, batch_p, batch_e
 
+def new_batch_result(batch_size) : 
+	# new batch data from ocaml. 
+	lp = logod_pb2.Logo_request()
+	lp.id = 0
+	lp.log_en = False
+	lp.res = 0
+	lp.batch = batch_size
+	q = lp.SerializeToString()
+	sp.stdin.write(q)
+	sp.stdin.flush()
+
+	streams = [ sp.stdout ]
+	temp0 = []
+	readable, writable, exceptional = select.select(streams, temp0, temp0, 5)
+	if len(readable) == 0:
+		raise Exception("Timeout of 5 seconds reached!")
+
+	buff = bytearray(4*1024)
+	nrx = sp.stdout.readinto(buff)
+	if nrx <= 0:
+		print("No data received on stdout! stderr: ", sp.stderr.peek())
+	# convert the bytearray to a protobuf.. 
+	result = logod_pb2.Logo_batch()
+	try: 
+		result.ParseFromString(bytes(buff[0:nrx]))
+		# print(result)
+	except Exception as inst: 
+		print("ParseFromString; ", nrx, buff[0:nrx], "stderr:", sp.stderr.peek())
+		
+	# print("batch result count:", result.count)
+	# for res in result.btch: 
+	# 	print(res.a_pid, res.a_progenc, res.a_progstr) 
+	# 	print(res.b_pid, res.b_progenc, res.b_progstr)
+	# 	for e in res.edits: 
+	# 		print("edit ", e.typ, e.pos, e.chr)
+	# sys.stdout.flush()
+	
+	# change to list so it's editable
+	res = []
+	for i in range(batch_size):
+		res.append(result.btch[i])
+	result = res
+	# indicate that these are unedited. 
+	edited = []
+	for j in range(batch_size): 
+		edited.append(th.zeros(p_ctx))
+	
+	return result,edited
+
+result, edited = new_batch_result(batch_size)
+for j in range(10): 
+	print("===", j)
+	print(result)
+	batch_a, batch_p, batch_e = result_to_batch(result, edited)
+	fig, axs = plt.subplots(1,3, figsize=(13,5))
+	axs[0].imshow(batch_a[0,0,:,:].cpu().numpy())
+	axs[1].imshow(batch_a[0,1,:,:].cpu().numpy())
+	axs[2].imshow(batch_p[0,:,:].cpu().numpy())
+	plt.show()
+	result, edited = apply_edits(result, edited)
+	print("after edit:")
+	print(result)
+	
 print("=== done for now ===")
-
-# how many of these are actually interesting? 
-def nonzero_img(b): 
-	prog,a = b
-	return np.sum(a) > 0
-valid_nonzero = list(filter(nonzero_img, valid))
-vnf = open("valid_nonzero/list.txt", "w")
-for i, item in enumerate(valid_nonzero): 
-	prog, a = item
-	prog_human = prog_to_human(prog)
-	vnf.write(f"{i} : {prog} : {prog_human}")
-	vnf.write("\n")
-	matplotlib.image.imsave(f'valid_nonzero/out{i}.png', a)
-vnf.close()
-print(f'number of valid non-zero programs {len(valid_nonzero)}')
 
 def build_attention_mask2(v_ctx, p_ctx):
     # lazily create causal attention mask, with full attention between the vision tokens
@@ -303,7 +408,7 @@ prog_layers = 6
 embed_dim = 256
 
 class ecTransformer(nn.Module):
-	def __init__(self, image_resolution: int, vision_width:int, patch_size:int,  prog_width:int, embed_dim:int, v_ctx:int, p_ctx:int, p_indim:int): 
+	def __init__(self, image_resolution: int, vision_width:int, patch_size:int,  prog_width:int, embed_dim:int, v_ctx:int, p_ctx:int, p_indim:int, e_indim:int): 
 		super().__init__()
 		self.v_ctx = v_ctx
 		self.p_ctx = p_ctx
@@ -327,12 +432,12 @@ class ecTransformer(nn.Module):
 			heads = 8, 
 			attn_mask = build_attention_mask2(v_ctx, p_ctx))
 			
-		self.prt_to_tok = nn.Linear(prog_width * (p_ctx + v_ctx), toklen + typlen)
-		self.ln_post = clip_model.LayerNorm(toklen + typlen)
+		self.prt_to_edit = nn.Linear(prog_width * (p_ctx + v_ctx), e_indim)
+		self.ln_post = clip_model.LayerNorm(e_indim)
 		self.gelu = clip_model.QuickGELU()
 		self.tok_softmax = nn.Softmax(dim = 1)
 	
-	def forward(self, batch_a, batch_p, mask): 
+	def forward(self, batch_a, batch_p): 
 		# encode the image (we should only need to do this once??)
 		vx = self.vit(batch_a) # x is size [16, v_ctx, 256] 
 		vx = self.vit_to_prt(vx)
@@ -340,10 +445,10 @@ class ecTransformer(nn.Module):
 
 		px = self.encoder(batch_p)
 		vxpx = th.cat((vx, px), dim = 1)
-		x = vxpx * mask
-		x = self.prt(x) # bs, v_ctx * p_ctx, prog_width
+		# x = vxpx * mask
+		x = self.prt(vxpx) # bs, v_ctx * p_ctx, prog_width
 		x = th.reshape(x, (batch_size,-1))
-		x = self.prt_to_tok(x)
+		x = self.prt_to_edit(x)
 		x = self.ln_post(x) # scale the inputs to softmax
 		x = self.gelu(x)
 		# x = self.tok_softmax(x)
@@ -356,9 +461,11 @@ model = ecTransformer(image_resolution = image_resolution,
 							 embed_dim = embed_dim, 
 							 v_ctx = v_ctx, 
 							 p_ctx = p_ctx, 
-							 p_indim = p_indim)
+							 p_indim = p_indim, 
+							 e_indim = e_indim)
 
-lossfunc = nn.CrossEntropyLoss(label_smoothing = 0.08, reduction='none')
+# lossfunc = nn.CrossEntropyLoss(label_smoothing = 0.08, reduction='none')
+lossfunc = nn.MSELoss(reduction='none')
 optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=5e-4)
 
 def print_model_params(): 
@@ -369,59 +476,73 @@ def print_model_params():
 	print(model.vit.conv1.weight[0,:])
 	# it would seem that all the model parameters are changing.
 
-def make_batch(): 
-	indx = np.random.choice(len(valid_nonzero), size=batch_size, replace=False)
-	batch_a = th.zeros((batch_size, image_resolution, image_resolution)) # todo: fp16
-	batch_p = th.zeros((batch_size, p_ctx, p_indim))
-	batch_pl = np.zeros(batch_size)
-	j = 0
-	for i in indx: 
-		prog, a = valid_nonzero[i] # note! this is a reference. 
-		batch_a[j,:,:] = th.tensor(a)
-		# encode the program, too
-		prog = prog + [toklen-1] # terminate; return new list.
-		batch_pl[j] = len(prog)
-		# prog_human = list(map(lambda i : tokens[i], prog))
-		for k in range(len(prog)): 
-			batch_p[j, k, prog[k]] = 1.0
-			typ = tktype[prog[k]]
-			batch_p[j, k, toklen+typ] = 1.0
-		j = j+1
-		
-	batch_p[:,:,toklen+typlen : p_indim] = posenc
-	batch_a = th.unsqueeze(batch_a, dim = 1) # batch, channels, H,
-	return (batch_a, batch_p, batch_pl)
+# def make_batch(): 
+# 	indx = np.random.choice(len(valid_nonzero), size=batch_size, replace=False)
+# 	batch_a = th.zeros((batch_size, image_resolution, image_resolution)) # todo: fp16
+# 	batch_p = th.zeros((batch_size, p_ctx, p_indim))
+# 	batch_pl = np.zeros(batch_size)
+# 	j = 0
+# 	for i in indx: 
+# 		prog, a = valid_nonzero[i] # note! this is a reference. 
+# 		batch_a[j,:,:] = th.tensor(a)
+# 		# encode the program, too
+# 		prog = prog + [toklen-1] # terminate; return new list.
+# 		batch_pl[j] = len(prog)
+# 		# prog_human = list(map(lambda i : tokens[i], prog))
+# 		for k in range(len(prog)): 
+# 			batch_p[j, k, prog[k]] = 1.0
+# 			typ = tktype[prog[k]]
+# 			batch_p[j, k, toklen+typ] = 1.0
+# 		j = j+1
+# 		
+# 	batch_p[:,:,toklen+typlen : p_indim] = posenc
+# 	batch_a = th.unsqueeze(batch_a, dim = 1) # batch, channels, H,
+# 	return (batch_a, batch_p, batch_pl)
+# 
+# def make_mask_y(i, batch_p, batch_pl): 
+# 	y = batch_p[:, i, 0:toklen + typlen]
+# 	y_mask = th.tensor(batch_pl > i).detach() 
+# 	mask = th.zeros(batch_size, v_ctx + p_ctx, prog_width)
+# 	mask[:, 0:v_ctx, :] = 1.0
+# 	if i > 1: 
+# 		mask[:, v_ctx:v_ctx+i, :] = 1.0
+# 	return (mask, y, y_mask)
 
-def make_mask_y(i, batch_p, batch_pl): 
-	y = batch_p[:, i, 0:toklen + typlen]
-	y_mask = th.tensor(batch_pl > i).detach() 
-	mask = th.zeros(batch_size, v_ctx + p_ctx, prog_width)
-	mask[:, 0:v_ctx, :] = 1.0
-	if i > 1: 
-		mask[:, v_ctx:v_ctx+i, :] = 1.0
-	return (mask, y, y_mask)
+class SimpleThread(Thread):
+	def __init__(self, result, edited):
+		super().__init__()
+		self.result = result
+		self.edited = edited
+		self.output = None
+
+	def run(self):
+		batch_a, batch_p, batch_e = result_to_batch(self.result, self.edited)
+		result, edited = apply_edits(self.result, self.edited)
+		self.output = batch_a, batch_p, batch_e, result, edited
 
 slowloss = 0.0
+result, edited = new_batch_result(batch_size)
+batch_a, batch_p, batch_e = result_to_batch(result, edited)
 
-for u in range(10000): 
-	batch_a, batch_p, batch_pl = make_batch()
+for u in range(100000): 
+	thrd = SimpleThread(result, edited)
+	thrd.start()
+	model.zero_grad()
+	x = model(batch_a, batch_p)
+	loss = lossfunc(x,batch_e)
+	lossflat = th.sum(loss)
+	lossflat.backward()
+	optimizer.step()
+	slowloss = 0.99*slowloss + 0.01 * lossflat.detach()
+	if u % 20 == 0 :
+		print(f'{i} loss: {lossflat}; slowloss {slowloss}')
+		# print(i, lossflat, loss[0], y_mask[0])
+		# print(x[0])
+		# print(y[0])
+		# print(x[0] - y[0])
+	thrd.join()
+	batch_a, batch_p, batch_e, result, edited = thrd.output
 
-	for i in range(int(np.max(batch_pl))): 
-		mask, y, y_mask = make_mask_y(i, batch_p, batch_pl)
-		
-		model.zero_grad()
-		x = model(batch_a, batch_p, mask)
-		loss = lossfunc(x,y)
-		lossflat = th.sum(loss * y_mask)
-		lossflat.backward()
-		optimizer.step()
-		slowloss = 0.99*slowloss + 0.01 * lossflat.detach()
-		if u % 20 == 0 :
-			print(f'{i} loss: {lossflat}; slowloss {slowloss}')
-			# print(i, lossflat, loss[0], y_mask[0])
-			# print(x[0])
-			# print(y[0])
-			# print(x[0] - y[0])
 
 # see if it can create working programs
 softmx = nn.Softmax(dim = 1)

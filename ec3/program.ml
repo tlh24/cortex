@@ -65,14 +65,6 @@ let bigarray_to_bytes arr =
 	Bytes.init len 
 		(fun i -> Bigarray.Array1.get arr i |> Char.chr)
 
-let intlist_to_string e =
-	let offs = 20 + (Char.code ' ') in
-	let cof_int i =
-		Char.chr (i + offs) in
-	let bf = Buffer.create 10 in
-	List.iter (fun a -> Buffer.add_char bf (cof_int a)) e;
-	Buffer.contents bf
-
 let encode_program_str prog = 
 	Logo.encode_program prog |> intlist_to_string 
 	
@@ -568,7 +560,7 @@ let rec generate_random_logo lg id res =
 	let dy = hy-.ly in
 	if dx >= 2. && dx <= 8. && dy >= 2. && dy <= 8. && cost >= 4. && cost <= 64. && List.length segs < 10 then (
 		if !g_logEn && id < 1024 then
-			Logo.segs_to_png segs res (Printf.sprintf "png/test%d.png" id);
+			Logo.segs_to_png segs res (Printf.sprintf "/tmp/png/test%d.png" id);
 		let img, _ = Logo.segs_to_array_and_cost segs res in
 		{pid=id; pro; progenc; img; cost; segs}
 	) else ( 
@@ -621,11 +613,11 @@ let render_simplest db dosort =
 		if la = lb then compare na nb else compare la lb ) dba; 
 		(* in-place sorting *)
 	let res = 48 in
-	let lg = open_out "png/log.txt" in
+	let lg = open_out "/tmp/png/log.txt" in
 	for id = 0 to min (4*1024-1) (dbal-1) do (
 		let data = dba.(id) in
 		let (_,_,segs) = Logo.eval (Logo.start_state ()) data.pro in
-		Logo.segs_to_png segs res (Printf.sprintf "png/test%d.png" id);
+		Logo.segs_to_png segs res (Printf.sprintf "/tmp/png/test%d.png" id);
 		let bf = Buffer.create 30 in
 		Logo.output_program_p bf data.pro;
 		fprintf lg "%d %s\n" id (Buffer.contents bf);
@@ -635,37 +627,50 @@ let render_simplest db dosort =
 let make_batch lg db nbatch = 
 	(* make a batch of pre, post, edits *)
 	(* image is saved in python, no need to duplicate *)
-	Printf.fprintf lg "entering make_batch, req %d\n" nbatch; 
-	let dba = Vector.to_array db in
+	if !g_logEn then Printf.fprintf lg "entering make_batch, req %d\n" nbatch; 
+	(*let dba = Vector.to_array db in
 	Array.sort (fun a b ->
 		let la = List.length a.segs in
 		let lb = List.length b.segs in
 		let na = count_ast a.pro in
 		let nb = count_ast b.pro in
-		if la = lb then compare na nb else compare la lb ) dba;
-	let ndba = Array.length dba in
+		if la = lb then compare na nb else compare la lb ) dba;*)
+	let ndb = Vector.length db in
 	let batch = ref [] in
 	while List.length !batch < nbatch do (
-		let na = (Random.int (ndba-21)) + 10 in
-		let nb = (Random.int 21) - 10 in
-		let nb = if nb=0 then (Random.int 2)*2-1 else nb in
-		let nb = na + nb in
-		let a = dba.(na) in
-		let b = dba.(nb) in
-		let dist,_ = Levenshtein.distance a.progenc b.progenc false in
-		if dist > 0 && dist < 4 then (
-			let _, edits = Levenshtein.distance a.progenc b.progenc true in
-			(* verify ..*)
-			let re = Levenshtein.apply_edits a.progenc edits in
-			if re <> b.progenc then (
-				Printf.fprintf lg "error! %s edits should be %s was %s\n"
-					a.progenc b.progenc re
-			); 
-			batch := (a.pid, b.pid, a.progenc, b.progenc, edits) 
-				:: !batch; 
-			Printf.fprintf lg "adding [%d] %s [%d] %s to batch\n" 
-				na a.progenc nb b.progenc; 
-			Levenshtein.print_edits edits
+		let na = Random.int ndb in
+		let nb = Random.int ndb in
+		(*let nb = if nb=0 then (Random.int 2)*2-1 else nb in
+		let nb = na + nb in*)
+		let a = Vector.get db na in
+		let b = Vector.get db nb in
+		let a_ns = List.length a.segs in
+		let b_ns = List.length b.segs in
+		let a_np = String.length a.progenc in
+		let b_np = String.length b.progenc in
+		if a_ns < 4 && b_ns < 4 && a_np < 16 && b_np < 16 then (
+			let dist,_ = Levenshtein.distance a.progenc b.progenc false in
+			if dist > 0 && dist < 3 then (
+				let _, edits = Levenshtein.distance a.progenc b.progenc true in
+				let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
+				(* verify ..*)
+				let re = Levenshtein.apply_edits a.progenc edits in
+				if re <> b.progenc then (
+					Printf.fprintf lg "error! %s edits should be %s was %s\n"
+						a.progenc b.progenc re
+				); 
+				let a_progstr = Logo.output_program_pstr a.pro in
+				let b_progstr = Logo.output_program_pstr b.pro in
+				(* edits are applied in reverse, do it here not py *)
+				(* also add a 'done' edit/indicator *)
+				let edits = ("fin",0,'0') :: edits in 
+				let edits = List.rev edits in
+				batch := (a.pid, b.pid, a.progenc, b.progenc, 
+					a_progstr, b_progstr, edits) :: !batch; 
+				if !g_logEn then Printf.fprintf lg "adding [%d] %s [%d] %s to batch\n" 
+					na a.progenc nb b.progenc; 
+				(*Levenshtein.print_edits edits*)
+			)
 		)
 	) done;
 	flush lg; 
@@ -685,12 +690,14 @@ let rec loop_random channels cnt db =
 			let batch = make_batch lg db lp.batch in
 			let r = Logo_types.({
 				count = lp.batch; 
-				btch = List.map (fun (aid,bid,ape,bpe,editz) -> 
+				btch = List.map (fun (aid,bid,ape,bpe,aps,bps,editz) -> 
 					Logo_types.({
 						a_pid = aid; 
+						b_pid = bid;
 						a_progenc = ape; 
-						b_pid = bid; 
 						b_progenc = bpe; 
+						a_progstr = aps; 
+						b_progstr = bps;
 						edits = List.map (fun (s,ri,c) -> 
 							Logo_types.({
 								typ = s; 
@@ -707,16 +714,22 @@ let rec loop_random channels cnt db =
 			match lp2 with
 			| Some lp2 -> (
 				if lp2.keep && data.cost > 0. then (
+					let data2 = {data with pid=lp2.where } in
 					if lp2.where = Vector.length db then (
 						if !g_logEn then Printf.fprintf lg "db saving %d push\n" lp2.where; 
-						Vector.push db data
+						Vector.push db data2
 					) else (
 						if !g_logEn then Printf.fprintf lg "db saving %d set\n" lp2.where; 
-						Vector.set db lp2.where data
+						Vector.set db lp2.where data2
 					)
 				); 
 				if lp2.render_simplest then (
-					if !g_logEn then Printf.fprintf lg "render_simplest\n";
+					Printf.fprintf lg "render_simplest: first 10 programs\n";
+					for i = 0 to 9 do (
+						let p = Vector.get db i in
+						Printf.fprintf lg "%d: %s\n" i
+								(Logo.output_program_pstr p.pro); 
+					) done; 
 					render_simplest db true
 				);
 				transmit_ack channels lp.id )

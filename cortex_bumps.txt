@@ -3011,3 +3011,18 @@ Thoughts:
 	They find that only using the L2 loss causes representation loss, 
 	whereas using cosine loss (normalized L2) seems to work fine & does not collapse. 
 	Little things like this differentiate an experienced practicitoner vs .. me haha. 
+
+November 16 2022
+
+Working between Ocaml and Python is a real PITA ... spent the better part of the afternoon debugging a communication problem. 
+Anyway, the goal now is pretty clear: 
+given the context 
+	Images A, B, and their difference -- all black and white
+	Program A and program B (very different positional labels + location labels. )
+output an 
+	Edit command (insert, delete, sub, done -- one hot / softmax output)
+	Location (in the same coordinates as the positional labels of course)
+	Character (in one hot coordinates, same as the input)
+
+Keep the edits pretty small, 1-5 .. for the time being .. then we can work on dramatically larger edits (aka refactoring!). 
+	Make it work first! 

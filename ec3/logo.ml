@@ -103,36 +103,40 @@ and output_list_p bf l sep =
 		if i > 0 then Printf.bprintf bf "%s" sep ;
 		output_program_p bf v) l ; 
 	Printf.bprintf bf ")"
-	
-and output_program_plg lg g = 
+
+and output_program_pstr g = 
 	let bf = Buffer.create 64 in
 	output_program_p bf g; 
-	Printf.fprintf lg "%s" (Buffer.contents bf)
+	(Buffer.contents bf)
+
+and output_program_plg lg g = 
+	Printf.fprintf lg "%s" (output_program_pstr g;)
 
 let enc_char1 c = 
 	match c with
-	| "(" -> 0
-	| ")" -> 1
-	| "," -> 2
-	| ";" -> 3
-	| "+" -> 4
-	| "-" -> 5
-	| "*" -> 6
-	| "/" -> 7
-	| "var" -> 8
-	| "save" -> 9
-	| "move" -> 10
-	| "ua" -> 11
-	| "ul" -> 12
-	| "loop" -> 13
-	| "def" -> 14
-	| _ -> 15
+	| "(" -> 1
+	| ")" -> 2
+	| "," -> 3
+	| ";" -> 4
+	| "+" -> 5
+	| "-" -> 6
+	| "*" -> 7
+	| "/" -> 8
+	| "var" -> 9
+	| "save" -> 10
+	| "move" -> 11
+	| "ua" -> 12
+	| "ul" -> 13
+	| "loop" -> 14
+	| "def" -> 15
+	| _ -> 16
+	(* 0 is not used atm *)
 	
 let enc_char c s = 
 	s := (enc_char1 c) :: !s
 	
 let enc_int i s = 
-	s := (-1*i) :: !s
+	s := (i-10) :: !s
 	
 let rec enc_prog g s = 
 	(* convert a program to integers.  For the transformer. *)
@@ -192,6 +196,17 @@ let encode_program g =
 	let s = ref [] in
 	enc_prog g s; 
 	List.rev !s
+	
+let intlist_to_string e =
+	(* convenience encoding -- see asciitable for what it turns to *)
+	let offs = 10 + (Char.to_int '0') in (* integers are mapped 1:1 *)
+	let cof_int i =
+		match Char.of_int (i + offs) with 
+		| Some c -> c 
+		| _ -> '!' in
+	let bf = Buffer.create 32 in
+	List.iter ~f:(fun a -> Buffer.add_char bf (cof_int a)) e;
+	Buffer.contents bf
 
 type state =
   { x : float
