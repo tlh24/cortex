@@ -1,0 +1,3 @@
+(lang dune 2.9)
+(name levenshtein)
+(using menhir 2.0)
