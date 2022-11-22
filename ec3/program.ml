@@ -541,7 +541,7 @@ let rec generate_random_logo lg id res =
 	(*if !g_logEn then Printf.fprintf lg "program %d : \n" id;*)
 	let actvar = Array.init 5 (fun _i -> false) in
 	(*Printf.printf "=======\n";*) 
-	let prog = gen_ast false (3,3,actvar) in
+	let prog = gen_ast false (3,2,actvar) in
 	(*if !g_logEn then Logo.output_program_plg lg prog;*)
 	(*if !g_logEn then Printf.fprintf lg "\ncompressed %d : \n" id;*)
 	let pro = compress_ast prog in
@@ -558,9 +558,8 @@ let rec generate_random_logo lg id res =
 	let lx,hx,ly,hy = segs_bbx segs in
 	let dx = hx-.lx in
 	let dy = hy-.ly in
-	if dx >= 2. && dx <= 8. && dy >= 2. && dy <= 8. && cost >= 4. && cost <= 64. && List.length segs < 10 then (
-		if !g_logEn && id < 1024 then
-			Logo.segs_to_png segs res (Printf.sprintf "/tmp/png/test%d.png" id);
+	let maxd = max dx dy in
+	if maxd >= 2. && maxd <= 9. && cost >= 4. && cost <= 64. && List.length segs < 8 && String.length progenc < 24 then (
 		let img, _ = Logo.segs_to_array_and_cost segs res in
 		{pid=id; pro; progenc; img; cost; segs}
 	) else ( 
@@ -602,7 +601,7 @@ let transmit_ack channels id =
 	write_protobuf sout Logo_pb.encode_logo_ack r
 
 let render_simplest db dosort =
-	(* render the shortest 1024 programs in the database.*)
+	(* render the shortest 4*1024 programs in the database.*)
 	let dba = Vector.to_array db in
 	let dbal = Array.length dba in
 	if dosort then Array.sort (fun a b ->
@@ -622,35 +621,31 @@ let render_simplest db dosort =
 		Logo.output_program_p bf data.pro;
 		fprintf lg "%d %s\n" id (Buffer.contents bf);
 	) done;
-	close_out lg
+	close_out lg; 
+	dba (* return the sorted array *)
 	
-let make_batch lg db nbatch = 
+let make_batch lg dba nbatch = 
 	(* make a batch of pre, post, edits *)
 	(* image is saved in python, no need to duplicate *)
-	if !g_logEn then Printf.fprintf lg "entering make_batch, req %d\n" nbatch; 
-	(*let dba = Vector.to_array db in
-	Array.sort (fun a b ->
-		let la = List.length a.segs in
-		let lb = List.length b.segs in
-		let na = count_ast a.pro in
-		let nb = count_ast b.pro in
-		if la = lb then compare na nb else compare la lb ) dba;*)
-	let ndb = Vector.length db in
+	let ndba = min (Array.length dba) 2048 in
+	if !g_logEn then Printf.fprintf lg "entering make_batch, req %d of %d\n" nbatch ndba; 
+	(* sorting is done in render_simplest *)
 	let batch = ref [] in
 	while List.length !batch < nbatch do (
-		let na = Random.int ndb in
-		let nb = Random.int ndb in
-		(*let nb = if nb=0 then (Random.int 2)*2-1 else nb in
-		let nb = na + nb in*)
-		let a = Vector.get db na in
-		let b = Vector.get db nb in
+		let na = (Random.int (ndba-21)) + 10 in
+		let nb = (Random.int 21) - 10 in
+		let nb = if nb=0 then (Random.int 2)*2-1 else nb in
+		let nb = na + nb in
+		let a = dba.(na) in
+		let b = dba.(nb) in
 		let a_ns = List.length a.segs in
 		let b_ns = List.length b.segs in
 		let a_np = String.length a.progenc in
 		let b_np = String.length b.progenc in
 		if a_ns < 4 && b_ns < 4 && a_np < 16 && b_np < 16 then (
 			let dist,_ = Levenshtein.distance a.progenc b.progenc false in
-			if dist > 0 && dist < 3 then (
+			if dist > 0 && dist < 6 then ( 
+				(* "move a , b ;" is 5 insertions; need to allow *)
 				let _, edits = Levenshtein.distance a.progenc b.progenc true in
 				let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
 				(* verify ..*)
@@ -676,18 +671,18 @@ let make_batch lg db nbatch =
 	flush lg; 
 	!batch
 
-let rec loop_random channels cnt db = 
+let rec loop_random channels cnt db dba = 
 	(* unlike loop_input, we generate the program here *)
 	if cnt > (100 * 20000) then () else (
 	let sout, _serr, ic, lg = channels in
 	if !g_logEn then ( print_log lg "`" );
 	let lp = read_protobuf lg ic Logo_pb.decode_logo_request in
-	( match lp with 
+	let dba2 = match lp with 
 	| Some lp -> (
 		g_logEn := lp.log_en ; 
 		if lp.batch > 0 then (
 			(* generate a batch of data instead *)
-			let batch = make_batch lg db lp.batch in
+			let batch = make_batch lg dba lp.batch in
 			let r = Logo_types.({
 				count = lp.batch; 
 				btch = List.map (fun (aid,bid,ape,bpe,aps,bps,editz) -> 
@@ -705,13 +700,14 @@ let rec loop_random channels cnt db =
 								chr = String.make 1 c ; }) ) editz; 
 						}) ) batch ; 
 				}) in
-			write_protobuf sout Logo_pb.encode_logo_batch r
+			write_protobuf sout Logo_pb.encode_logo_batch r; 
+			dba
 		) 
 		else (
 			let data = generate_random_logo lg lp.id lp.res in
 			transmit_result channels data lp.res ; 
 			let lp2 = read_protobuf lg ic Logo_pb.decode_logo_last in
-			match lp2 with
+			match lp2 with 
 			| Some lp2 -> (
 				if lp2.keep && data.cost > 0. then (
 					let data2 = {data with pid=lp2.where } in
@@ -723,20 +719,21 @@ let rec loop_random channels cnt db =
 						Vector.set db lp2.where data2
 					)
 				); 
-				if lp2.render_simplest then (
+				let dba3 = if lp2.render_simplest then (
 					Printf.fprintf lg "render_simplest: first 10 programs\n";
 					for i = 0 to 9 do (
 						let p = Vector.get db i in
 						Printf.fprintf lg "%d: %s\n" i
 								(Logo.output_program_pstr p.pro); 
 					) done; 
-					render_simplest db true
-				);
-				transmit_ack channels lp.id )
-			| _ -> ()
-		) ) 
-	| _ -> () ); 
-	loop_random channels (cnt+1) db 
+					render_simplest db true 
+				) else dba in
+				transmit_ack channels lp.id; 
+				dba3 )
+			| _ -> dba
+		) )
+	| _ -> dba in
+	loop_random channels (cnt+1) db dba2
 	)
 (* 
 TODO:: 
@@ -798,10 +795,9 @@ let () =
 	Printf.fprintf lg "hello\n";
 
 	let db = Vector.create ~dummy:nulpdata in
-	loop_random channels 0 db ;
-	let _b = make_batch lg db 1 in
-
-	(*ignore(loop_input lg sout serr ic buf 0);*) 
+	let dba = Array.make 1 nulpdata in
+	loop_random channels 0 db dba;
+	(*let _b = make_batch lg dba 1 in*)
 
 	close_out sout; 
 	close_out serr;

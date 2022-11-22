@@ -265,9 +265,9 @@ let rec eval (st0:state) (pr:prog) =
 			let dist = snd resa in
 			let dist = if dist < 0. then 0. else dist in (* not necc...*)
 			let ang = snd resb in
-			let x' = stb.x +. (dist *. Float.cos(stb.t)) in 
-			let y' = stb.y +. (dist *. Float.sin(stb.t)) in 
 			let t' = stb.t +. ang in
+			let x' = stb.x +. (dist *. Float.cos(t')) in 
+			let y' = stb.y +. (dist *. Float.sin(t')) in 
 			let st2 = {stb with x = x'; y = y'; t = t' } in
 			let seg = st.x, st.y, st2.x, st2.y in
 			(*Printf.printf "emitting seg (%d)\n" st2.r; *)

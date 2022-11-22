@@ -142,11 +142,11 @@ let apply_edits s1 edits =
 			a ^ cc ^ b )
 		| _ -> ss ) s1 (List.rev edits)
 		
-let () = 
+(*let () = 
 	let s1 = "apples123" in
 	let s2 = "apsxsples" in
 	let dist, edits = distance s1 s2 true in
 	Printf.printf "distance = %d done\n" dist; 
 	(* verify this *)
 	let s3 = apply_edits s1 edits in
-	Printf.printf "%s to %s, verify %s\n" s1 s2 s3
+	Printf.printf "%s to %s, verify %s\n" s1 s2 s3*)

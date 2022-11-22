@@ -20,6 +20,7 @@
 		(bash "cat logo.proto | ./logo_proto_filter.pl > logod.proto")
 		(bash "protoc --python_out=./ logod.proto")
 		(bash "cp logod_pb2.py ../../logod_pb2.py")
+		(bash "export OCAMLPARAM='_,rounds=4,O3=1,inline=100,inline-max-unroll=5'")
 	))
 )
 

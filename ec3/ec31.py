@@ -34,31 +34,19 @@ make_nonblock(sp.stderr.fileno())
 
 
 image_resolution = 30
-image_count = 4096 # how many images to keep around
-
-
-tokens = [" ", "(", ")",";","+ ","- ","* ","/ ", 
-			 "move ","loop ","v","ua ","ul ", 
-			 "0 ","1 ","2 ",
-			 "eof"] 
-
-tktype = [0, 1, 1, 2, 3, 3, 3, 3, 
-			 4, 5, 6, 7, 7, 
-			 8, 8, 8,
-			 9] # convert this to a one-hot as well
-			# better for MLP encoder
-			
+image_count = 1*4096 # how many images to keep around
 		
+g_logEn = False
 toklen = 30
 poslen = 6
 p_indim = toklen + 1 + poslen*2 
 	# the 1 indicates if it's been edited.
 e_indim = 5 + toklen + poslen*2
-p_ctx = 32
+p_ctx = 50
 e_ctx = 5
 patch_size = 5
 v_ctx = int((image_resolution / patch_size) ** 2 + 1)
-batch_size = 16
+batch_size = 24
 prog_width = 128
 # xfrmr = xf.Transformer(p_ctx, prog_width, 8, 8)
 # 	# p_ctx, width, layers, heads
@@ -129,7 +117,7 @@ while db_cnt < image_count :
 	ocount = ocount + 1
 	lp = logod_pb2.Logo_request()
 	lp.id = db_cnt
-	lp.log_en = False
+	lp.log_en = g_logEn
 	lp.res = image_resolution
 	lp.batch = 0
 	q = lp.SerializeToString()
@@ -292,9 +280,11 @@ def result_to_batch(result, edited):
 		# print(res.b_pid, db_prog[res.b_pid])
 		# encode the input string twice -- the second time is for editing (& will need to be redone during the training )
 		l = len(res.a_progenc)
+		if l > 16: 
+			print("too long:",res.a_progenc,res.a_progstr)
 		for i in range(len(res.a_progenc)): 
 			c = ord(res.a_progenc[i]) - ord('0')
-			if c >= 0 and c < p_indim: 
+			if c >= 0 and c < toklen: 
 				batch_p[j, i, c] = 1
 				batch_p[j, i+l+1, c] = 1
 			# delimeter
@@ -312,7 +302,7 @@ def result_to_batch(result, edited):
 		if e.typ == "fin": 
 			batch_e[j,3] = 1
 		c = ord(e.chr) - ord('0')
-		if c >= 0 and c < p_indim: 
+		if c >= 0 and c < toklen: 
 			batch_e[j,c+4] = 1
 		#position encoding
 		ofst = 5 + toklen
@@ -327,7 +317,7 @@ def new_batch_result(batch_size) :
 	# new batch data from ocaml. 
 	lp = logod_pb2.Logo_request()
 	lp.id = 0
-	lp.log_en = False
+	lp.log_en = g_logEn
 	lp.res = 0
 	lp.batch = batch_size
 	q = lp.SerializeToString()
@@ -351,7 +341,6 @@ def new_batch_result(batch_size) :
 		# print(result)
 	except Exception as inst: 
 		print("ParseFromString; ", nrx, buff[0:nrx], "stderr:", sp.stderr.peek())
-		
 	# print("batch result count:", result.count)
 	# for res in result.btch: 
 	# 	print(res.a_pid, res.a_progenc, res.a_progstr) 
@@ -372,21 +361,21 @@ def new_batch_result(batch_size) :
 	
 	return result,edited
 
-result, edited = new_batch_result(batch_size)
-for j in range(10): 
-	print("===", j)
-	print(result)
-	batch_a, batch_p, batch_e = result_to_batch(result, edited)
-	fig, axs = plt.subplots(1,3, figsize=(13,5))
-	axs[0].imshow(batch_a[0,0,:,:].cpu().numpy())
-	axs[1].imshow(batch_a[0,1,:,:].cpu().numpy())
-	axs[2].imshow(batch_p[0,:,:].cpu().numpy())
-	plt.show()
-	result, edited = apply_edits(result, edited)
-	print("after edit:")
-	print(result)
-	
-print("=== done for now ===")
+# result, edited = new_batch_result(batch_size)
+# for j in range(10): 
+# 	print("===", j)
+# 	print(result)
+# 	batch_a, batch_p, batch_e = result_to_batch(result, edited)
+# 	fig, axs = plt.subplots(1,3, figsize=(13,5))
+# 	axs[0].imshow(batch_a[0,0,:,:].cpu().numpy())
+# 	axs[1].imshow(batch_a[0,1,:,:].cpu().numpy())
+# 	axs[2].imshow(batch_p[0,:,:].cpu().numpy())
+# 	plt.show()
+# 	result, edited = apply_edits(result, edited)
+# 	print("after edit:")
+# 	print(result)
+# 	
+# print("=== done for now ===")
 
 def build_attention_mask2(v_ctx, p_ctx):
     # lazily create causal attention mask, with full attention between the vision tokens
@@ -508,6 +497,36 @@ def print_model_params():
 # 		mask[:, v_ctx:v_ctx+i, :] = 1.0
 # 	return (mask, y, y_mask)
 
+def decode_edit(y): 
+	typ = th.argmax(y[0,0:4])
+	typ = typ.cpu()
+	if typ == 0: 
+		styp = 'sub'
+	if typ == 1: 
+		styp = 'del'
+	if typ == 2: 
+		styp = 'ins'
+	if typ == 3: 
+		styp = 'fin'
+	c = th.argmax(y[0,4:4+toklen]).cpu()
+	c = chr(c + ord('0'))
+	pos = y[0,5+toklen:]
+	z = y[0,5+toklen:]
+	z = th.unsqueeze(z,0)
+	z = z.expand(p_ctx, -1)
+	cos = th.nn.CosineSimilarity(dim=1)
+	pos = cos(posenc[0,:,:], z)
+	pos = th.argmax(pos).item()
+	return (styp, c, pos) 
+	
+def compare_edit(result, batch_e, y): 
+	e = result[0].edits[0]
+	print("ocaml  : ",e.typ," ",e.chr," ",e.pos)
+	styp, c, pos = decode_edit(batch_e)
+	print("batch_e: ", styp," ",c," ",pos)
+	styp, c, pos = decode_edit(y)
+	print("model_y: ", styp," ",c," ",pos)
+
 class SimpleThread(Thread):
 	def __init__(self, result, edited):
 		super().__init__()
@@ -518,31 +537,45 @@ class SimpleThread(Thread):
 	def run(self):
 		batch_a, batch_p, batch_e = result_to_batch(self.result, self.edited)
 		result, edited = apply_edits(self.result, self.edited)
+		# apply_edits also gets new data
 		self.output = batch_a, batch_p, batch_e, result, edited
 
 slowloss = 0.0
 result, edited = new_batch_result(batch_size)
 batch_a, batch_p, batch_e = result_to_batch(result, edited)
 
-for u in range(100000): 
-	thrd = SimpleThread(result, edited)
-	thrd.start()
+compare_edit(result, batch_e, batch_e)
+result, edited = apply_edits(result, edited)
+batch_a, batch_p, batch_e = result_to_batch(result, edited)
+compare_edit(result, batch_e, batch_e)
+result, edited = apply_edits(result, edited)
+batch_a, batch_p, batch_e = result_to_batch(result, edited)
+compare_edit(result, batch_e, batch_e)
+print("=====")
+
+for u in range(10000): 
+	batch_a, batch_p, batch_e = result_to_batch(result, edited)
+	# thrd = SimpleThread(result, edited)
+	# thrd.start()
 	model.zero_grad()
-	x = model(batch_a, batch_p)
-	loss = lossfunc(x,batch_e)
+	y = model(batch_a, batch_p)
+	loss = lossfunc(y,batch_e)
 	lossflat = th.sum(loss)
 	lossflat.backward()
 	optimizer.step()
+	
+	# thrd.join()
+	# batch_a, batch_p, batch_e, result, edited = thrd.output
 	slowloss = 0.99*slowloss + 0.01 * lossflat.detach()
 	if u % 20 == 0 :
-		print(f'{i} loss: {lossflat}; slowloss {slowloss}')
+		print(f'{u} loss: {lossflat}; slowloss {slowloss}')
+		print(result[0].a_progstr,"-->", result[0].b_progstr)
+		compare_edit(result, batch_e, y)
 		# print(i, lossflat, loss[0], y_mask[0])
 		# print(x[0])
 		# print(y[0])
 		# print(x[0] - y[0])
-	thrd.join()
-	batch_a, batch_p, batch_e, result, edited = thrd.output
-
+	result, edited = apply_edits(result, edited)
 
 # see if it can create working programs
 softmx = nn.Softmax(dim = 1)
