@@ -244,7 +244,7 @@ let rec count_ast ast =
 	| `Var(_,_) -> 1
 	| `Save(_,a,_) -> 1 + count_ast a
 	| `Move(a,b,_) -> 1 + (count_ast a) + (count_ast b)
-	| `Binop(a,_,_,b,_) -> (count_ast a) + (count_ast b)
+	| `Binop(a,_,_,b,_) -> 1 + (count_ast a) + (count_ast b)
 	| `Const(_,_) -> 1
 	| `Seq(l,_) -> List.fold_left (fun a e -> a + count_ast e) 0 l
 	| `Loop(_,a,b,_) -> 1 + (count_ast a) + (count_ast b)
@@ -541,7 +541,7 @@ let rec generate_random_logo lg id res =
 	(*if !g_logEn then Printf.fprintf lg "program %d : \n" id;*)
 	let actvar = Array.init 5 (fun _i -> false) in
 	(*Printf.printf "=======\n";*) 
-	let prog = gen_ast false (3,2,actvar) in
+	let prog = gen_ast false (3,1,actvar) in
 	(*if !g_logEn then Logo.output_program_plg lg prog;*)
 	(*if !g_logEn then Printf.fprintf lg "\ncompressed %d : \n" id;*)
 	let pro = compress_ast prog in
@@ -632,10 +632,10 @@ let make_batch lg dba nbatch =
 	(* sorting is done in render_simplest *)
 	let batch = ref [] in
 	while List.length !batch < nbatch do (
-		let na = (Random.int (ndba-21)) + 10 in
-		let nb = (Random.int 21) - 10 in
-		let nb = if nb=0 then (Random.int 2)*2-1 else nb in
-		let nb = na + nb in
+		let nb = (Random.int (ndba-21)) + 10 in
+		let na = (Random.int nb) in
+		(*let nb = if nb=0 then (Random.int 2)*2-1 else nb in
+		let nb = na + nb in*)
 		let a = dba.(na) in
 		let b = dba.(nb) in
 		let a_ns = List.length a.segs in

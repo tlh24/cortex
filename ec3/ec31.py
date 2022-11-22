@@ -553,7 +553,7 @@ batch_a, batch_p, batch_e = result_to_batch(result, edited)
 compare_edit(result, batch_e, batch_e)
 print("=====")
 
-for u in range(10000): 
+for u in range(100000): 
 	batch_a, batch_p, batch_e = result_to_batch(result, edited)
 	# thrd = SimpleThread(result, edited)
 	# thrd.start()
