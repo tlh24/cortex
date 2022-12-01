@@ -192,7 +192,7 @@ while db_cnt < image_count :
 				db_img[mindex, :, :] = a
 				db_prog[mindex] = result.prog
 				db_progenc[mindex] = result.progenc
-				db_segs[mindex] = result.segs.reverse()
+				db_segs[mindex] = result.segs # used to be reverse
 				num_replacements += 1
 			else: 
 				lpr.keep = False
