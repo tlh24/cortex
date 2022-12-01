@@ -34,7 +34,7 @@ make_nonblock(sp.stderr.fileno())
 
 
 image_resolution = 30
-image_count = 1*4096 # how many images to keep around
+image_count = 2*2048 # how many images to keep around
 		
 g_logEn = False
 toklen = 30

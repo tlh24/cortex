@@ -644,27 +644,37 @@ let make_batch lg dba nbatch =
 		let b_np = String.length b.progenc in
 		if a_ns < 4 && b_ns < 4 && a_np < 16 && b_np < 16 then (
 			let dist,_ = Levenshtein.distance a.progenc b.progenc false in
-			if dist > 0 && dist < 6 then ( 
+			if dist > 0 && dist < 7 then (
 				(* "move a , b ;" is 5 insertions; need to allow *)
 				let _, edits = Levenshtein.distance a.progenc b.progenc true in
 				let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
-				(* verify ..*)
-				let re = Levenshtein.apply_edits a.progenc edits in
-				if re <> b.progenc then (
-					Printf.fprintf lg "error! %s edits should be %s was %s\n"
-						a.progenc b.progenc re
-				); 
-				let a_progstr = Logo.output_program_pstr a.pro in
-				let b_progstr = Logo.output_program_pstr b.pro in
-				(* edits are applied in reverse, do it here not py *)
-				(* also add a 'done' edit/indicator *)
-				let edits = ("fin",0,'0') :: edits in 
-				let edits = List.rev edits in
-				batch := (a.pid, b.pid, a.progenc, b.progenc, 
-					a_progstr, b_progstr, edits) :: !batch; 
-				if !g_logEn then Printf.fprintf lg "adding [%d] %s [%d] %s to batch\n" 
-					na a.progenc nb b.progenc; 
-				(*Levenshtein.print_edits edits*)
+				(* emphasize insertion and only a little substitution or deletion -- this mirrors how a human programs *)
+				let nsub,ndel,nins = List.fold_left (fun (sub,del,ins) (s,_,_) ->
+					match s with
+					| "sub" -> (sub+1,del,ins)
+					| "del" -> (sub,del+1,ins)
+					| "ins" -> (sub,del,ins+1)
+					| _ -> (sub,del,ins)
+						) (0,0,0) edits in
+				if (nsub <= 1 && ndel <= 1 && nins <= 1) || (nsub = 0 && ndel = 0 && nins <= 6) then (
+					(* verify ..*)
+					let re = Levenshtein.apply_edits a.progenc edits in
+					if re <> b.progenc then (
+						Printf.fprintf lg "error! %s edits should be %s was %s\n"
+							a.progenc b.progenc re
+					);
+					let a_progstr = Logo.output_program_pstr a.pro in
+					let b_progstr = Logo.output_program_pstr b.pro in
+					(* edits are applied in reverse, do it here not py *)
+					(* also add a 'done' edit/indicator *)
+					let edits = ("fin",0,'0') :: edits in
+					let edits = List.rev edits in
+					batch := (a.pid, b.pid, a.progenc, b.progenc,
+						a_progstr, b_progstr, edits) :: !batch;
+					if !g_logEn then Printf.fprintf lg "adding [%d] %s [%d] %s to batch\n"
+						na a.progenc nb b.progenc;
+					(*Levenshtein.print_edits edits*)
+				)
 			)
 		)
 	) done;
