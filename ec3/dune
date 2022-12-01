@@ -21,6 +21,7 @@
 		(bash "protoc --python_out=./ logod.proto")
 		(bash "cp logod_pb2.py ../../logod_pb2.py")
 		(bash "export OCAMLPARAM='_,rounds=4,O3=1,inline=100,inline-max-unroll=5'")
+		(bash "mkdir -p /tmp/png")
 	))
 )
 
@@ -29,3 +30,6 @@
 	(modules logo_pb logo_pp logo_types logo parser lexer vgwrapper colors levenshtein program)
 	(libraries core core_unix.command_unix vg vg.cairo pbrt vector)
 	)
+; to install these libraries, run:
+; opam install core core_unix vg cairo2 pbrt vector
+: opam switch create myswitch ocaml-variants.4.13.1+options ocaml-option-flambda
