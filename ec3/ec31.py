@@ -168,7 +168,7 @@ while db_cnt < image_count :
 			db_img[db_cnt, :, :] = a
 			db_prog.append(result.prog)
 			db_progenc.append(result.progenc)
-			db_segs.append(result.segs.reverse())
+			db_segs.append(result.segs) # used to be "reverse()"
 			
 			lpr.keep = True
 			lpr.where = db_cnt
