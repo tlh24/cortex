@@ -1,46 +1,49 @@
 (* compute the levenshtein edits in ocaml using 
 https://www.codeproject.com/Articles/13525/Fast-memory-efficient-Levenshtein-algorithm-2 *)
 
-(* I switched this to float -- allow for asymmetric cost calcs *)
+let str2list str =
+	let l = String.fold_left (fun a c -> c :: a) [] str in
+	List.rev l
 
-let foi = float_of_int
-let iof = int_of_float
-
-let levenshtein srow scol getedits = 
+let distance srow scol getedits = 
 	let rlen = String.length srow in
 	let clen = String.length scol in
-	let mat = if getedits then Array.make_matrix (rlen+1) clen 0.0 
-		else Array.make_matrix 2 2 0.0 in
+	let mat = if getedits then Array.make_matrix (rlen+1) clen 0 
+		else Array.make_matrix 2 2 0 in
 	let edits = ref [] in
 	if rlen = 0 then (
-		foi clen, []
+		let edits = List.mapi (fun i c -> ("ins",i,c))
+			(str2list scol) in
+		clen, (List.rev edits)
 	) else (
 		if clen = 0 then (
-			foi rlen, []
+			let edits = List.mapi (fun i c -> ("del",i,c))
+				(str2list srow) in
+			rlen, edits
 		) else (
-			let v0 = Array.init (rlen+1) (fun i -> foi i) in
-			let v1 = Array.init (rlen+1) (fun i -> foi i) in
+			let v0 = Array.init (rlen+1) (fun i -> i) in
+			let v1 = Array.init (rlen+1) (fun i -> i) in
 			(* loop over all columns *)
 			String.iteri (fun col cc -> 
 				let coli = col+1 in
 				(* set the 0th element to column number *)
-				v1.(0) <- foi coli; 
+				v1.(0) <- coli; 
 				String.iteri (fun row cr -> 
 					let rowi = row+1 in
-					let cost = if cc = cr then 0.0 else 1.0 in
-					let a = v0.(rowi) +. 1.0 in
-					let b = v1.(rowi-1) +. 0.7 in
-					let c = v0.(rowi-1) +. cost in
+					let cost = if cc = cr then 0 else 1 in
+					let a = v0.(rowi) + 1 in
+					let b = v1.(rowi-1) + 1 in
+					let c = v0.(rowi-1) + cost in
 					let d = if a<b then (if a<c then a else c)
 						else ( if b<c then b else c) in
 					v1.(rowi) <- d; 
 					) srow; 
 				(* check the contents *)
-				(*Printf.printf "v0\tv1\n"; 
+				Printf.printf "v0\tv1\n";
 				Array.iteri (fun i _ -> 
 					Printf.printf "%d\t%d\n" v0.(i) v1.(i)
 				) v0; 
-				Printf.printf "\n";*) 
+				Printf.printf "\n";
 				(* swap -- faster later *)
 				Array.iteri (fun i _ -> 
 					let tmp = v0.(i) in
@@ -54,11 +57,11 @@ let levenshtein srow scol getedits =
 				Printf.printf "%c " s; 
 				if r = 0 then (
 					for c = 0 to clen-1 do (
-						Printf.printf "%c   " (String.get scol c)
+						Printf.printf "%c " (String.get scol c)
 					) done
 				) else (
 					for c = 0 to clen-1 do (
-						Printf.printf "%0.1f " mat.(r-1).(c)
+						Printf.printf "%d " mat.(r-1).(c)
 					) done
 				); 
 				Printf.printf "\n"
@@ -75,9 +78,9 @@ let levenshtein srow scol getedits =
 								!r !c rw cw;*)
 					let ak,ae = mat.(!r-1).(!c), 1 in
 					let bk,be = if !c>0 then mat.(!r).(!c-1), 2
-									else 1000000.0, 2 in
+									else 1000000, 2 in
 					let ck,ce = if !c>0 then mat.(!r-1).(!c-1), 3
-									else (1000000.0, 3) in
+									else (1000000, 3) in
 					let _dk,de = if ak<bk then (if ak<ck then ak,ae else ck,ce)
 						else ( if bk<ck then bk,be else ck,ce) in
 					let ed,rr,cc = match de with
@@ -131,30 +134,30 @@ let apply_edits s1 edits =
 			let a = if p > 0 then String.sub ss 0 p else "" in
 			let b = if p < len-1 then
 					String.sub ss (p+1) (len-p-1) else "" in
-			(*Printf.printf "a %s\n" a; 
-			Printf.printf "b %s\n" b;*) 
+			Printf.printf "a %s\n" a;
+			Printf.printf "b %s\n" b;
 			a ^ cc ^ b )
 		| "del" -> (
+			Printf.printf "del p %d\n" p;
 			let a = if p > 0 then String.sub ss 0 p else "" in
 			let b = if p < len-1 then
 					String.sub ss (p+1) (len-p-1) else "" in
 			a ^ b )
 		| "ins" -> ( (* insert before p; can be at end of string*)
+			Printf.printf "ins p %d\n" p;
 			let a = if p > 0 then String.sub ss 0 p else "" in
 			let b = if p < len then String.sub ss p (len-p) else "" in
-			(*Printf.printf "a %s\n" a; 
-			Printf.printf "b %s\n" b;*) 
+			Printf.printf "ins a %s\n" a;
+			Printf.printf "ins b %s\n" b;
 			a ^ cc ^ b )
 		| _ -> ss ) s1 (List.rev edits)
 		
-let () = 
-	let s1 = "apples3" in
-	let s2 = "apsples33" in
-	let dist, edits = levenshtein s1 s2 true in
-	Printf.printf "distance = %f done\n" dist; 
-	print_edits edits; 
+let () =
+	let s1 = "apples" in
+	let s2 = "app" in
+	let dist, edits = distance s1 s2 true in
+	print_edits edits;
+	Printf.printf "distance = %d done\n" dist; 
 	(* verify this *)
 	let s3 = apply_edits s1 edits in
-	Printf.printf "%s to %s, verify %s\n" s1 s2 s3; 
-	if (String.compare s2 s3) <> 0 then 
-		Printf.printf "error!\n"
+	Printf.printf "%s to %s, verify %s\n" s1 s2 s3

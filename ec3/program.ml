@@ -642,8 +642,9 @@ let make_batch lg dba nbatch =
 	(* sorting is done in render_simplest *)
 	let batch = ref [] in
 	while List.length !batch < nbatch do (
-		let nb = (Random.int (ndba-21)) + 10 in
-		let na = if (Random.int 2) = 0 then 0 else (Random.int nb) in
+		let nb = (Random.int (ndba-1)) + 1 in
+		(*let na = 0 in*)
+		let na = if (Random.int 10) = 0 then 0 else (Random.int nb) in
 		(* 12.5% of the time na is the empty program *)
 		let a = dba.(na) in
 		let b = dba.(nb) in
@@ -653,6 +654,8 @@ let make_batch lg dba nbatch =
 		let b_np = String.length b.progenc in
 		if a_ns < 4 && b_ns < 4 && a_np < 16 && b_np < 16 then (
 			let dist,_ = Levenshtein.distance a.progenc b.progenc false in
+			if !g_logEn then
+			Printf.fprintf lg "trying [%d] [%d] for batch; dist %d\n" na nb dist;
 			if dist > 0 && dist < 7 then (
 				(* "move a , b ;" is 5 insertions; need to allow *)
 				let _, edits = Levenshtein.distance a.progenc b.progenc true in

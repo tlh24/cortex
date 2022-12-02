@@ -21,6 +21,7 @@ print("torch device", th.cuda.get_device_name(torch_device))
 th.cuda.set_device(torch_device)
 th.set_default_tensor_type('torch.cuda.FloatTensor')
 
+subprocess.run(["mkdir","-p","/tmp/png"]) # required by ocaml
 
 ocamlLogoPath = "./_build/default/program.exe"
 sp = subprocess.Popen(ocamlLogoPath, shell=False, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=False)
@@ -34,9 +35,9 @@ make_nonblock(sp.stderr.fileno())
 
 
 image_resolution = 30
-image_count = 1*2048 # how many images to keep around
+image_count = 2*2048 # how many images to keep around
 		
-g_logEn = True
+g_logEn = False
 toklen = 30
 poslen = 6
 p_indim = toklen + 1 + poslen*2 

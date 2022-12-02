@@ -1,6 +1,10 @@
 (* compute the levenshtein edits in ocaml using 
 https://www.codeproject.com/Articles/13525/Fast-memory-efficient-Levenshtein-algorithm-2 *)
 
+let str2list str =
+	let l = String.fold_left (fun a c -> c :: a) [] str in
+	List.rev l
+
 let distance srow scol getedits = 
 	let rlen = String.length srow in
 	let clen = String.length scol in
@@ -8,10 +12,14 @@ let distance srow scol getedits =
 		else Array.make_matrix 2 2 0 in
 	let edits = ref [] in
 	if rlen = 0 then (
-		clen, []
+		let edits = List.mapi (fun i c -> ("ins",i,c))
+			(str2list scol) in
+		clen, (List.rev edits)
 	) else (
 		if clen = 0 then (
-			rlen, []
+			let edits = List.mapi (fun i c -> ("del",i,c))
+				(str2list srow) in
+			rlen, edits
 		) else (
 			let v0 = Array.init (rlen+1) (fun i -> i) in
 			let v1 = Array.init (rlen+1) (fun i -> i) in
@@ -31,11 +39,11 @@ let distance srow scol getedits =
 					v1.(rowi) <- d; 
 					) srow; 
 				(* check the contents *)
-				(*Printf.printf "v0\tv1\n"; 
+				(*Printf.printf "v0\tv1\n";
 				Array.iteri (fun i _ -> 
 					Printf.printf "%d\t%d\n" v0.(i) v1.(i)
 				) v0; 
-				Printf.printf "\n";*) 
+				Printf.printf "\n";*)
 				(* swap -- faster later *)
 				Array.iteri (fun i _ -> 
 					let tmp = v0.(i) in
@@ -43,8 +51,8 @@ let distance srow scol getedits =
 					if getedits then mat.(i).(col) <- v1.(i); 
 					v1.(i) <- tmp) v0; 
 			) scol; 
-			(* print the matrix
-			for r = 0 to rlen+1 do (
+			(* print the matrix *)
+			(*for r = 0 to rlen+1 do (
 				let s = if r >= 2 then String.get srow (r-2) else ' ' in
 				Printf.printf "%c " s; 
 				if r = 0 then (
@@ -57,7 +65,7 @@ let distance srow scol getedits =
 					) done
 				); 
 				Printf.printf "\n"
-			) done; *)
+			) done;*)
 			(* to get the edits we have to work backwards
 			through the matrix, as in the smith-waterman algorithm *)
 			if getedits then (
@@ -126,26 +134,29 @@ let apply_edits s1 edits =
 			let a = if p > 0 then String.sub ss 0 p else "" in
 			let b = if p < len-1 then
 					String.sub ss (p+1) (len-p-1) else "" in
-			(*Printf.printf "a %s\n" a; 
-			Printf.printf "b %s\n" b;*) 
+			(*Printf.printf "a %s\n" a;
+			Printf.printf "b %s\n" b;*)
 			a ^ cc ^ b )
 		| "del" -> (
+			(*Printf.printf "del p %d\n" p;*)
 			let a = if p > 0 then String.sub ss 0 p else "" in
 			let b = if p < len-1 then
 					String.sub ss (p+1) (len-p-1) else "" in
 			a ^ b )
 		| "ins" -> ( (* insert before p; can be at end of string*)
+			(*Printf.printf "ins p %d\n" p;*)
 			let a = if p > 0 then String.sub ss 0 p else "" in
 			let b = if p < len then String.sub ss p (len-p) else "" in
-			(*Printf.printf "a %s\n" a; 
-			Printf.printf "b %s\n" b;*) 
+			(*Printf.printf "ins a %s\n" a;
+			Printf.printf "ins b %s\n" b;*)
 			a ^ cc ^ b )
 		| _ -> ss ) s1 (List.rev edits)
 		
-(*let () = 
-	let s1 = "apples123" in
-	let s2 = "apsxsples" in
+(*let () =
+	let s1 = "apples" in
+	let s2 = "app" in
 	let dist, edits = distance s1 s2 true in
+	print_edits edits;
 	Printf.printf "distance = %d done\n" dist; 
 	(* verify this *)
 	let s3 = apply_edits s1 edits in
