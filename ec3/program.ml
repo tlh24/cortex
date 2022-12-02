@@ -645,7 +645,7 @@ let make_batch lg dba nbatch =
 		let nb = (Random.int (ndba-1)) + 1 in
 		(*let na = 0 in*)
 		let na = if (Random.int 10) = 0 then 0 else (Random.int nb) in
-		(* 12.5% of the time na is the empty program *)
+		(* small portion of the time na is the empty program *)
 		let a = dba.(na) in
 		let b = dba.(nb) in
 		let a_ns = List.length a.segs in
