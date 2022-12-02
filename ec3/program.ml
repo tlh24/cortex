@@ -566,6 +566,16 @@ let rec generate_random_logo lg id res =
 		generate_random_logo lg id res
 	)
 
+let generate_empty_logo lg id res =
+	(* the first program needs to be empty, for diffing *)
+	let pro = `Nop in
+	let progenc = Logo.encode_program pro |> intlist_to_string in
+	Printf.fprintf lg "empty program encoding: \"%s\"\n" progenc;
+	let segs = [] in
+	let cost = 0.0 in
+	let img, _ = Logo.segs_to_array_and_cost segs res in
+	{pid=id; pro; progenc; img; cost; segs}
+
 let transmit_result channels data res = 
 	let sout, serr, _ic, lg = channels in
 	let stride = (Bigarray.Array1.dim data.img) / res in
@@ -633,9 +643,8 @@ let make_batch lg dba nbatch =
 	let batch = ref [] in
 	while List.length !batch < nbatch do (
 		let nb = (Random.int (ndba-21)) + 10 in
-		let na = (Random.int nb) in
-		(*let nb = if nb=0 then (Random.int 2)*2-1 else nb in
-		let nb = na + nb in*)
+		let na = if (Random.int 2) = 0 then 0 else (Random.int nb) in
+		(* 12.5% of the time na is the empty program *)
 		let a = dba.(na) in
 		let b = dba.(nb) in
 		let a_ns = List.length a.segs in
@@ -714,12 +723,14 @@ let rec loop_random channels cnt db dba =
 			dba
 		) 
 		else (
-			let data = generate_random_logo lg lp.id lp.res in
+			let data = if lp.id = 0 then
+				generate_empty_logo lg lp.id lp.res else
+				generate_random_logo lg lp.id lp.res in
 			transmit_result channels data lp.res ; 
 			let lp2 = read_protobuf lg ic Logo_pb.decode_logo_last in
 			match lp2 with 
 			| Some lp2 -> (
-				if lp2.keep && data.cost > 0. then (
+				if lp2.keep then (
 					let data2 = {data with pid=lp2.where } in
 					if lp2.where = Vector.length db then (
 						if !g_logEn then Printf.fprintf lg "db saving %d push\n" lp2.where; 

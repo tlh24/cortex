@@ -3026,3 +3026,26 @@ output an
 
 Keep the edits pretty small, 1-5 .. for the time being .. then we can work on dramatically larger edits (aka refactoring!). 
 	Make it work first! 
+
+December 1 2022
+
+December already!  
+Tried running the full model on lambda cloud -- and it seems slower than my laptop. 
+Normally, this wouldn’t be a problem, but it’s cloudy today so am not getting as much solar power. 
+
+Anyway, todo: now need to bootstrap, eg. have the Transformer continually output programs, which then enter into the corpus of training data. 
+This requires a second level of communication: 
+-- python needs to apply the edits (which it already does), 
+-- then it needs to transmit the encoding to ocaml
+-- which needs to decode it and convert to a prog, e.g. AST
+-- which can then be run by ocaml to produce a (progra, encoding, image) tuple
+-- which is then transmitted, interleaved, into the databases of both python and ocaml.  
+
+Sure would be much easier to have another way of distributing this processing, especially given that cloud instances seem to have lots of CPUs and GPUs, and it would be great to take advantage of this.  
+This would also eliminate the complexity (read: stupidity) of having two copies of the data in two different places. 
+	Such a bug has already bitten me once ... 
+	That said, protocol-buffers are probably faster than a database?  
+		Is there not a reasonably native database? 
+		DAta schemas are easier to change when we don’t have that external dependency.. 
+			Maybe punt on this one until we have more resources.  
+			In the meantime, just have to be careful. 

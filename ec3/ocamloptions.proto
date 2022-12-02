@@ -1,0 +1,31 @@
+import "google/protobuf/descriptor.proto";
+
+enum OCamlType {
+    int_t = 1;
+}
+
+enum OCamlContainer {
+    repeated_field = 1;
+    hashtbl = 2;
+}
+
+extend google.protobuf.FieldOptions {
+    optional OCamlType ocaml_type           = 100002;
+    optional OCamlContainer ocaml_container = 100003;
+    optional bool ocaml_mutable             = 100004;
+}
+
+extend google.protobuf.FileOptions {
+    optional OCamlType int32_type   = 100002;
+    optional OCamlType int64_type   = 100003;
+    optional string ocaml_file_ppx  = 100004;
+    optional string ocaml_all_types_ppx = 100005;
+}
+
+extend google.protobuf.MessageOptions {
+    optional string ocaml_type_ppx  = 100002;
+}
+
+extend google.protobuf.EnumOptions {
+    optional string ocaml_enum_ppx  = 100002;
+}

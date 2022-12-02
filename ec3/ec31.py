@@ -34,9 +34,9 @@ make_nonblock(sp.stderr.fileno())
 
 
 image_resolution = 30
-image_count = 2*2048 # how many images to keep around
+image_count = 1*2048 # how many images to keep around
 		
-g_logEn = False
+g_logEn = True
 toklen = 30
 poslen = 6
 p_indim = toklen + 1 + poslen*2 
@@ -528,6 +528,7 @@ def compare_edit(result, batch_e, y):
 	print("model_y: ", styp," ",c," ",pos)
 
 class SimpleThread(Thread):
+	# this just became confusing due to python's data model..
 	def __init__(self, result, edited):
 		super().__init__()
 		self.result = result
