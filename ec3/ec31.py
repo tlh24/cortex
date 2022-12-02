@@ -35,7 +35,7 @@ make_nonblock(sp.stderr.fileno())
 
 
 image_resolution = 30
-image_count = 2*2048 # how many images to keep around
+image_count = 5*2048 # how many images to keep around
 		
 g_logEn = False
 toklen = 30
@@ -522,7 +522,7 @@ def decode_edit(y):
 	
 def compare_edit(result, batch_e, y): 
 	e = result[0].edits[0]
-	print("ocaml  : ",e.typ," ",e.chr," ",e.pos)
+	# print("ocaml  : ",e.typ," ",e.chr," ",e.pos) # debug; should be the same as below.
 	styp, c, pos = decode_edit(batch_e)
 	print("batch_e: ", styp," ",c," ",pos)
 	styp, c, pos = decode_edit(y)
@@ -555,7 +555,7 @@ batch_a, batch_p, batch_e = result_to_batch(result, edited)
 compare_edit(result, batch_e, batch_e)
 print("=====")
 
-for u in range(100000): 
+for u in range(300000):
 	batch_a, batch_p, batch_e = result_to_batch(result, edited)
 	# thrd = SimpleThread(result, edited)
 	# thrd.start()

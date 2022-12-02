@@ -3049,3 +3049,26 @@ This would also eliminate the complexity (read: stupidity) of having two copies 
 		DAta schemas are easier to change when we don’t have that external dependency.. 
 			Maybe punt on this one until we have more resources.  
 			In the meantime, just have to be careful. 
+
+Tomorrow: todo: make sure the transformer can memorize nothing -> line segments.  
+
+Dec 2 2022
+
+Made the program database larger -- 10k -- and immediately the initial loss was lower! (50 vs 62; batch_size = 24)
+As it was compiling the database of programs, was obvious that many more compliated programs were being replaced by simpler ones.  Good!
+Also tripled the number of iterations for training, since it seems we have enough solar / battery for the time being (middle of the day, though overcast)
+
+After 228k iterations, loss is hovering around 42 (batch size 24); It does seem to be gradually decreasing, just not very quickly.
+Really need to get the bootstrapping code working; worth cranking on this.
+	Note: after 300K iterations, the loss did not decrease anymore.
+	Still at 42; assume that it won't go down further?
+	Errors seem pretty broadly distributed across type, location, and character.
+
+I think, for this, we make a normal batch w/ unkown program b (sampled from the database) & ask the network to produce edits until it otputs a "fin" token.
+Then, send this to ocaml, as above, and ask it to execute.
+If it fits, per the same criteria as the ocaml stochastic AST generator, then add it to the database.
+I guess do this every so often?
+
+Also very important: things are getting to the point that starting from a blank slate isn't acceptable anymore.
+Need to start from a pre-trained transformer & pre-filled database of images.
+Redis integration time?
