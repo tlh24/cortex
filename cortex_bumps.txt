@@ -3072,3 +3072,25 @@ I guess do this every so often?
 Also very important: things are getting to the point that starting from a blank slate isn't acceptable anymore.
 Need to start from a pre-trained transformer & pre-filled database of images.
 Redis integration time?
+
+December 5 2022
+
+Testing to see if the transformer can completely memorize the first 100 image -< program pairs, doing only insertion and no deletion or substitution. 
+This is with the 10k database, as I tested in the desert. 
+Hmm .. something seems off, 'insert' seems to be always the same, when it all should be asynchronous and hence varying on the sample clock (at least, with the sometimes longer programs) 
+Got a bug in there! 
+
+Redis doesn't look to hard.  Storing more complicated datastructures can perhaps be done through the JSON library; or by using multiple hash tables (which are an builtin structure)
+
+OK, there are more bugs:  the transformer cannot memorize the simplest 100 program-image pairs: 
+	after 300k iterations, slowloss is still 47 (batch 24)
+	Todo: plot the loss
+Hmm.  Need to test things more. 
+
+December 6 2022
+
+The loss seems to be gradually *increasing* over time ... its spiky though.  
+Why would it be increasing?  Something in the model is ill-conditioned?  I need to look at the training data more before poking around with the model. 
+
+I think i need to keep a log of the errors -- where the model goes wrong, and why, to better understand why it's not converging.  
+Seems like it's stuck in some sort of equlibirium, where some of the batch members can't be accurately decoded; or, some members are too hard to decode because the space is too convoluted. 

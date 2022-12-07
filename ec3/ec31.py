@@ -10,6 +10,7 @@ import numpy as np
 import subprocess 
 import time
 from threading import Thread
+from collections import namedtuple
 
 import logod_pb2
 import xf
@@ -35,13 +36,14 @@ make_nonblock(sp.stderr.fileno())
 
 
 image_resolution = 30
-image_count = 5*2048 # how many images to keep around
+image_count = 1*2048 # how many images to keep around
+train_iters = 10000
 		
 g_logEn = False
 toklen = 30
 poslen = 6
 p_indim = toklen + 1 + poslen*2 
-	# the 1 indicates if it's been edited.
+	# extra index: indicates if string has been edited.
 e_indim = 5 + toklen + poslen*2
 p_ctx = 50
 e_ctx = 5
@@ -64,6 +66,10 @@ for i in range(p_ctx):
 		posenc[i,j*2+1] = cos((2*pi*i / p_ctx) * (j+1))
 		
 posenc = posenc.expand(batch_size, p_ctx, poslen*2) 
+
+# batch result datastructure
+Bres = namedtuple("Bres", "a_pid b_pid a_progenc b_progenc c_progenc a_progstr b_progstr edits")
+	
 
 # prog = [0 for i in range(p_ctx)]
 # prog_human = list(map(lambda i : tokens[i], prog))
@@ -103,7 +109,6 @@ def check_formed(prog) :
 def prog_to_human(prog): 
 	return list(map(lambda i : tokens[i], prog))
 
-
 db_img = th.ones(image_count, image_resolution, image_resolution)*-100 # prevent spurious matches
 db_prog = []
 db_progenc = []
@@ -113,6 +118,12 @@ ocount = 0
 
 num_rejections = 0
 num_replacements = 0
+
+def cost_progenc( progenc ): 
+	cost = 0
+	for i in range(len(progenc)): 
+		cost = cost + ord(progenc[i])
+	return cost
 
 while db_cnt < image_count : 
 	ocount = ocount + 1
@@ -161,10 +172,10 @@ while db_cnt < image_count :
 			dist = d[mindex]
 		else: 
 			mindex = 0
-			dist = 15.0
+			dist = 25.0
 			
 		lpr = logod_pb2.Logo_last()
-		if dist > 10: 
+		if dist > 24: 
 			# add to the database. 
 			db_img[db_cnt, :, :] = a
 			db_prog.append(result.prog)
@@ -186,7 +197,7 @@ while db_cnt < image_count :
 		else: 
 			num_rejections = num_rejections+1
 			# reject the more complex representation.
-			if len(db_progenc[mindex]) > len(result.progenc) :
+			if cost_progenc(db_progenc[mindex]) > cost_progenc(result.progenc) :
 				print(f"replacing {mindex} with {db_cnt}")
 				lpr.keep = True
 				lpr.where = mindex
@@ -228,35 +239,63 @@ print("first 10 programs:")
 for j in range(10): 
 	print(j, ": ", db_prog[j])
 
-# what we need to do is train with a series of edits, 
-# # and replace the entries that have already emitted 'done'. 
 
-def apply_edits(result,edited): 
+def apply_onedit(res, edited, typ, cr, pp): 
+	# super important to keep this factorized, 
+	# otherwise we risk bugs in that training and test don't change state in the same way. 
+	getnew = False;
+	la = len(res.a_progenc)
+	lc = len(res.c_progenc)
+	sl = list(res.c_progenc)
+	if typ == "sub": 
+		if pp > lc-1: 
+			pp = lc-1
+		if pp < 0: 
+			pp = 0 # indx of removed element = la + pp
+		sl[pp] = cr
+		edited[la+pp] = 0.6
+	if typ == "del": 
+		if pp >= 0 and pp < lc: 
+			del sl[pp] # interesting python has this sugar
+		if pp >= lc-1: 
+			pp = lc-2
+		if pp < 0: 
+			pp = 0 # indx of removed element = la + pp
+		ed = edited[la+pp+1 : p_ctx].clone()
+		edited[la+pp : p_ctx-1] = ed
+		edited[p_ctx-1] = 0
+		edited[la+pp] = -1.0 # different mark.. ? 
+	if typ == "ins": 
+		if pp > lc-1: 
+			pp = lc-1 # you can insert at the end.
+		if pp < 0: 
+			pp = 0 # indx of removed element = la + pp
+		sl.insert(pp, cr)
+			# note the semantics for these three operations are different! 
+		ed = edited[la+pp : p_ctx-1].clone()
+		edited[la+pp+1 : p_ctx] = ed
+		edited[la+pp] = 1
+	if typ == "fin":
+		# print(f"apply_edits: getting a new prog at {j}")
+		getnew = True
+	res = res._replace(c_progenc = "".join(sl))
+	return res, edited, getnew
+
+def apply_edits(result, edited): 
 	# everything being mutable makes this much easier.. 
 	getnew = []
 	for j in range(len(result)): 
 		res = result[j]
-		pl = len(res.a_progenc)
 		if len(res.edits) > 0: 
 			e = res.edits.pop(0)
-			sl = list(res.a_progenc)
-			if e.typ == "sub": 
-				sl[e.pos] = e.chr
-				edited[j][e.pos] = 1
-				edited[j][e.pos+pl+1] = 1
-			if e.typ == "del": 
-				del sl[e.pos] # interesting python has this sugar
-				edited[j][e.pos] = 1
-			if e.typ == "ins": 
-				sl.insert(e.pos, e.chr)
-				edited[j][e.pos+pl+1] = 1
-				# also note the semantics for these three operations are different! 
-			if e.typ == "fin":
-				# print(f"apply_edits: getting a new prog at {j}")
+			res,ed2,gn = apply_onedit(res, edited[j], e.typ, e.chr, e.pos)
+			result[j] = res
+			edited[j] = ed2
+			if gn: 
 				getnew.append(j)
-			res.a_progenc = "".join(sl)
 		else: 
 			getnew.append(j)
+		result[j] = res
 	# replace the expired results.
 	if len(getnew) > 0: 
 		newres,newedit = new_batch_result(len(getnew))
@@ -264,6 +303,20 @@ def apply_edits(result,edited):
 			k = getnew[j]
 			result[k] = newres[j]
 			edited[k] = newedit[j]
+	return result,edited
+
+def apply_yedits(result, edited, yedit, fins): 
+	# this from model output, not ocaml.
+	(typ, c, pos) = yedit
+	for j in range(len(result)): 
+		if(fins[j] < 1): 
+			res = result[j]
+			res,ed2,gn = apply_onedit(res, edited[j], typ[j], c[j], pos[j])
+			result[j] = res
+			edited[j] = ed2
+			if gn: 
+				print(f"model emitted fin channel {j}; a:{res.a_progenc} b:{res.b_progenc} c:{res.c_progenc}" )
+				fins[j] = 2
 	return result,edited
 
 def result_to_batch(result, edited): 
@@ -283,15 +336,21 @@ def result_to_batch(result, edited):
 		l = len(res.a_progenc)
 		if l > 16: 
 			print("too long:",res.a_progenc,res.a_progstr)
-		for i in range(len(res.a_progenc)): 
+		for i in range(l): 
 			c = ord(res.a_progenc[i]) - ord('0')
-			if c >= 0 and c < toklen: 
+			if c >= 0 and c < toklen-1: 
 				batch_p[j, i, c] = 1
-				batch_p[j, i+l+1, c] = 1
-			# delimeter
-			batch_p[j, l, toklen-1] = 1
+		lc = len(res.c_progenc)
+		if lc > 16: 
+			print("c_progenc too long:",res.c_progenc)
+		for i in range(lc): 
+			c = ord(res.c_progenc[i]) - ord('0')
+			if c >= 0 and c < toklen-1: 
+				batch_p[j, i+l, c] = 1
+				batch_p[j, i+l, toklen-1] = 1 
+					# indicate this string is 'c', to be edited
 		# copy over the edit tags 
-		batch_p[j,:,toklen] = edited[j]
+		batch_p[j,:, toklen] = edited[j]
 		
 		e = res.edits[0]
 		if e.typ == "sub": 
@@ -310,7 +369,8 @@ def result_to_batch(result, edited):
 		batch_e[j,ofst:] = posenc[0,e.pos,:]
 
 	# add positional encoding to program one-hot
-	batch_p[:, :, toklen+1:] = posenc
+	batch_p[:, 0:l, toklen+1:] = posenc[:, 0:l, :]
+	batch_p[:, l:l+lc, toklen+1:] = posenc[:, 0:lc, :]
 	
 	return batch_a, batch_p, batch_e
 
@@ -350,11 +410,24 @@ def new_batch_result(batch_size) :
 	# 		print("edit ", e.typ, e.pos, e.chr)
 	# sys.stdout.flush()
 	
-	# change to list so it's editable
+	# change the edit datastructure
+	styp = []
+	cl = []
+	posl = []
+	# change to list of namedtuple so it's editable & we can add extra data fields
 	res = []
 	for i in range(batch_size):
-		res.append(result.btch[i])
+		r = Bres(result.btch[i].a_pid, # for reference
+			  result.btch[i].b_pid,		 # for reference
+			  result.btch[i].a_progenc, # doesn't change
+			  result.btch[i].b_progenc, # hidden to the model
+			  result.btch[i].a_progenc, # edited
+			  result.btch[i].a_progstr, # human-readable
+			  result.btch[i].b_progstr, # human readable
+			  result.btch[i].edits)
+		res.append(r)
 	result = res
+
 	# indicate that these are unedited. 
 	edited = []
 	for j in range(batch_size): 
@@ -456,7 +529,7 @@ model = ecTransformer(image_resolution = image_resolution,
 
 # lossfunc = nn.CrossEntropyLoss(label_smoothing = 0.08, reduction='none')
 lossfunc = nn.MSELoss(reduction='none')
-optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=5e-4)
+optimizer = optim.AdamW(model.parameters(), lr=1e-2, weight_decay=5e-4)
 
 def print_model_params(): 
 	print(model.prt_to_tok.weight[0,:])
@@ -499,34 +572,41 @@ def print_model_params():
 # 	return (mask, y, y_mask)
 
 def decode_edit(y): 
-	typ = th.argmax(y[0,0:4])
-	typ = typ.cpu()
-	if typ == 0: 
-		styp = 'sub'
-	if typ == 1: 
-		styp = 'del'
-	if typ == 2: 
-		styp = 'ins'
-	if typ == 3: 
-		styp = 'fin'
-	c = th.argmax(y[0,4:4+toklen]).cpu()
-	c = chr(c + ord('0'))
-	pos = y[0,5+toklen:]
-	z = y[0,5+toklen:]
-	z = th.unsqueeze(z,0)
-	z = z.expand(p_ctx, -1)
-	cos = th.nn.CosineSimilarity(dim=1)
-	pos = cos(posenc[0,:,:], z)
-	pos = th.argmax(pos).item()
-	return (styp, c, pos) 
+	typ = th.argmax(y[:,0:4], 1)
+	typ = typ.cpu() # type should be th.Long
+	bs = y.shape[0]
+	styp = []
+	cl = []
+	posl = [] # keep native - faster.
+	for j in range(bs): 
+		if typ[j] == 0: 
+			styp.append('sub')
+		if typ[j] == 1: 
+			styp.append('del')
+		if typ[j] == 2: 
+			styp.append('ins')
+		if typ[j] == 3: 
+			styp.append('fin')
+		c = th.argmax(y[j,4:4+toklen]).cpu()
+		c = chr(c + ord('0'))
+		cl.append(c)
+		pos = y[j,5+toklen:]
+		z = y[j,5+toklen:]
+		z = th.unsqueeze(z,0)
+		z = z.expand(p_ctx, -1)
+		cos = th.nn.CosineSimilarity(dim=1)
+		pos = cos(posenc[0,:,:], z)
+		posl.append(th.argmax(pos).item())
+	return (styp, cl, posl) 
+
 	
 def compare_edit(result, batch_e, y): 
 	e = result[0].edits[0]
 	# print("ocaml  : ",e.typ," ",e.chr," ",e.pos) # debug; should be the same as below.
 	styp, c, pos = decode_edit(batch_e)
-	print("batch_e: ", styp," ",c," ",pos)
+	print("batch_e: ", styp[0]," ",c[0]," ",pos[0])
 	styp, c, pos = decode_edit(y)
-	print("model_y: ", styp," ",c," ",pos)
+	print("model_y: ", styp[0]," ",c[0]," ",pos[0])
 
 class SimpleThread(Thread):
 	# this just became confusing due to python's data model..
@@ -555,7 +635,9 @@ batch_a, batch_p, batch_e = result_to_batch(result, edited)
 compare_edit(result, batch_e, batch_e)
 print("=====")
 
-for u in range(300000):
+losslog = open("losslog.txt", "w")
+
+for u in range(train_iters):
 	batch_a, batch_p, batch_e = result_to_batch(result, edited)
 	# thrd = SimpleThread(result, edited)
 	# thrd.start()
@@ -571,40 +653,59 @@ for u in range(300000):
 	slowloss = 0.99*slowloss + 0.01 * lossflat.detach()
 	if u % 20 == 0 :
 		print(f'{u} loss: {lossflat}; slowloss {slowloss}')
-		print(result[0].a_progstr,"-->", result[0].b_progstr)
+		print("[",result[0].a_pid,"]",result[0].a_progstr,"-->", "[",result[0].b_pid,"]", result[0].b_progstr)
+		print(result[0].a_progenc,"-->", result[0].c_progenc,"(", result[0].b_progenc,")")
 		compare_edit(result, batch_e, y)
 		# print(i, lossflat, loss[0], y_mask[0])
 		# print(x[0])
 		# print(y[0])
 		# print(x[0] - y[0])
 	result, edited = apply_edits(result, edited)
+	losslog.write(f"{u}\t{slowloss}\n")
+	
+losslog.close()
 
-# see if it can create working programs
-softmx = nn.Softmax(dim = 1)
-batch_a, batch_p, batch_pl = make_batch()
-batch_p_orig = batch_p.clone()
-for i in range(int(np.max(batch_pl))):
-	mask, y, y_mask = make_mask_y(i, batch_p, batch_pl)
-	x = model(batch_a, batch_p, mask)
-	# substitute this into batch_p
-	x = softmx(x[:, 0:toklen])
-	indx = th.argmax(x, dim=1)
-	batch_p[:, i] = th.zeros(p_indim)
-	batch_p[:, i, indx] = 1.0
-	for j in range(batch_size): 
-		typ = tktype[indx[j]]
-		batch_p[j, i, toklen+typ] = 1.0
+# try creating programs, just to see what sort of errors are made. 
+result, edited = new_batch_result(batch_size)
+for u in range(16): 
+	batch_a, batch_p, batch_e = result_to_batch(result, edited)
+	y = model(batch_a, batch_p)
+	typ,c,pos = decode_edit(y)
+	fins = th.zeros(batch_size)
+	result, edited = apply_yedits(result, edited, (typ,c,pos), fins)
 
-# now process it back to human-readable.
+# print the results, if it falls through. 
+print("resulting decoded programs:")
 for j in range(batch_size): 
-	prog_orig = []
-	prog_new = []
-	for i in range(int(np.max(batch_pl))):
-		prog_orig.append(th.argmax(batch_p_orig[j, i, 0:toklen]))
-		prog_new.append(th.argmax(batch_p[j, i, 0:toklen]))
-	prog_orig_h = prog_to_human(prog_orig)
-	prog_new_h = prog_to_human(prog_new)
-	print(f"batch{j}\n\torig {prog_orig_h}\n\tnew {prog_new_h}\n")
+	res = result[j]
+	print(f"channel {j}; a:{res.a_progenc} b:{res.b_progenc} c:{res.c_progenc}" )
+
+# # see if it can create working programs
+# softmx = nn.Softmax(dim = 1)
+# batch_a, batch_p, batch_pl = make_batch()
+# batch_p_orig = batch_p.clone()
+# for i in range(int(np.max(batch_pl))):
+# 	mask, y, y_mask = make_mask_y(i, batch_p, batch_pl)
+# 	x = model(batch_a, batch_p, mask)
+# 	# substitute this into batch_p
+# 	x = softmx(x[:, 0:toklen])
+# 	indx = th.argmax(x, dim=1)
+# 	batch_p[:, i] = th.zeros(p_indim)
+# 	batch_p[:, i, indx] = 1.0
+# 	for j in range(batch_size): 
+# 		typ = tktype[indx[j]]
+# 		batch_p[j, i, toklen+typ] = 1.0
+# 
+# # now process it back to human-readable.
+# for j in range(batch_size): 
+# 	prog_orig = []
+# 	prog_new = []
+# 	for i in range(int(np.max(batch_pl))):
+# 		prog_orig.append(th.argmax(batch_p_orig[j, i, 0:toklen]))
+# 		prog_new.append(th.argmax(batch_p[j, i, 0:toklen]))
+# 	prog_orig_h = prog_to_human(prog_orig)
+# 	prog_new_h = prog_to_human(prog_new)
+# 	print(f"batch{j}\n\torig {prog_orig_h}\n\tnew {prog_new_h}\n")
 
 logf.close()
 sp.terminate()

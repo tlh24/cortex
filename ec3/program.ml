@@ -637,14 +637,14 @@ let render_simplest db dosort =
 let make_batch lg dba nbatch = 
 	(* make a batch of pre, post, edits *)
 	(* image is saved in python, no need to duplicate *)
-	let ndba = min (Array.length dba) 2048 in
+	let ndba = min (Array.length dba) 100 in (* FIXME 2048 *)
 	if !g_logEn then Printf.fprintf lg "entering make_batch, req %d of %d\n" nbatch ndba; 
 	(* sorting is done in render_simplest *)
 	let batch = ref [] in
 	while List.length !batch < nbatch do (
 		let nb = (Random.int (ndba-1)) + 1 in
-		(*let na = 0 in*)
-		let na = if (Random.int 10) = 0 then 0 else (Random.int nb) in
+		let na = 0 in (* FIXME *)
+		(*let na = if (Random.int 10) = 0 then 0 else (Random.int nb) in*)
 		(* small portion of the time na is the empty program *)
 		let a = dba.(na) in
 		let b = dba.(nb) in
@@ -656,37 +656,37 @@ let make_batch lg dba nbatch =
 			let dist,_ = Levenshtein.distance a.progenc b.progenc false in
 			if !g_logEn then
 			Printf.fprintf lg "trying [%d] [%d] for batch; dist %d\n" na nb dist;
-			if dist > 0 && dist < 7 then (
+			if dist > 0 && dist < 16 then ( (* FIXME 7 *)
 				(* "move a , b ;" is 5 insertions; need to allow *)
 				let _, edits = Levenshtein.distance a.progenc b.progenc true in
 				let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
 				(* emphasize insertion and only a little substitution or deletion -- this mirrors how a human programs *)
-				let nsub,ndel,nins = List.fold_left (fun (sub,del,ins) (s,_,_) ->
+				(*let nsub,ndel,nins = List.fold_left (fun (sub,del,ins) (s,_,_) ->
 					match s with
 					| "sub" -> (sub+1,del,ins)
 					| "del" -> (sub,del+1,ins)
 					| "ins" -> (sub,del,ins+1)
 					| _ -> (sub,del,ins)
 						) (0,0,0) edits in
-				if (nsub <= 1 && ndel <= 1 && nins <= 1) || (nsub = 0 && ndel = 0 && nins <= 6) then (
-					(* verify ..*)
-					let re = Levenshtein.apply_edits a.progenc edits in
-					if re <> b.progenc then (
-						Printf.fprintf lg "error! %s edits should be %s was %s\n"
-							a.progenc b.progenc re
-					);
-					let a_progstr = Logo.output_program_pstr a.pro in
-					let b_progstr = Logo.output_program_pstr b.pro in
-					(* edits are applied in reverse, do it here not py *)
-					(* also add a 'done' edit/indicator *)
-					let edits = ("fin",0,'0') :: edits in
-					let edits = List.rev edits in
-					batch := (a.pid, b.pid, a.progenc, b.progenc,
-						a_progstr, b_progstr, edits) :: !batch;
-					if !g_logEn then Printf.fprintf lg "adding [%d] %s [%d] %s to batch\n"
-						na a.progenc nb b.progenc;
-					(*Levenshtein.print_edits edits*)
-				)
+				if (nsub <= 0 && ndel <= 0 && nins <= 0) || (nsub = 0 && ndel = 0 && nins <= 6) then ( (*fixme edit distance *)*)
+				(* verify ..*)
+				let re = Levenshtein.apply_edits a.progenc edits in
+				if re <> b.progenc then (
+					Printf.fprintf lg "error! %s edits should be %s was %s\n"
+						a.progenc b.progenc re
+				);
+				let a_progstr = Logo.output_program_pstr a.pro in
+				let b_progstr = Logo.output_program_pstr b.pro in
+				(* edits are applied in reverse, do it here not py *)
+				(* also add a 'done' edit/indicator *)
+				let edits = ("fin",0,'0') :: edits in
+				let edits = List.rev edits in
+				batch := (a.pid, b.pid, a.progenc, b.progenc,
+					a_progstr, b_progstr, edits) :: !batch;
+				if !g_logEn then Printf.fprintf lg "adding [%d] %s [%d] %s to batch (unsorted pids: %d %d)\n"
+					na a.progenc nb b.progenc a.pid b.pid;
+				(*Levenshtein.print_edits edits*)
+				(* ) *)
 			)
 		)
 	) done;

@@ -263,7 +263,7 @@ let rec eval (st0:state) (pr:prog) =
 		let (stb, resb, _) = eval sta b in
 		if stb.r < reclim then (
 			let dist = snd resa in
-			let dist = if dist < 0. then 0. else dist in (* not necc...*)
+			(* let dist = if dist < 0. then 0. else dist in (* not necc...*) *)
 			let ang = snd resb in
 			let t' = stb.t +. ang in
 			let x' = stb.x +. (dist *. Float.cos(t')) in 
