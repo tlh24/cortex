@@ -36,8 +36,9 @@ make_nonblock(sp.stderr.fileno())
 
 
 image_resolution = 30
-image_count = 1*2048 # how many images to keep around
-train_iters = 10000
+image_count = 5*2048 # how many images to keep around
+train_iters = 400000
+learning_rate = 0.04
 		
 g_logEn = False
 toklen = 30
@@ -141,6 +142,7 @@ while db_cnt < image_count :
 	temp0 = []
 	readable, writable, exceptional = select.select(streams, temp0, temp0, 5)
 	if len(readable) == 0:
+		print(sp.stderr.peek())
 		raise Exception("Timeout of 5 seconds reached!")
 	
 	buff = bytearray(1024)
@@ -529,7 +531,7 @@ model = ecTransformer(image_resolution = image_resolution,
 
 # lossfunc = nn.CrossEntropyLoss(label_smoothing = 0.08, reduction='none')
 lossfunc = nn.MSELoss(reduction='none')
-optimizer = optim.AdamW(model.parameters(), lr=1e-2, weight_decay=5e-4)
+optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=5e-4)
 
 def print_model_params(): 
 	print(model.prt_to_tok.weight[0,:])

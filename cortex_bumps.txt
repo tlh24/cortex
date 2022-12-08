@@ -3094,3 +3094,10 @@ Why would it be increasing?  Something in the model is ill-conditioned?  I need 
 
 I think i need to keep a log of the errors -- where the model goes wrong, and why, to better understand why it's not converging.  
 Seems like it's stuck in some sort of equlibirium, where some of the batch members can't be accurately decoded; or, some members are too hard to decode because the space is too convoluted. 
+
+December 7 2022
+
+Seems to be training better... 
+Todo: in cases of + and *, can reorg so that the largest operand is first. 
+This removes some invariance. 
+Check check. 

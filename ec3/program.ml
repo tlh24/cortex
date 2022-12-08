@@ -359,7 +359,7 @@ let rec compress ast change =
 		match a,b with 
 		| `Nop, _ -> ( change := true; `Nop )
 		| _, `Nop -> ( change := true; `Nop )
-		| `Const(aa,_), `Const(bb,_) -> (
+		| `Const(aa,aw), `Const(bb,bw) -> (
 			match s with
 			| "+" -> (
 				match aa,bb with
@@ -367,7 +367,9 @@ let rec compress ast change =
 					(change := true;`Const(bb,nulptag))
 				| _,b3 when b3 > neps && b3 < eps -> 
 					(change := true;`Const(aa,nulptag))
-				| _ -> `Binop(compress a change, s,f, compress b change,w) )
+				| a3,b3 when b3 > a3 -> 
+					(change := true; `Binop(`Const(b3,bw),s,f,`Const(a3,aw),w))
+				| _ -> `Binop(compress a change, s,f, compress b change,w))
 			| "-" -> (
 				match aa,bb with
 				| _,b3 when b3 > neps && b3 < eps -> 
@@ -385,6 +387,8 @@ let rec compress ast change =
 					(change := true;`Const(bb,nulptag))
 				| _,b3 when b3 > 1.0-.eps && b3 < 1.0+.eps ->
 					(change := true;`Const(aa,nulptag))
+				| a3,b3 when b3 > a3 -> 
+					(change := true; `Binop(`Const(b3,bw),s,f,`Const(a3,aw),w))
 				| _ -> `Binop(compress a change, s,f, compress b change,w) )
 			| "/" -> (
 				match aa,bb with
