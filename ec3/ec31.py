@@ -262,7 +262,6 @@ def apply_onedit(res, edited, typ, cr, pp):
 	return res, edited, getnew
 
 def apply_edits(result, edited): 
-	# everything being mutable makes this much easier.. 
 	getnew = []
 	for j in range(len(result)): 
 		res = result[j]
@@ -582,7 +581,7 @@ class SimpleThread(Thread):
 		# apply_edits also gets new data
 		self.output = batch_a, batch_p, batch_e, result, edited
 
-slowloss = 0.0
+slowloss = 1.0
 result, edited = new_batch_result(batch_size)
 batch_a, batch_p, batch_e = result_to_batch(result, edited)
 
@@ -628,9 +627,13 @@ for u in range(train_iters):
 	
 	# change the learning rate. 
 	lr = learning_rate
+	# ramp up between 1000 and 11000
 	if u > 1000:
 		lr = lr * (1 + ((u-1000) / 5000))
-	lr = min(lr, 0.003)
+	lr = min(lr, 0.001) # this seems to be the outright maximum
+	# decay from 11k to end
+	if u > 11000: 
+		lr = lr * math.exp((11000-u) / 50000)
 	for g in optimizer.param_groups:
 		g['lr'] = lr
 

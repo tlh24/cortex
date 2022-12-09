@@ -28,6 +28,151 @@ let iof = int_of_float
 
 let pmark lg w = 
 	if w>0 then Printf.fprintf lg "<marked> "
+	
+let enc_char1 c = 
+	match c with
+	| "(" -> 1
+	| ")" -> 2
+	| "," -> 3
+	| ";" -> 4
+	| "+" -> 5
+	| "-" -> 6
+	| "*" -> 7
+	| "/" -> 8
+	| "var" -> 9
+	| "=" -> 10
+	| "move" -> 11
+	| "ua" -> 12
+	| "ul" -> 13
+	| "loop" -> 14
+	| "def" -> 15
+	| ":" -> 16
+	| "call" -> 17
+	| _ -> 18
+	(* 0 is not used atm *)
+	
+	
+let dec_item1 i = 
+	match i with 
+	| 1 -> "( "
+	| 2 -> ") "
+	| 3 -> ", "
+	| 4 -> ";\n"
+	| 5 -> "+ "
+	| 6 -> "- "
+	| 7 -> "* "
+	| 8 -> "/ "
+	| 9 -> "v"
+	| 10 -> "= "
+	| 11 -> "move "
+	| 12 -> "ua "
+	| 13 -> "ul "
+	| 14 -> "loop "
+	| 15 -> "d"
+	| 16 -> ": "
+	| 17 -> "c"
+	| _ -> " "
+	
+let enc_char c s = 
+	s := (enc_char1 c) :: !s
+	
+let enc_int i s = 
+	s := (i - 10) :: !s
+	
+let dec_item i =
+	if i < 0 then 
+		(string_of_int (i + 10))^" "
+	else
+		dec_item1 i
+	
+let rec enc_prog g s = 
+	(* convert a program to integers.  For the transformer. *)
+	(* output list is in REVERSE order *)
+	match g with 
+	| `Var(i,_) -> ( 
+		enc_char "var" s; 
+		enc_int i s)
+	| `Save(i,a,_) -> ( 
+		enc_char "var" s; 
+		enc_int i s; 
+		enc_char "=" s; 
+		enc_prog a s )
+	| `Move(a,b,_) -> (
+		enc_char "move" s; 
+		enc_prog a s; 
+		enc_char "," s; 
+		enc_prog b s ) 
+	| `Binop(a,sop,_,b,_) -> (
+		enc_prog a s; 
+		enc_char sop s;
+		enc_prog b s )
+	| `Const(i,_) -> (
+		match i with
+		| x when x > 0.99 && x < 1.01 -> enc_char "ul" s; 
+		| x when x > 6.28 && x < 6.29 -> enc_char "ua" s; 
+		| x -> enc_int (iof x) s; 
+		)
+	| `Seq(l,_) -> (
+		enc_char "(" s; 
+		List.iteri ~f:(fun i a ->
+			if i > 0 then (enc_char ";" s);
+			enc_prog a s) l ; 
+		enc_char ")" s )
+	| `Loop(i,a,b,_) -> (
+		enc_char "loop" s; 
+		enc_int i s; 
+		enc_char "," s; 
+		enc_prog a s; 
+		enc_char "," s; 
+		enc_prog b s )
+	| `Call(i,l,_) -> (
+		enc_char "call" s; 
+		enc_int i s; 
+		List.iteri ~f:(fun i a ->
+			if i > 0 then (enc_char "," s);
+			enc_prog a s) l )
+	| `Def(i,a,_) -> (
+		enc_char "def" s; 
+		enc_int i s; 
+		enc_char ":" s;
+		enc_prog a s )
+	| `Nop -> ()
+	
+let encode_program g = 
+	let s = ref [] in
+	enc_prog g s; 
+	List.rev !s
+	
+let decode_program il = 
+	(* convert a program encoded as a list of ints to a string, 
+	and then to the ast *)
+	let sl = List.map ~f:dec_item il in
+	List.fold_left ~f:(fun a b -> a^b) ~init:"" sl 
+	(* parse in calling fun, via lexer and parser *)
+	
+let intlist_to_string e =
+	(* convenience encoding -- see asciitable for what it turns to *)
+	let offs = 10 + (Char.to_int '0') in (* integers are mapped 1:1 *)
+	let cof_int i =
+		match Char.of_int (i + offs) with 
+		| Some c -> c 
+		| _ -> '!' in
+	let bf = Buffer.create 32 in
+	List.iter ~f:(fun a -> Buffer.add_char bf (cof_int a)) e;
+	Buffer.contents bf
+	
+let output_program_p bf g = (* p is for parseable *)
+	let gl = encode_program g in (* compressed encoding *)
+	let s = decode_program gl in
+	Printf.bprintf bf "%s" s
+	
+let output_program_pstr g = 
+	let bf = Buffer.create 64 in
+	output_program_p bf g; 
+	(Buffer.contents bf)
+
+let output_program_plg lg g = 
+	Printf.fprintf lg "%s" (output_program_pstr g;)
 
 let rec output_program_h lg g =
 	match g with
@@ -55,40 +200,6 @@ let rec output_program_h lg g =
 	| `Def(i,a,w) -> Printf.fprintf lg "Def %d " i; pmark lg w;
 		output_program_h lg a
 	| `Nop -> Printf.fprintf lg "Nop "
-			
-and output_program_p bf g = (* p is for parseable *)
-	match g with
-	| `Var(i,_) -> Printf.bprintf bf "v%d " i
-	| `Save(i,a,_) -> Printf.bprintf bf "v%d = " i; 
-			output_program_p bf a; 
-			Printf.bprintf bf " "; 
-	| `Move(a,b,_) -> Printf.bprintf bf "move "; 
-			output_program_p bf a; 
-			Printf.bprintf bf ", " ; 
-			output_program_p bf b
-	| `Binop(a,s,_,b,_) -> 
-			Printf.bprintf bf "( "; 
-			output_program_p bf a; 
-			Printf.bprintf bf " %s " s; 
-			output_program_p bf b; 
-			Printf.bprintf bf ") "
-	| `Const(i,_) -> (
-		match i with
-		| x when x > 0.99 && x < 1.01 -> Printf.bprintf bf "ul "; 
-		| x when x > 6.28 && x < 6.29 -> Printf.bprintf bf "ua "; 
-		| x -> Printf.bprintf bf "%d " (int_of_float x); 
-		)
-	| `Seq(l,_) -> output_list_p bf l "; "
-	| `Loop(i,a,b,_) -> Printf.bprintf bf "loop %d , " i; 
-			output_program_p bf a; 
-			Printf.bprintf bf ", (" ; 
-			output_program_p bf b; 
-			Printf.bprintf bf ") " 
-	| `Call(i,l,_) -> Printf.bprintf bf "c%d " i;
-		output_list_p bf l ", "
-	| `Def(i,a,_) -> Printf.bprintf bf "d%d " i;
-		output_program_p bf a
-	| `Nop -> ()
 	
 and output_list_h lg l sep =
 	Printf.fprintf lg "("; 
@@ -104,109 +215,6 @@ and output_list_p bf l sep =
 		output_program_p bf v) l ; 
 	Printf.bprintf bf ")"
 
-and output_program_pstr g = 
-	let bf = Buffer.create 64 in
-	output_program_p bf g; 
-	(Buffer.contents bf)
-
-and output_program_plg lg g = 
-	Printf.fprintf lg "%s" (output_program_pstr g;)
-
-let enc_char1 c = 
-	match c with
-	| "(" -> 1
-	| ")" -> 2
-	| "," -> 3
-	| ";" -> 4
-	| "+" -> 5
-	| "-" -> 6
-	| "*" -> 7
-	| "/" -> 8
-	| "var" -> 9
-	| "save" -> 10
-	| "move" -> 11
-	| "ua" -> 12
-	| "ul" -> 13
-	| "loop" -> 14
-	| "def" -> 15
-	| _ -> 16
-	(* 0 is not used atm *)
-	
-let enc_char c s = 
-	s := (enc_char1 c) :: !s
-	
-let enc_int i s = 
-	s := (i-10) :: !s
-	
-let rec enc_prog g s = 
-	(* convert a program to integers.  For the transformer. *)
-	(* output list is in REVERSE order *)
-	match g with 
-	| `Var(i,_) -> ( 
-		enc_char "var" s; 
-		enc_int i s)
-	| `Save(i,a,_) -> ( 
-		enc_char "save" s; 
-		enc_int i s; 
-		enc_prog a s )
-	| `Move(a,b,_) -> (
-		enc_char "move" s; 
-		enc_prog a s; 
-		enc_char "," s; 
-		enc_prog b s ) 
-	| `Binop(a,sop,_,b,_) -> (
-		enc_char "(" s; 
-		enc_prog a s; 
-		enc_char sop s;
-		enc_prog b s ; 
-		enc_char ")" s)
-	| `Const(i,_) -> (
-		match i with
-		| x when x > 0.99 && x < 1.01 -> enc_char "ul" s; 
-		| x when x > 6.28 && x < 6.29 -> enc_char "ua" s; 
-		| x -> enc_int (iof x) s; 
-		)
-	| `Seq(l,_) -> (
-		enc_char "(" s; 
-		List.iteri ~f:(fun i a ->
-			if i > 0 then (enc_char ";" s);
-			enc_prog a s) l ; 
-		enc_char ")" s )
-	| `Loop(i,a,b,_) -> (
-		enc_char "loop" s; 
-		enc_int i s; 
-		enc_char "," s; 
-		enc_prog a s; 
-		enc_char "(" s; 
-		enc_prog b s; 
-		enc_char ")" s )
-	| `Call(i,l,_) -> (
-		enc_char "call" s; 
-		enc_int i s; 
-		List.iteri ~f:(fun i a ->
-			if i > 0 then (enc_char "," s);
-			enc_prog a s) l )
-	| `Def(i,a,_) -> (
-		enc_char "def" s; 
-		enc_int i s; 
-		enc_prog a s )
-	| `Nop -> ()
-	
-let encode_program g = 
-	let s = ref [] in
-	enc_prog g s; 
-	List.rev !s
-	
-let intlist_to_string e =
-	(* convenience encoding -- see asciitable for what it turns to *)
-	let offs = 10 + (Char.to_int '0') in (* integers are mapped 1:1 *)
-	let cof_int i =
-		match Char.of_int (i + offs) with 
-		| Some c -> c 
-		| _ -> '!' in
-	let bf = Buffer.create 32 in
-	List.iter ~f:(fun a -> Buffer.add_char bf (cof_int a)) e;
-	Buffer.contents bf
 
 type state =
   { x : float

@@ -763,16 +763,10 @@ let rec loop_random channels cnt db dba =
 	| _ -> dba in
 	loop_random channels (cnt+1) db dba2
 	)
-(* 
-TODO:: 
-1. Demonstrate that we can point modify existing programs to generate new ones. 
-	Done; not perfect. 
-2. Sort programs based on image similarity
-3. Demonstrate transformer intermediates for image <--> segments <--> programs .. ??? 
-*)
+
 (*
 let () = 
-	Unix.clear_nonblock stdin; (* this might not be needed *)
+	Unix.clear_nonblock stdin; 
 	(*run_logo_file lg sout serr "semicircle.logo" ;*)
 	Random.self_init (); 
 	let lg = open_out "logo_log.txt" in
@@ -783,7 +777,33 @@ let () =
 	print_prog data.pro; *)
 	close_out lg; 
 *)
-
+(* 
+let () = 
+	(* this for checking program encoding & decoding *)
+	Unix.clear_nonblock stdin; 
+	let lg = open_out "logo_log.txt" in
+	let serr = out_channel_of_descr stderr in
+	let sout = out_channel_of_descr stdout in 
+	let g = parse_logo_file lg serr "semicircle.logo" in
+	(match g with 
+	| Some gg -> (
+		Logo.output_program_h sout gg; 
+		flush sout; 
+		let progenc = Logo.encode_program gg in
+		Printf.printf "encoded program:\n";
+		Printf.printf "%s\n" (intlist_to_string progenc); 
+		let progstr = Logo.decode_program progenc in
+		Printf.printf "decoded program:\n"; 
+		Printf.printf "%s\n" progstr ; 
+		let g2 = parse_logo_string lg serr progstr in
+		match g2 with
+		| Some g3 -> 
+			Printf.printf "%s\n" (Logo.output_program_pstr g3); 
+		| _ -> () )
+	| _ -> () ); 
+	close_out lg; 
+	close_out serr
+*)
 (*
 let () = 
 	(* this tests change_ast *)
@@ -813,7 +833,7 @@ let () =
 *)
 
 let () = 
-	Unix.clear_nonblock stdin; (* this might not be needed *)
+	Unix.clear_nonblock stdin; 
 	Random.self_init (); 
 	let lg = open_out "logo_log.txt" in
 	let ic = in_channel_of_descr stdin in
