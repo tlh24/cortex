@@ -641,7 +641,7 @@ let render_simplest db dosort =
 let make_batch lg dba nbatch = 
 	(* make a batch of pre, post, edits *)
 	(* image is saved in python, no need to duplicate *)
-	let ndba = min (Array.length dba) 100 in (* FIXME 2048 *)
+	let ndba = min (Array.length dba) 1024 in (* FIXME 2048 *)
 	if !g_logEn then Printf.fprintf lg "entering make_batch, req %d of %d\n" nbatch ndba; 
 	(* sorting is done in render_simplest *)
 	let batch = ref [] in
@@ -660,7 +660,7 @@ let make_batch lg dba nbatch =
 			let dist,_ = Levenshtein.distance a.progenc b.progenc false in
 			if !g_logEn then
 			Printf.fprintf lg "trying [%d] [%d] for batch; dist %d\n" na nb dist;
-			if dist > 0 && dist < 16 then ( (* FIXME 7 *)
+			if dist > 0 && dist < 16 then ( (* FIXME: dist < 7 *)
 				(* "move a , b ;" is 5 insertions; need to allow *)
 				let _, edits = Levenshtein.distance a.progenc b.progenc true in
 				let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in

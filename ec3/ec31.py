@@ -37,8 +37,9 @@ make_nonblock(sp.stderr.fileno())
 
 image_resolution = 30
 image_count = 5*2048 # how many images to keep around
-train_iters = 400000
-learning_rate = 0.04
+train_iters = 100000
+learning_rate = 0.0005 # *starting* learning rate. scheduled.
+weight_decay = 5e-6
 		
 g_logEn = False
 toklen = 30
@@ -46,18 +47,18 @@ poslen = 6
 p_indim = toklen + 1 + poslen*2 
 	# extra index: indicates if string has been edited.
 e_indim = 5 + toklen + poslen*2
-p_ctx = 50
+p_ctx = 36
 e_ctx = 5
 patch_size = 5
 v_ctx = int((image_resolution / patch_size) ** 2 + 1)
 batch_size = 24
+vision_width = 256
 prog_width = 128
-# xfrmr = xf.Transformer(p_ctx, prog_width, 8, 8)
-# 	# p_ctx, width, layers, heads
-# encoder = nn.Linear(p_indim, prog_width)
-# 	# just a simple linear layer to put into transformer latent space. 
-# 	# how are these weights initialized?? 
-# gelu = nn.GELU()
+vision_heads = 8
+vision_layers = 4
+prog_heads = 8
+prog_layers = 6
+embed_dim = 256
 
 # positional encoding. 
 posenc = th.zeros(p_ctx, poslen*2)
@@ -72,29 +73,6 @@ posenc = posenc.expand(batch_size, p_ctx, poslen*2)
 Bres = namedtuple("Bres", "a_pid b_pid a_progenc b_progenc c_progenc a_progstr b_progstr edits")
 	
 
-# prog = [0 for i in range(p_ctx)]
-# prog_human = list(map(lambda i : tokens[i], prog))
-# x = th.zeros(p_ctx, p_indim)
-# for i in range(p_ctx): # might be faster way? 
-# 	x[i, prog[i]] = 1.0
-# 	typ = tktype[prog[i]]
-# 	x[i, toklen+typ] = 1.0
-# 	# add positional encoding too. 
-# 
-# x = x.expand(batch_size, p_ctx, p_indim).contiguous()
-# x[:,:,toklen : p_indim] = posenc
-# x = encoder(x)
-# x = gelu(x)
-# x = xfrmr(x)
-# that works pretty seamlessly! 
-# x.shape is now [1, 32, 128] 
-# -- the output of a decoder section
-# now need to add a decoder section to output tokens + continuations. 
-# and then do search to boostrap..
-# no, see cortex_bumps.py; we can start with an editor. 
-
-# next task is to enumerate programs ('templates') then mess 'em up and ask the transformer to fix (or not)
-# I guess do n-level depth-first search
 logf = open("ec3_log.txt", "w")
 
 def prog_to_string(prog): 
@@ -268,8 +246,8 @@ def apply_onedit(res, edited, typ, cr, pp):
 		edited[p_ctx-1] = 0
 		edited[la+pp] = -1.0 # different mark.. ? 
 	if typ == "ins": 
-		if pp > lc-1: 
-			pp = lc-1 # you can insert at the end.
+		if pp > lc: 
+			pp = lc # you can insert at the end.
 		if pp < 0: 
 			pp = 0 # indx of removed element = la + pp
 		sl.insert(pp, cr)
@@ -317,7 +295,7 @@ def apply_yedits(result, edited, yedit, fins):
 			result[j] = res
 			edited[j] = ed2
 			if gn: 
-				print(f"model emitted fin channel {j}; a:{res.a_progenc} b:{res.b_progenc} c:{res.c_progenc}" )
+				# print(f"model emitted fin channel {j}; a:{res.a_progenc} b:{res.b_progenc} c:{res.c_progenc}" )
 				fins[j] = 2
 	return result,edited
 
@@ -393,7 +371,7 @@ def new_batch_result(batch_size) :
 	if len(readable) == 0:
 		raise Exception("Timeout of 5 seconds reached!")
 
-	buff = bytearray(4*1024)
+	buff = bytearray(8*1024) # careful here ... was 4k
 	nrx = sp.stdout.readinto(buff)
 	if nrx <= 0:
 		print("No data received on stdout! stderr: ", sp.stderr.peek())
@@ -465,12 +443,6 @@ def build_attention_mask2(v_ctx, p_ctx):
 
 # alrighty then!  time to train the transformer to create these strings! 
 # decoder-only architecture, input is the image (compressed) and previous tokens. 
-vision_width = 256
-vision_heads = 8
-vision_layers = 4
-prog_heads = 8
-prog_layers = 6
-embed_dim = 256
 
 class ecTransformer(nn.Module):
 	def __init__(self, image_resolution: int, vision_width:int, patch_size:int,  prog_width:int, embed_dim:int, v_ctx:int, p_ctx:int, p_indim:int, e_indim:int): 
@@ -489,7 +461,6 @@ class ecTransformer(nn.Module):
 
 		self.vit_to_prt = nn.Linear(embed_dim, prog_width)
 		
-		
 		self.encoder = nn.Linear(p_indim, prog_width)
 		self.prt = clip_model.Transformer(
 			width = prog_width, 
@@ -502,22 +473,31 @@ class ecTransformer(nn.Module):
 		self.gelu = clip_model.QuickGELU()
 		self.tok_softmax = nn.Softmax(dim = 1)
 	
-	def forward(self, batch_a, batch_p): 
+	def forward(self, u, batch_a, batch_p): 
 		# encode the image (we should only need to do this once??)
-		vx = self.vit(batch_a) # x is size [16, v_ctx, 256] 
+		q = th.zeros(6)
+		vx = self.vit(batch_a) # x is size [bs, v_ctx, 256] 
+		q[0] = th.std(vx)
 		vx = self.vit_to_prt(vx)
+		q[1] = th.std(vx)
 		# vx = gelu(vx) # ? needed ? 
 
 		px = self.encoder(batch_p)
+		q[2] = th.std(px)
 		vxpx = th.cat((vx, px), dim = 1)
+		q[3] = th.std(vxpx)
 		# x = vxpx * mask
 		x = self.prt(vxpx) # bs, v_ctx * p_ctx, prog_width
+		q[4] = th.std(x)
 		x = th.reshape(x, (batch_size,-1))
 		x = self.prt_to_edit(x)
-		x = self.ln_post(x) # scale the inputs to softmax
-		x = self.gelu(x)
-		# x = self.tok_softmax(x)
-		return x
+		q[5] = th.std(x)
+		# x = self.ln_post(x) # scale the inputs to softmax
+		# x = self.gelu(x)
+		x = th.cat((self.tok_softmax(x[:,0:4]),
+				  self.tok_softmax(x[:,4:4+toklen]), 
+				  x[:,4+toklen:]), dim=1)
+		return x,q
 
 model = ecTransformer(image_resolution = image_resolution, 
 							 vision_width = vision_width, 
@@ -530,8 +510,8 @@ model = ecTransformer(image_resolution = image_resolution,
 							 e_indim = e_indim)
 
 # lossfunc = nn.CrossEntropyLoss(label_smoothing = 0.08, reduction='none')
-lossfunc = nn.MSELoss(reduction='none')
-optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=5e-4)
+lossfunc = nn.MSELoss(reduction='mean')
+optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
 def print_model_params(): 
 	print(model.prt_to_tok.weight[0,:])
@@ -541,37 +521,15 @@ def print_model_params():
 	print(model.vit.conv1.weight[0,:])
 	# it would seem that all the model parameters are changing.
 
-# def make_batch(): 
-# 	indx = np.random.choice(len(valid_nonzero), size=batch_size, replace=False)
-# 	batch_a = th.zeros((batch_size, image_resolution, image_resolution)) # todo: fp16
-# 	batch_p = th.zeros((batch_size, p_ctx, p_indim))
-# 	batch_pl = np.zeros(batch_size)
-# 	j = 0
-# 	for i in indx: 
-# 		prog, a = valid_nonzero[i] # note! this is a reference. 
-# 		batch_a[j,:,:] = th.tensor(a)
-# 		# encode the program, too
-# 		prog = prog + [toklen-1] # terminate; return new list.
-# 		batch_pl[j] = len(prog)
-# 		# prog_human = list(map(lambda i : tokens[i], prog))
-# 		for k in range(len(prog)): 
-# 			batch_p[j, k, prog[k]] = 1.0
-# 			typ = tktype[prog[k]]
-# 			batch_p[j, k, toklen+typ] = 1.0
-# 		j = j+1
-# 		
-# 	batch_p[:,:,toklen+typlen : p_indim] = posenc
-# 	batch_a = th.unsqueeze(batch_a, dim = 1) # batch, channels, H,
-# 	return (batch_a, batch_p, batch_pl)
-# 
-# def make_mask_y(i, batch_p, batch_pl): 
-# 	y = batch_p[:, i, 0:toklen + typlen]
-# 	y_mask = th.tensor(batch_pl > i).detach() 
-# 	mask = th.zeros(batch_size, v_ctx + p_ctx, prog_width)
-# 	mask[:, 0:v_ctx, :] = 1.0
-# 	if i > 1: 
-# 		mask[:, v_ctx:v_ctx+i, :] = 1.0
-# 	return (mask, y, y_mask)
+def std_model_params(): 
+	q = th.zeros(5)
+	q[0] = th.std(model.vit.conv1.weight)
+	q[1] = th.std(model.vit.transformer.resblocks[0].mlp[0].weight)
+	q[2] = th.std(model.vit_to_prt.weight)
+	q[3] = th.std(model.prt.resblocks[0].mlp[0].weight)
+	q[4] = th.std(model.prt_to_tok.weight)
+	return q
+
 
 def decode_edit(y): 
 	typ = th.argmax(y[:,0:4], 1)
@@ -638,32 +596,44 @@ compare_edit(result, batch_e, batch_e)
 print("=====")
 
 losslog = open("losslog.txt", "w")
+lr = learning_rate
 
 for u in range(train_iters):
 	batch_a, batch_p, batch_e = result_to_batch(result, edited)
-	# thrd = SimpleThread(result, edited)
-	# thrd.start()
 	model.zero_grad()
-	y = model(batch_a, batch_p)
+	y,q = model(u, batch_a, batch_p)
 	loss = lossfunc(y,batch_e)
 	lossflat = th.sum(loss)
 	lossflat.backward()
+	th.nn.utils.clip_grad_norm_(model.parameters(), 0.05)
 	optimizer.step()
 	
 	# thrd.join()
 	# batch_a, batch_p, batch_e, result, edited = thrd.output
 	slowloss = 0.99*slowloss + 0.01 * lossflat.detach()
-	if u % 20 == 0 :
-		print(f'{u} loss: {lossflat}; slowloss {slowloss}')
-		print("[",result[0].a_pid,"]",result[0].a_progstr,"-->", "[",result[0].b_pid,"]", result[0].b_progstr)
-		print(result[0].a_progenc,"-->", result[0].c_progenc,"(", result[0].b_progenc,")")
+	if u % 17 == 0 :
+		print(f'{u} {lr} loss: {lossflat}; slowloss {slowloss}')
+		print(result[0].a_progenc,"-->", result[0].c_progenc,"(", result[0].b_progenc,")\t", "[",result[0].a_pid,"]",result[0].a_progstr,"-->", "[",result[0].b_pid,"]", result[0].b_progstr)
 		compare_edit(result, batch_e, y)
 		# print(i, lossflat, loss[0], y_mask[0])
 		# print(x[0])
 		# print(y[0])
 		# print(x[0] - y[0])
 	result, edited = apply_edits(result, edited)
-	losslog.write(f"{u}\t{slowloss}\n")
+	losslog.write(f"{u}\t{slowloss}")
+	for i in range(q.shape[0]): 
+		losslog.write(f"\t{q[i].cpu().item()}")
+	losslog.write("\n")
+	losslog.flush()
+	
+	# change the learning rate. 
+	lr = learning_rate
+	if u > 1000:
+		lr = lr * (1 + ((u-1000) / 5000))
+	lr = min(lr, 0.003)
+	for g in optimizer.param_groups:
+		g['lr'] = lr
+
 	
 losslog.close()
 
@@ -671,7 +641,7 @@ losslog.close()
 result, edited = new_batch_result(batch_size)
 for u in range(16): 
 	batch_a, batch_p, batch_e = result_to_batch(result, edited)
-	y = model(batch_a, batch_p)
+	y,q = model(u, batch_a, batch_p)
 	typ,c,pos = decode_edit(y)
 	fins = th.zeros(batch_size)
 	result, edited = apply_yedits(result, edited, (typ,c,pos), fins)
@@ -680,7 +650,10 @@ for u in range(16):
 print("resulting decoded programs:")
 for j in range(batch_size): 
 	res = result[j]
-	print(f"channel {j}; a:{res.a_progenc} b:{res.b_progenc} c:{res.c_progenc}" )
+	mtch = 'x'
+	if res.b_progenc == res.c_progenc: 
+		mtch = ''
+	print(f"channel {j}; a:{res.a_progenc} b:{res.b_progenc} c:{res.c_progenc} {mtch}" )
 
 # # see if it can create working programs
 # softmx = nn.Softmax(dim = 1)

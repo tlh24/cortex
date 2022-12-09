@@ -3101,3 +3101,39 @@ Seems to be training better...
 Todo: in cases of + and *, can reorg so that the largest operand is first. 
 This removes some invariance. 
 Check check. 
+
+December 8 2022
+
+Uff, even with a higher learning rate, the system does not converge.  
+E.g. it can't even output 'E' at the beginning of the string.  
+What's broken?  
+Can it do classification?? 
+Can it output a fixed string? (e.g. positional dependent production, all "ins". 
+	This is easy to check -- train on one example.
+		Always seems that I have to touch nearly everything before it starts to work.  Figures. 
+Nope, sure doesn't seem to be learning. 
+Ah, bug in the insert method ... fixed. 
+	Proves that you have to instrument nearly everything!
+Plateaus at a loss of 25. 
+With occasional blips.. 
+-- It always gets the editing position correct, good
+-- It's perfect at the 'fin' token
+-- When there is no context, at the start of the edits, it gets both the operand and character wrong (loss= 48)
+-- At the end of the string, decode is correct, but loss is still ~30. 
+-- Other two errors are for putting the operand as 'fin' when it should be 'ins'. 
+
+Seems that the activations are blowing up.  Hmm.  how / why? 
+Seems that they blow up really fast at the beginning... very unstable model, not sure why. 
+Bad initialization? 
+prt_to_edit seems especially wrong! 
+
+WHEW.  Adding appropriate Softmax (don't be lazy, tim) and scaling the learning rate + adding gradient clipping seems to have fixed things, it converges with one example now :-)
+Let's try 10 examples.
+
+Yep, all works, even with 1k examples, and gets ~ 50% correct (11 out of 24) when trained for 100k timesteps.  !!Super excited!!
+Next todo: take the emitted programs, and run them. 
+If they run, see if they have 'about the same' cost and image result as a program in the database. 
+If it does, then replace the items in the database. 
+If they don't collide, add to the database.  
+Then, see if this works... 
+	Will definitely need to start writing to disk pretty soon.
