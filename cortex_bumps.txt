@@ -3139,3 +3139,14 @@ Then, see if this works...
 	Will definitely need to start writing to disk pretty soon.
 	
 Also need to add in substitutions and deletions to the list of actions.. 
+
+Dec 9 2022
+
+Just installed torch for ocaml .. seems to work great!  YAYAYAYAYAYAYAYAYAY
+All that i think is required is to link against the gpu libtorch (currently in dropbox) when installing.
+Add:
+export LIBTORCH=/home/tlh24/Dropbox/var/libtorch/
+to ~/.bashrc
+and everything should be smooth?
+	(I have installed from git on the laptop)
+	Also note that it requires a downgrade in a number of libraries; see torch.opam in the git repo.
