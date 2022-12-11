@@ -3153,4 +3153,6 @@ to ~/.bashrc
 and everything should be smooth?
 	(I have installed from git on the laptop)
 	Also note that it requires a downgrade in a number of libraries; see torch.opam in the git repo.
-
+Yep, seems that installing from opam and not from git works just fine, thank you very much! 
+Now, need to move the image-space comparison from python to ocaml. 
+Simplifies things greatly, think. 
