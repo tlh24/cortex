@@ -24,7 +24,7 @@ let nulpdata =
 	; segs = [] 
 	}
 	
-let image_count = 512 
+let image_count = 5*2048 
 let image_res = 30
 let g_logEn = ref true (* yes global but ... *)
 
@@ -707,20 +707,48 @@ let bigarray_img2tensor img device =
 	for i = 0 to image_res-1 do (
 		for j = 0 to image_res-1 do (
 			let c = Bigarray.Array1.get img ((i*stride)+j) |> foi in
-			o.{i,j} <- c; 
+			o.{i,j} <- c /. 255.0; 
 		) done; 
 	) done;
-	o	|> Bigarray.genarray_of_array2
+	o	|> Bigarray.genarray_of_array2 (* generic array; doesn't copy data? *)
 		|> Tensor.of_bigarray  
 		|> Torch.Tensor.to_device ~device
 		
+		
+let bigarray_img2tensor_2 img device = 
+	let stride = (Bigarray.Array1.dim img) / image_res in
+	let len = Bigarray.Array1.dim img in
+	assert (len >= image_res * image_res); 
+	let o = Tensor.(zeros [image_res; image_res]) in
+	let l = image_res - 1 in
+	for i = 0 to l do (
+		for j = 0 to l do (
+			let c = Bigarray.Array1.get img ((i*stride)+j) in
+			if c <> 0 then (
+				let cf = foi c in
+				(let open Tensor in
+				o.%.{[i;j]} <- (cf /. 255.0); )
+			)
+		) done 
+	) done;
+	o |> Tensor.to_device ~device
+	
+	
 let progenc_cost s = 
 	String.fold_left (fun a b -> a + (Char.code b)) 0 s
 	
-let init_database lg device db (dbf : Tensor.t) = 
-	(* need to use sout! *)
+let dbf_dist _device dbf img = 
+	let d = Tensor.( (dbf - img) ) in
+	let d = Tensor.einsum ~equation:"ijk, ijk -> i" [d;d] ~path:None in
+	let mindex = Tensor.argmin d ~dim:None ~keepdim:true 
+		|> Tensor.int_value in
+	let dist = Tensor.get d mindex |> Tensor.float_value in
+	dist,mindex
+	
+let init_database channels device db (dbf : Tensor.t) = 
 	(* generate the initial program, image pairs *)
-	Printf.printf "init_database %d\n" image_count; 
+	let sout, _serr, _ic, lg = channels in
+	Printf.fprintf sout "init_database %d\n" image_count; 
 	let i = ref 0 in
 	let iters = ref 0 in
 	let replace = ref 0 in
@@ -729,36 +757,47 @@ let init_database lg device db (dbf : Tensor.t) =
 			generate_empty_logo lg !i image_res else
 			generate_random_logo lg !i image_res in
 		let img = bigarray_img2tensor data.img device in
-		let d = Tensor.( pow (dbf - img) ~exponent:(f 2.) ) in
-		(*let d = Tensor.einsum ~equation:"ij,ij -> ij" 
-			[Tensor.sub dbf img] ~path:None in (* elementwise square *)*)
-		let d = Tensor.einsum ~equation:"ijk -> i" [d] ~path:None in
-		let mindex = Tensor.argmin d ~dim:None ~keepdim:true 
-			|> Tensor.int_value in
-		let dist = Tensor.get d mindex |> Tensor.float_value in
-		Printf.printf "%f\n" dist; 
-		if dist > 25. then (
-			Printf.printf "db: adding [%d] = %s \n" !i 
+		let dist,mindex = dbf_dist device dbf img in
+		if dist > 5. then (
+			Printf.fprintf sout "%d: adding [%d] = %s \n" !iters !i 
 				(Logo.output_program_pstr data.pro) ; 
 			Vector.push db data; 
-			incr i
+			(let open Tensor in
+			for r = 0 to 29 do (
+				for c = 0 to 29 do (
+					dbf.%.{[!i;r;c]} <- img.%.{[r;c]}; 
+				) done
+			) done ); 
+			incr i;
+			flush sout
 		) else (
 			(* see if there's a replacement *)
 			let data2 = Vector.get db mindex in
 			let c1 = progenc_cost data.progenc in
 			let c2 = progenc_cost data2.progenc in
-			if c1 <= c2 then (
-				Printf.printf "db: replacing [%d] = %s \n" !i 
-					(Logo.output_program_pstr data.pro) ;
-				Vector.set db mindex data2;
-				incr replace
+			if c1 < c2 then (
+				Printf.fprintf sout "%d: replacing [%d] = %s ( was %s)\n" !iters mindex 
+					(Logo.output_program_pstr data.pro) 
+					(Logo.output_program_pstr data2.pro);
+				Vector.set db mindex data;
+				(let open Tensor in
+				for r = 0 to 29 do (
+					for c = 0 to 29 do (
+						dbf.%.{[mindex;r;c]} <- img.%.{[r;c]}; 
+					) done
+				) done );
+				incr replace; 
+				flush sout
 			)
 		); 
+		if !iters mod 40 = 39 then 
+			(* diminishing returns as this gets larger *)
+			Caml.Gc.major (); 
 		incr iters
 	) done; 
-	Printf.printf "%d done; %d sampled; %d replacements\n" !i !iters !replace
+	Printf.fprintf sout "%d done; %d sampled; %d replacements\n" !i !iters !replace
 	
-let rec loop_random channels cnt db dba dbf = 
+let rec loop_random channels cnt db dba = 
 	if cnt > (100 * 20000) then () else (
 	let sout, _serr, ic, lg = channels in
 	if !g_logEn then ( print_log lg "`" );
@@ -821,7 +860,7 @@ let rec loop_random channels cnt db dba dbf =
 			| _ -> dba
 		) )
 	| _ -> dba in
-	loop_random channels (cnt+1) db dba2 dbf
+	loop_random channels (cnt+1) db dba2
 	)
 
 (*
@@ -934,32 +973,122 @@ let test_torch () =
     Caml.Gc.full_major ()
   done
 
-
 let () = 
 	Unix.clear_nonblock stdin; 
 	Random.self_init (); 
 
 	let lg = open_out "logo_log.txt" in
-(* 	let ic = in_channel_of_descr stdin in *)
+	let ic = in_channel_of_descr stdin in
 	let sout = out_channel_of_descr stdout in
 	let serr = out_channel_of_descr stderr in 
-	(*let channels = (sout, serr, ic, lg) in*)
+	let channels = (sout, serr, ic, lg) in
 	Printf.fprintf lg "hello\n";
+	
+	
+	let db = Vector.create ~dummy:nulpdata in
+	let dba = Array.make 1 nulpdata in
 	
 	Printf.printf "cuda available: %b\n%!" (Cuda.is_available ());
 	Printf.printf "cudnn available: %b\n%!" (Cuda.cudnn_is_available ());
 	let device = Torch.Device.cuda_if_available () in
+	(*let device = Torch.Device.Cpu in*) (* slower *)
+	let dbf = Tensor.( 
+		( ones [image_count; image_res; image_res] ) * (f (-1.0))) 
+		|> Tensor.to_device ~device in
+	(*Printf.fprintf sout "check the memory; only dbf has been allocated\n"; flush sout; 
+	Unix.sleep 5; *)
+	(* instrument the performance. *)
+	(*let start = Unix.gettimeofday () in
+	for i = 0 to 100000 do (
+		let data = generate_random_logo lg i image_res in
+		let img = bigarray_img2tensor data.img device in
+		(*let img = Tensor.(randn [image_res; image_res] ) 
+			|> Tensor.to_device ~device in*)
+		ignore( dbf_dist device dbf img ); 
+		if i mod 30 = 29 then 
+			Caml.Gc.major()
+	) done; 
+	let stop = Unix.gettimeofday () in
+	Printf.fprintf sout "100k dbf_dist w real images: %fs\n%!" (stop -. start); 
+	flush sout; *)
+	
+	let start = Unix.gettimeofday () in
+	init_database channels device db dbf;
+	let stop = Unix.gettimeofday () in
+	Printf.printf "Execution time: %fs\n%!" (stop -. start); 
+	
+	Printf.fprintf lg "render_simplest: first 10 programs\n";
+	for i = 0 to 9 do (
+		let p = Vector.get db i in
+		Printf.fprintf lg "%d: %s\n" i
+				(Logo.output_program_pstr p.pro); 
+	) done; 
+	render_simplest db true 
+
+	close_out sout; 
+	close_out serr;
+	close_out lg
+
+(*
+let image_dist dbf img = 
+	let d = Tensor.( (dbf - img) ) in
+	(* per-element square and sum *)
+	let d = Tensor.einsum ~equation:"ijk,ijk -> i" [d;d] ~path:None in
+	let mindex = Tensor.argmin d ~dim:None ~keepdim:true 
+		|> Tensor.int_value in
+	let dist = Tensor.get d mindex |> Tensor.float_value in
+	dist,mindex
+
+let () = 
+	Unix.clear_nonblock stdin; 
+	Printf.printf "cuda available: %b\n%!" (Cuda.is_available ());
+	let device = Torch.Device.cuda_if_available () in
+	(* dbf is a tensor of images to be compared (MSE) against *)
+	let dbf = Tensor.( 
+		( ones [image_count; image_res; image_res] ) * (f (-1.0))) 
+		|> Tensor.to_device ~device in
+	let start = Unix.gettimeofday () in
+	for i = 0 to 100_000 do (
+		(* generate a random image *)
+		let img = Tensor.(randn [image_res; image_res] ) 
+			|> Tensor.to_device ~device in
+		ignore( image_dist dbf img ); 
+		if i mod 30 = 29 then 
+			Caml.Gc.full_major()
+		(* in the actual program, we do something with dist,mindex *)
+	) done; 
+	let stop = Unix.gettimeofday () in
+	Printf.printf "100k image_dist calc time: %fs\n%!" 
+		(stop -. start);
+*)
+(*
+let () = 
+	Unix.clear_nonblock stdin; 
+	Random.self_init (); 
+
+	let lg = open_out "logo_log.txt" in
+	let ic = in_channel_of_descr stdin in
+	let sout = out_channel_of_descr stdout in
+	let serr = out_channel_of_descr stderr in 
+	let channels = (sout, serr, ic, lg) in
+	Printf.fprintf lg "hello\n";
+	
 	
 	let db = Vector.create ~dummy:nulpdata in
-	(*let dba = Array.make 1 nulpdata in*)
+	let dba = Array.make 1 nulpdata in
+	(*
+	Printf.printf "cuda available: %b\n%!" (Cuda.is_available ());
+	Printf.printf "cudnn available: %b\n%!" (Cuda.cudnn_is_available ());
+	let device = Torch.Device.cuda_if_available () in
+	(*let device = Torch.Device.Cpu in*) (* slower *)
 	let dbf = Tensor.( 
-		( ones [image_count; image_res; image_res] ) * (f (-10.0))) 
+		( ones [image_count; image_res; image_res] ) * (f (-1.0))) 
 		|> Tensor.to_device ~device in
-	init_database lg device db dbf; 
-	(*loop_random channels 0 db dba dbf;*)
+	init_database channels device db dbf;*) 
+	loop_random channels 0 db dba;
 	(*let _b = make_batch lg dba 1 in*)
 
 	close_out sout; 
 	close_out serr;
 	close_out lg; 
-
+*)

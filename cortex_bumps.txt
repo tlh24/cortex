@@ -3156,3 +3156,62 @@ and everything should be smooth?
 Yep, seems that installing from opam and not from git works just fine, thank you very much! 
 Now, need to move the image-space comparison from python to ocaml. 
 Simplifies things greatly, think. 
+
+Dec 11 2022
+ocaml: 
+	512 done; 644375 sampled; 395 replacements
+why so many sampled?? 
+python: 
+	done with 10240 unique image-program pairs
+	there were 406026 rejections due to image space collisions
+	of these, 2057 were simplifications
+(the python script does take longer, at least..)
+
+OK, seems that distance calculation was being done differently in ocaml and python -- ocaml normalized the pixel values to be between 0 and 1, python did not. 
+Changed the distance to 5 now (pixels)
+	done with 2048 unique image-program pairs
+	there were 110411 rejections due to image space collisions
+	of these, 752 were simplifications
+	this took 30.835718607999297 seconds
+Ocaml: 
+	2048 done; 106404 sampled; 725 replacements
+	Execution time: 73.408486s
+	2048 done; 104946 sampled; 728 replacements
+So ... this took twice as long!?  why
+Seems like they are just about the same computation. 
+Interestingly .. GPU utilization as reported by nvidia-smi is about the same.  
+Ah well, it was a fun experiment, I guess. 
+
+Tried replacing pow with einsum -- no difference. 
+Might as well use pow, it's easier to understand. 
+
+Tried changing the bigarray conversion.. 
+Made it slightly slower haha. (maybe)
+Changing from square to absolute value speeded things up slgihty, but probably only because fewer programs were sampled.
+
+Hmm, the program seems to run out of memory.  
+Might be a memory leak -- ? 
+with a db size of 2048, python uses 776Mb & takes 29 seconds. 
+in ocaml, the same program needs 10360Mb, 13.35x more! 
+Yeah, with only dbf, allocated, consumes 780mb. 
+2048 * 30 * 30 * 4 = 7.3 mB ???
+Ah, seems that torch by default allocates a fraction of the gpu memory for scratch space.  
+The actual variables don't seem to change this. 
+
+OK, everything seems mostly performant.
+100k iterations, 5*2048 DB size, with minimal program, 24 sec. 
+with full program (heavier GC), random images, 24.5 sec
+with generate_random_logo, 27.32 sec
+	delta = 28.2 us per program. 
+with bigarray_img2tensor, 30.58 sec
+	delta = 32.6 us per conversion (slow!)
+Note it takes about that long to generate the random image, too. 
+
+If we switch to the 2080Ti, 31.8 sec fake (gen prog but no conversion)
+32.14 real (gen prog and convert to Tensor)
+So, the conversion code is not so bad, considering there is probably fixed overhead for creating a tensor on the GPU. 
+& the eGPU has a slower interface, but faster compute. 
+
+Note: doing the same thing, with random images, in python (100k iterations, 5*2048 db size) takes 39.3 seconds. 
+So, ocaml is still faster, even when also generating the program + image pairs
+

@@ -36,7 +36,7 @@ make_nonblock(sp.stderr.fileno())
 
 
 image_resolution = 30
-image_count = 5*2048 # how many images to keep around
+image_count = 1*2048 # how many images to keep around
 train_iters = 100000
 learning_rate = 0.0005 # *starting* learning rate. scheduled.
 weight_decay = 5e-6
@@ -104,6 +104,8 @@ def cost_progenc( progenc ):
 		cost = cost + ord(progenc[i])
 	return cost
 
+tic = time.perf_counter()
+
 while db_cnt < image_count : 
 	ocount = ocount + 1
 	lp = logod_pb2.Logo_request()
@@ -145,7 +147,7 @@ while db_cnt < image_count :
 		a = np.frombuffer(buff2, dtype=np.uint8, count=n)
 		a = np.reshape(a, (result.height, result.stride))
 		a = a[:, 0:result.width]
-		a = th.tensor(a)
+		a = th.tensor(a) / 255.0
 		if db_cnt > 0 : 
 			d = th.sum((db_img - a)**2, (1,2))
 			mindex = th.argmin(d)
@@ -155,7 +157,7 @@ while db_cnt < image_count :
 			dist = 25.0
 			
 		lpr = logod_pb2.Logo_last()
-		if dist > 24: 
+		if dist > 5: 
 			# add to the database. 
 			db_img[db_cnt, :, :] = a
 			db_prog.append(result.prog)
@@ -210,10 +212,11 @@ while db_cnt < image_count :
 		except Exception as inst: 
 			print("ParseFromString; ", nrx, buff[0:nrx], "stderr:", sp.stderr.peek())
 
-
+toc = time.perf_counter()
 print(f"done with {image_count} unique image-program pairs")
 print(f"there were {num_rejections} rejections due to image space collisions")
 print(f"of these, {num_replacements} were simplifications")
+print(f"this took {toc-tic} seconds")
 
 print("first 10 programs:")
 for j in range(10): 
