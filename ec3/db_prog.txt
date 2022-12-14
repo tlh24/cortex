@@ -1,0 +1,2049 @@
+2048
+[0] 
+[1] move 4 , 0 
+[2] move 4 , 2 
+[3] move ua , 4 
+[4] move ua , 3 / 2 
+[5] move 4 , 4 
+[6] loop 0 , 5 , move v0 , v0 * v0 
+[7] move 4 , ul 
+[8] move ua , 3 
+[9] move ua , 0 - 3 
+[10] loop 0 , 4 , move 3 * v0 , v0 
+[11] move ua , 4 + 3 
+[12] move 4 , 2 - 3 
+[13] loop 0 , 5 , move 4 , ul 
+[14] move 4 , 0 - 2 
+[15] ( loop 0 , 6 , move ul , 2 ; move v0 , ul ) 
+[16] loop 0 , 5 , move v0 , v0 
+[17] move 4 , 3 + 2 
+[18] loop 0 , 3 , move 2 , 2 
+[19] move 3 * 3 , ul 
+[20] loop 0 , 6 , move v0 , v0 
+[21] loop 0 , 6 , move v0 , 2 * v0 
+[22] loop 0 , 4 , move ul , ul 
+[23] loop 0 , 4 , move v0 , ul + v0 
+[24] move ua , 2 / 4 
+[25] move ua , ul 
+[26] loop 0 , 5 , move v0 , 2 * v0 
+[27] move ua , 4 * 3 
+[28] loop 0 , 6 , move 4 , ul 
+[29] move 4 , 4 * 4 
+[30] ( move ua , ua ; move ua , 4 ) 
+[31] loop 0 , 2 , move ua , 2 
+[32] loop 0 , 5 , move ul + v0 , v0 
+[33] move 4 , 4 + 4 
+[34] loop 0 , 5 , move v0 , 3 
+[35] loop 0 , 4 , move v0 , 2 
+[36] loop 0 , 6 , move 3 , ul 
+[37] loop 0 , 4 , move 4 / v0 , 2 + v0 
+[38] loop 0 , 7 , move 2 + ul , ua / v0 
+[39] loop 0 , 2 , move 2 , v0 
+[40] loop 0 , 4 , move v0 , ul 
+[41] loop 0 , 3 , move ua , v0 + ul 
+[42] loop 0 , 6 , move ul , v0 * v0 
+[43] loop 0 , 3 , move 4 , ul 
+[44] loop 0 , 6 , move v0 , 4 
+[45] loop 0 , 6 , move ul , 4 + 2 
+[46] loop 0 , 7 , move v0 , ul - v0 
+[47] ( move ua + 3 , ul ; v0 = ua ; move v0 , ul + ul ) 
+[48] ( move 2 , ul ; move ua , ul ) 
+[49] move ua , 0 
+[50] loop 0 , 7 , move 2 , v0 + v0 
+[51] loop 0 , 7 , move v0 , 4 
+[52] loop 0 , 4 , move 2 * v0 , v0 
+[53] loop 0 , 6 , move 2 - ua , v0 
+[54] loop 0 , 7 , move 4 , v0 
+[55] ( move ua , ul ; move 3 , 4 ) 
+[56] ( move ua , 4 ; move 4 - 2 , ul ) 
+[57] loop 0 , 4 , move v0 , 4 
+[58] loop 0 , 5 , move v0 - 3 , v0 
+[59] loop 0 , 7 , move ua + 2 , 3 
+[60] loop 0 , 7 , move ul , v0 * 3 
+[61] ( move ua , 3 ; move 3 , ul + ul ) 
+[62] loop 0 , 6 , move 3 , v0 
+[63] move ua , 2 
+[64] loop 0 , 4 , move 3 , 3 
+[65] ( move ua + ul , ua - 2 ; move ul , 4 ) 
+[66] loop 0 , 5 , move v0 , 2 - 3 
+[67] loop 0 , 6 , move 2 , ul 
+[68] move 4 * 2 , 4 
+[69] ( move 4 , ul ; move 2 , ul - 3 ) 
+[70] loop 0 , 6 , move v0 / 2 , v0 
+[71] loop 0 , 7 , move ul , v0 
+[72] move 4 , 3 + 3 
+[73] loop 0 , 5 , move 3 , v0 
+[74] ( move ul , 3 ; move ua , ul ) 
+[75] loop 0 , 5 , move v0 , ul 
+[76] loop 0 , 5 , move 3 - v0 , v0 
+[77] ( move ul + ul , 2 ; move ua , ul ) 
+[78] loop 0 , 2 , move ua , 3 
+[79] loop 0 , 4 , move 3 , ul 
+[80] loop 0 , 2 , move v0 - 4 , v0 
+[81] loop 0 , 4 , move 2 * v0 , ul 
+[82] loop 0 , 6 , move v0 - 2 , v0 
+[83] ( move ua , 0 ; move ul , 2 ) 
+[84] loop 0 , 4 , move v0 , v0 
+[85] loop 0 , 6 , move 4 , v0 
+[86] move 4 , 0 - 4 
+[87] loop 0 , 3 , move 2 , v0 
+[88] move ua , 4 * 4 
+[89] loop 0 , 6 , move 4 , 2 
+[90] loop 0 , 6 , move v0 , v0 * v0 
+[91] ( move ua , 2 ; move 3 , ul ) 
+[92] loop 0 , 7 , move v0 , 2 
+[93] loop 0 , 6 , move v0 , ul 
+[94] ( move ul , ul ; loop 0 , 4 , move v0 + v0 , v0 - ul ) 
+[95] loop 0 , 6 , move ua , 2 
+[96] ( move 3 , ua ; move 3 , 2 ) 
+[97] move ua , 0 - 4 
+[98] move 4 , 3 * 3 
+[99] ( move ul , ul + ul ; move ul , ua / 3 ; move 4 * 2 , ua ) 
+[100] loop 0 , 4 , move ua + ul , ua - 4 
+[101] loop 0 , 3 , move 2 * v0 , ul 
+[102] ( move ul , ua + 4 ; move 3 * 2 , 4 ) 
+[103] loop 0 , 4 , move ul , v0 * 2 
+[104] loop 0 , 5 , move 2 , v0 * v0 
+[105] loop 0 , 6 , move 2 , v0 
+[106] loop 0 , 4 , move ul , ua / v0 
+[107] ( move ul , ul ; move 3 , ul ) 
+[108] loop 0 , 3 , move 4 , v0 
+[109] loop 0 , 3 , move 2 + ul , v0 - 2 
+[110] loop 0 , 2 , move 4 - v0 , v0 
+[111] loop 0 , 2 , move 3 , 2 - v0 
+[112] move 4 , 4 + 3 
+[113] loop 0 , 7 , move 3 - v0 , ul 
+[114] loop 0 , 6 , move v0 , ua - ul 
+[115] ( move ua , 0 ; loop 0 , 5 , move ul , ul ) 
+[116] loop 0 , 6 , move 3 - ua , v0 - ul 
+[117] ( move ua + ul , 2 ; move ul , 2 ; move ul , ul / ua ) 
+[118] move ua , 3 + 3 
+[119] loop 0 , 7 , move v0 - ul , ul 
+[120] loop 0 , 5 , move 2 , ul - v0 
+[121] loop 0 , 3 , move 4 , 2 
+[122] ( move ua + 2 , ua ; move 2 , 2 ) 
+[123] loop 0 , 2 , move ua , 4 
+[124] ( move 2 , ul ; move ua , 4 ) 
+[125] loop 0 , 5 , move ua - v0 , 2 
+[126] loop 0 , 4 , move v0 , ua / v0 
+[127] loop 0 , 2 , ( move ul , ua ; move ua , 2 ) 
+[128] loop 0 , 3 , move 3 , v0 
+[129] ( move 0 , ua ; ( move ua + 4 , ul ; move ul , ua - ul ) ) 
+[130] ( move ul , 0 ; move 3 , ul ) 
+[131] loop 0 , 5 , move ua - v0 , 3 
+[132] ( move 2 , ul ; move 4 , ul ) 
+[133] ( move ua , ul ; move 3 , ul ) 
+[134] loop 0 , 5 , move v0 , 2 
+[135] ( move ul , 4 ; move ua , ul ) 
+[136] ( move ua , ul ; move ul , ul ) 
+[137] ( move ua , 0 ; move ul , 4 ) 
+[138] ( move ua , 0 ; move ul , 3 ) 
+[139] loop 0 , 2 , move v0 + 3 , 2 
+[140] ( move ua , ul ; move ul , ul / 3 ) 
+[141] ( loop 0 , 5 , move ul , v0 ; move v0 , ua + ul ) 
+[142] loop 0 , 5 , move 3 / 2 , v0 
+[143] ( move ua , ul ; move ua , 2 ) 
+[144] loop 0 , 7 , move 2 , v0 
+[145] loop 0 , 5 , move v0 , v0 * 4 
+[146] loop 0 , 7 , ( v1 = ua - v0 ; move v0 - v1 , 4 ) 
+[147] ( move ua , 0 ; move ua , ua * ua ) 
+[148] ( move ua + ul , 3 / ua ; move 3 - ul , ua + ul ) 
+[149] ( move 3 , ua ; move ul , ul ) 
+[150] ( move ua , 0 ; move 2 , 2 ) 
+[151] loop 0 , 5 , move v0 , ul - v0 
+[152] loop 0 , 5 , move ul , v0 - 4 
+[153] ( move ul + ul , ul ; move 3 , 4 ) 
+[154] loop 0 , 2 , move 3 , ul 
+[155] ( move ua , 3 ; move 2 , ul ) 
+[156] loop 0 , 6 , move v0 , 3 * v0 
+[157] move ua , 2 - 3 
+[158] loop 0 , 5 , move ua , 2 
+[159] ( move ua , 2 ; move 2 , ul + ul ) 
+[160] loop 0 , 4 , move ul , 3 - v0 
+[161] loop 0 , 7 , move ul , ul + v0 
+[162] loop 0 , 3 , move 2 , ul 
+[163] loop 0 , 2 , move 4 , ul 
+[164] loop 0 , 7 , move ul , 4 / ua 
+[165] ( move ua , ul ; move ul - ua , ul + ul ) 
+[166] loop 0 , 7 , move ul , 2 * v0 
+[167] ( move ul , ua ; move ua , 3 - 4 ) 
+[168] loop 0 , 4 , move v0 , ua - v0 
+[169] loop 0 , 6 , move ul , v0 / ua 
+[170] loop 0 , 4 , move 4 , ul 
+[171] loop 0 , 7 , move v0 , v0 - ul 
+[172] loop 0 , 3 , move 3 , v0 * v0 
+[173] loop 0 , 5 , move ua , ua * ua 
+[174] ( v0 = ul - ua ; loop 2 , 7 , move v0 , 3 ) 
+[175] loop 0 , 3 , move ua - ul , 2 
+[176] loop 0 , 5 , ( move 3 - ua , 4 / 2 ; v1 = ul ) 
+[177] loop 0 , 4 , move ua , 2 
+[178] loop 0 , 3 , move v0 + 2 , v0 * v0 
+[179] ( move ua , ua ; move ul - ua , ul ) 
+[180] move ua , 3 / 4 
+[181] loop 0 , 6 , move v0 - ul , ul 
+[182] ( move ua , 0 ; move ua , 3 ) 
+[183] loop 0 , 7 , move v0 , v0 * v0 
+[184] ( move ua , 4 + 4 ; loop 0 , 6 , move v0 , ua + ul ) 
+[185] ( move ua , ua ; move 3 , 0 - ul ) 
+[186] loop 0 , 7 , move v0 / 4 , v0 * v0 
+[187] ( move ua , 2 ; move ul , 2 ) 
+[188] ( loop 0 , 4 , move v0 , 2 ; move ua , v0 ) 
+[189] loop 0 , 5 , move v0 + ul , ul 
+[190] loop 0 , 4 , move 2 , ul 
+[191] ( move ua , ul ; move ua - ul , 0 - 4 ) 
+[192] loop 0 , 3 , move ua , v0 - 3 
+[193] loop 0 , 5 , move ul - ua , 2 
+[194] loop 0 , 5 , move 4 , ul - v0 
+[195] ( loop 0 , 2 , move v0 + ua , 4 ; move v0 , v0 ) 
+[196] loop 0 , 5 , move ul , v0 - 3 
+[197] loop 0 , 3 , move ua / v0 , 4 
+[198] loop 0 , 2 , move 4 , 4 - v0 
+[199] loop 0 , 3 , move ua , 3 
+[200] ( move 3 , 3 - ua ; move ua , 2 ) 
+[201] loop 0 , 6 , move ua , 3 
+[202] ( move 4 + ul , ul ; move 4 , ul ) 
+[203] ( move ua , 0 ; move 2 , ul ) 
+[204] ( move 4 + ul , 4 ; move 4 , ul / 4 ) 
+[205] ( move 4 + 4 , ua ; move ua + ul , ua + 2 ) 
+[206] ( move ua , 2 ; move ul , ul ) 
+[207] loop 0 , 5 , move v0 + v0 , ua - v0 
+[208] ( move ul , ua * ua ; move ua , 0 - ul ; v0 = ul ) 
+[209] loop 0 , 3 , move ua + v0 , 3 
+[210] loop 0 , 7 , move 2 , v0 / ua 
+[211] loop 0 , 2 , move 3 , v0 
+[212] ( move ua , ua - ul ; move ul , 3 - ul ) 
+[213] loop 0 , 4 , move v0 + ul , v0 
+[214] loop 0 , 6 , move v0 , ua * ua 
+[215] ( move 3 + ul , ua ; ( move ua , ua * ua ; v0 = ua ) ) 
+[216] loop 0 , 5 , move v0 , 4 
+[217] ( move 0 , 2 ; move ul , 3 * 2 ; loop 0 , 4 , move ua , 4 ) 
+[218] ( move ua + ul , ul - 3 ; move ua , 4 ) 
+[219] loop 0 , 6 , move v0 , 3 
+[220] ( move 2 , ul ; move ua , 2 ) 
+[221] loop 0 , 4 , move 3 + v0 , 3 
+[222] loop 0 , 6 , move ua , 4 
+[223] loop 0 , 4 , move 4 , ul - v0 
+[224] loop 0 , 7 , move v0 / 2 , ul 
+[225] loop 0 , 6 , move v0 , 2 
+[226] loop 0 , 3 , move v0 + ul , ul 
+[227] ( v0 = 3 ; move v0 , ul ; move 3 , 4 + v0 ) 
+[228] loop 0 , 4 , move v0 + 2 , v0 
+[229] loop 0 , 2 , move ua , v0 - 2 
+[230] loop 0 , 5 , move v0 , 3 + v0 
+[231] ( move ua , 0 ; move 3 + ul , 4 ) 
+[232] ( move 3 * 3 , ul ; move 4 , 4 ) 
+[233] move 4 , 4 / 3 
+[234] ( move 4 , ua ; move ua + ul , ul ) 
+[235] loop 0 , 5 , move ul - v0 , v0 
+[236] ( move ul , ua ; loop 0 , 5 , move v0 , v0 ; move 3 , ul ) 
+[237] ( loop 0 , 3 , move ul , v0 ; move v0 + ua , 2 * v0 ) 
+[238] loop 0 , 6 , move v0 , ua - 2 
+[239] loop 0 , 6 , move v0 , 3 + v0 
+[240] move 4 , 4 * 3 
+[241] ( move 3 + ul , ua + 2 ; move 2 , ul ) 
+[242] loop 0 , 5 , move ul - v0 , ul 
+[243] ( move ul , 0 ; move ua + 2 , ul ) 
+[244] loop 0 , 6 , move v0 , v0 + ul 
+[245] loop 0 , 5 , move 2 * v0 , v0 
+[246] ( move ua , ua + 3 ; move 4 , 2 ) 
+[247] loop 0 , 6 , move 3 * 3 , 3 - ua 
+[248] ( move ua , ul + ul ; move 0 - ua , ul / 2 ) 
+[249] loop 0 , 2 , move 3 , v0 / 3 
+[250] loop 0 , 3 , move ua , 2 
+[251] ( move ul - 3 , ul ; move ua , 4 ) 
+[252] loop 0 , 7 , move ul - v0 , v0 
+[253] loop 0 , 5 , move v0 , v0 - 3 
+[254] loop 0 , 4 , move ul - v0 , ul 
+[255] ( move ua , 2 / 3 ; move 4 , ul ) 
+[256] loop 0 , 4 , move v0 , 2 * v0 
+[257] loop 0 , 2 , ( move v0 , v0 ; move ua , v0 ) 
+[258] loop 0 , 3 , move 4 , 0 - 2 
+[259] loop 0 , 7 , move v0 , 3 
+[260] loop 0 , 5 , move 3 , 4 
+[261] move ua , 3 + 2 
+[262] ( move ul , 4 ; loop 0 , 6 , move v0 , 2 ) 
+[263] ( move ul - 3 , ul ; move ua , 2 ) 
+[264] loop 0 , 3 , move 2 + ul , v0 + 4 
+[265] ( move ua , ua ; move 4 , ul ) 
+[266] loop 0 , 2 , ( move ul , v0 ; move ua , v0 ) 
+[267] loop 0 , 4 , move v0 , 4 / ua 
+[268] loop 0 , 2 , move v0 - 3 , v0 
+[269] ( move ua , ul ; move 2 , ul ) 
+[270] ( move ua , 3 ; move 3 - ua , ua + ul ) 
+[271] ( move 4 , ul ; move 2 , ul ) 
+[272] loop 0 , 7 , move ul - v0 , ul 
+[273] ( move 3 , ul ; move ua , 2 ) 
+[274] loop 0 , 4 , move ul , ul - v0 
+[275] move ua , ua * ua 
+[276] ( move ul , ul ; move ua , ul ) 
+[277] loop 0 , 3 , loop 1 , 2 , move v0 , ul 
+[278] ( move ul , ul ; move 2 , 4 ; loop 0 , 3 , move v0 , 2 ) 
+[279] loop 0 , 3 , move 4 , 4 
+[280] ( move 3 , 0 ; move ua + ul , ul ) 
+[281] loop 0 , 4 , move v0 * v0 , 3 
+[282] ( move 2 - ua , ua ; move ua , ul ) 
+[283] loop 0 , 5 , move 4 , v0 
+[284] ( move 2 , ul ; move 3 , ul ) 
+[285] ( move ul , ul ; loop 0 , 6 , move 4 , v0 ) 
+[286] loop 0 , 2 , move 3 , 3 
+[287] ( v0 = 3 ; loop 1 , 4 , move ul - ua , 3 ) 
+[288] ( move ul / ua , ul ; loop 0 , 5 , move v0 , v0 ) 
+[289] loop 0 , 4 , move v0 * v0 , v0 
+[290] ( move 4 + ul , ul - ua ; move 3 , ul ) 
+[291] loop 0 , 6 , move 3 , 2 
+[292] loop 0 , 4 , move v0 , 2 / v0 
+[293] ( move ua , 3 / ua ; move 4 , ul ) 
+[294] ( loop 0 , 3 , move ul , ul ; move ua - v0 , v0 ) 
+[295] loop 0 , 4 , move v0 - 2 , v0 
+[296] loop 0 , 5 , move v0 , ua / v0 
+[297] loop 0 , 6 , move v0 , v0 - ul 
+[298] ( move ul , 2 ; move ua , 2 - ua ) 
+[299] loop 0 , 6 , move ua , ua - 2 
+[300] loop 0 , 4 , move ua , 3 
+[301] ( loop 0 , 9 , v1 = ul ; move v0 , v0 ) 
+[302] ( move ua , ul ; move 4 , 2 ; v0 = ul ) 
+[303] ( move ul , 0 ; move ua , ul ) 
+[304] ( move ul - ua , 4 ; move 3 , 3 ) 
+[305] loop 0 , 3 , move 3 + 2 , v0 
+[306] ( move ul , 4 + ul ; move ua + ul , ul ) 
+[307] loop 0 , 2 , move 2 , ul 
+[308] loop 0 , 6 , move ul - v0 , ul 
+[309] loop 0 , 7 , move 3 , v0 
+[310] ( v0 = ua ; loop 1 , 3 , move 4 , ua - ul ) 
+[311] ( move ua , ua ; move 3 , ua / 4 ) 
+[312] ( move 4 , 3 ; move ua , ul ) 
+[313] loop 0 , 3 , move 3 , 2 
+[314] ( move ua , ua + 3 ; move 3 , ul ) 
+[315] loop 0 , 7 , move ul - v0 , 3 - ua 
+[316] loop 0 , 4 , move v0 , ul / v0 
+[317] loop 0 , 4 , move v0 , ua - ul 
+[318] move ua , 4 + 4 
+[319] loop 0 , 7 , move v0 + ul , 2 
+[320] loop 0 , 3 , move 2 * v0 , v0 
+[321] loop 0 , 6 , move v0 , v0 / 2 
+[322] loop 0 , 4 , move v0 , v0 - ul 
+[323] loop 0 , 3 , ( move ul , v0 ; move 4 , v0 ) 
+[324] loop 0 , 7 , move ua , 3 
+[325] ( move ua , ul - 4 ; move ua , ul ) 
+[326] ( move 4 , ua * ua ; loop 0 , 2 , move ul + v0 , v0 ) 
+[327] loop 0 , 3 , move v0 * 4 , v0 
+[328] loop 0 , 2 , move 3 , ul / 4 
+[329] ( move ua , 0 ; move ua , 2 ) 
+[330] ( move ua + 4 , ul ; move ul - ua , ul ) 
+[331] ( move ua , 2 ; move ua , ul ) 
+[332] loop 0 , 2 , move v0 - 4 , 2 * v0 
+[333] loop 0 , 5 , move ua , 4 
+[334] ( loop 0 , 5 , move ul , v0 ; move v0 , 0 ) 
+[335] ( loop 0 , 5 , move v0 , v0 ; move 4 , 4 ) 
+[336] ( move 2 , ua ; move ua , ul ) 
+[337] loop 0 , 4 , ( move 3 , 3 * v0 ; v1 = v0 ) 
+[338] loop 0 , 6 , move v0 , ul - v0 
+[339] loop 0 , 7 , move v0 , ua * ua 
+[340] ( move 4 , ua ; move ul , 3 - 4 ) 
+[341] ( move 2 , ul + ul ; move ul - ua , 2 ) 
+[342] loop 0 , 6 , move 3 , v0 * v0 
+[343] loop 0 , 3 , move 3 , ul 
+[344] loop 0 , 6 , move ul + v0 , v0 
+[345] loop 0 , 5 , move 3 , v0 * v0 
+[346] ( loop 0 , 4 , move v0 + ul , ul ; move 2 , ua ) 
+[347] ( ( move 3 - ua , ul ; v0 = ul ) ; move ua - ul , ul ) 
+[348] loop 0 , ul , loop 1 , 7 , move ul , 2 / ua 
+[349] loop 0 , 5 , move v0 , 4 + v0 
+[350] ( loop 0 , 6 , move 2 , v0 ; move ul , v0 ) 
+[351] ( move ua , 3 ; move ul , 4 ) 
+[352] loop 0 , 4 , move ua - v0 , 4 
+[353] ( move 3 , 4 + 3 ; move 2 + ul , ul ) 
+[354] loop 0 , 5 , move 2 - v0 , ul 
+[355] ( move ua , ua * ua ; move ua , ul ) 
+[356] loop 0 , 5 , move 4 + v0 , v0 
+[357] ( move ua , 4 + ul ; move ua , ul + ul ) 
+[358] loop 0 , ul , loop 1 , 5 , move 4 , v0 - v1 
+[359] loop 0 , 5 , move v0 , ul + v0 
+[360] ( ( move ua , 0 ; move ul , 3 + 3 ) ; move 2 , ul + ul ) 
+[361] ( move 4 , ul ; move ua + ul , ua * ua ) 
+[362] loop 0 , 6 , move 3 , v0 + v0 
+[363] loop 0 , 7 , move 3 , ua - v0 
+[364] ( loop 0 , 5 , move ul , v0 ; move v0 , v0 ) 
+[365] loop 0 , 5 , move v0 - ul , ul 
+[366] ( move 3 + 2 , ua ; move ua , ul ) 
+[367] ( move ua , ul ; move ua , 3 ) 
+[368] loop 0 , 6 , move ul - ua , v0 
+[369] ( move 3 , ul ; move ul , ul ) 
+[370] ( move 4 , 2 - 3 ; move ul , ul ) 
+[371] loop 0 , 4 , move 4 / v0 , 2 
+[372] loop 0 , 2 , move 4 , 2 
+[373] move ua , ua / 3 
+[374] loop 0 , 6 , move v0 , ua - v0 
+[375] ( move ua + 2 , ul ; move ua , 2 ) 
+[376] ( move ua + 3 , 2 ; move ul , ua * ua ) 
+[377] loop 0 , 4 , move 4 , ua / v0 
+[378] ( move ua , 0 ; move ua - ul , 4 ) 
+[379] ( move 4 + 3 , ua ; move ua , 2 ) 
+[380] ( move ua , 0 ; move 3 , ul ) 
+[381] loop 0 , 7 , move 2 , v0 / 4 
+[382] loop 0 , 3 , ( move v0 , 2 ; move v0 , ul ) 
+[383] loop 0 , 6 , move ul - 3 , 4 - v0 
+[384] loop 0 , 4 , move v0 - ua , 3 
+[385] loop 0 , 6 , move ua - 2 , v0 
+[386] loop 0 , 6 , move ul - v0 , v0 
+[387] loop 0 , 3 , move v0 + v0 , 2 * v0 
+[388] loop 0 , 3 , move 4 / v0 , v0 
+[389] ( move 3 , ul / ua ; move ua , 3 ) 
+[390] ( move ua , 2 + ul ; loop 0 , 6 , move v0 , 3 ) 
+[391] ( loop 0 , 5 , move ul , ul ; move v0 , ua ) 
+[392] ( move ul - 4 , 4 ; ( v0 = ul ; move ua , 3 - v0 ) ) 
+[393] ( move 2 , 3 / ua ; ( v0 = ul ; move ua * v0 , ul ) ) 
+[394] ( move 2 , ua - 2 ; move ua + ul , 4 ) 
+[395] loop 0 , 5 , move ul - ua , v0 
+[396] move 4 , 3 / 2 
+[397] loop 0 , 7 , move 3 , ua - 4 
+[398] loop 0 , 3 , move 3 , 3 
+[399] ( move ua + ul , 4 - ul ; move ua , ua * ua ) 
+[400] ( move ua , 0 ; move ua , 4 + ul ) 
+[401] loop 0 , 3 , ( move 0 , v0 ; move 4 , 3 ) 
+[402] ( v0 = 4 + ul ; loop 1 , 5 , move ul , ul / v0 ) 
+[403] ( move 3 , ul ; move ua , ul ) 
+[404] loop 0 , 7 , move v0 , ua / v0 
+[405] ( ( move 4 , ua ; move 4 , ul ) ; move 4 , ua + ul ) 
+[406] loop 0 , 6 , move v0 - ul , 3 / 2 
+[407] loop 0 , 3 , move v0 + 2 , ul 
+[408] loop 0 , 6 , move v0 , 4 + v0 
+[409] ( move 3 , ua ; move 2 , ul ) 
+[410] ( move ua , ua ; loop 0 , 4 , move v0 , ul ) 
+[411] loop 0 , 3 , move ua - 2 , v0 
+[412] loop 0 , 3 , move 4 , v0 + v0 
+[413] loop 0 , 5 , move ul , ul / 4 
+[414] loop 0 , 4 , move ua , ul + v0 
+[415] loop 0 , 7 , move ua , 4 
+[416] loop 0 , 5 , move ul , 2 * v0 
+[417] loop 0 , 5 , move ul , 2 + v0 
+[418] loop 0 , 2 , move 4 , v0 
+[419] loop 0 , 7 , move v0 / 4 , ua / v0 
+[420] ( v0 = 2 ; ( move 4 , ul ; move v0 - ua , ul ) ) 
+[421] loop 0 , 5 , move v0 - ul , 2 
+[422] ( move ul , ua * ua ; move ua , 2 ) 
+[423] loop 0 , 7 , move v0 / 3 , v0 
+[424] loop 0 , 7 , move ul , 2 / v0 
+[425] loop 0 , 6 , move v0 - 3 , v0 
+[426] loop 0 , 4 , move v0 + v0 , 4 
+[427] ( loop 0 , 3 , move v0 , v0 ; move ua , ul ) 
+[428] loop 0 , 3 , move 2 + v0 , v0 
+[429] ( move 4 + ul , ul ; move ua , 4 ) 
+[430] ( move ua , ul ; move 4 , ul ) 
+[431] loop 0 , 3 , move 2 , ul - v0 
+[432] loop 0 , 4 , move ul , 4 + v0 
+[433] loop 0 , 7 , move v0 , 4 + v0 
+[434] loop 0 , 5 , move 0 - 2 , v0 
+[435] loop 0 , 4 , move 4 - ua , ul / v0 
+[436] loop 0 , 3 , ( move ul , ul ; move 2 , v0 ) 
+[437] ( move 4 - ul , ul ; move 4 , 4 ) 
+[438] ( move ua , 4 ; ( v0 = ul - ua ; move v0 , 3 ) ) 
+[439] loop 0 , 3 , move v0 + ua , 2 
+[440] ( loop 0 , 4 , move v0 + v0 , ul ; move v0 , ul ) 
+[441] loop 0 , 3 , loop 1 , 2 , move v0 , ua - 2 
+[442] loop 0 , 3 , move 2 , ua - v0 
+[443] ( move 3 , ua / 4 ; loop 0 , 5 , move v0 , v0 ) 
+[444] loop 0 , 6 , move v0 - 2 , 2 
+[445] loop 0 , 2 , move 4 , 4 
+[446] loop 0 , 5 , move v0 , 2 + v0 
+[447] loop 0 , 5 , move 2 , 4 
+[448] ( move ua - 2 , ul ; move ua + ul , 4 ) 
+[449] loop 0 , 4 , move ua - ul , v0 
+[450] ( move ua , ul ; move ua + 3 , ua * ua ) 
+[451] ( move 3 , ua ; move 2 , 2 ) 
+[452] ( move ua , 4 * 2 ; move ul , ul ) 
+[453] ( move 3 , 4 / 3 ; move ua , ul ) 
+[454] loop 0 , 2 , move 2 + v0 , v0 
+[455] loop 0 , 7 , move v0 , ua - 4 
+[456] move ua , 2 / ua 
+[457] loop 0 , 7 , move 2 , v0 + ul 
+[458] ( loop 1 , 5 , move ua + ul , 4 ; v2 = v1 ) 
+[459] loop 0 , 2 , move 3 , 4 
+[460] ( move ua , ul ; move ul , 4 ) 
+[461] ( move ua , ua * ua ; move ul , 2 ) 
+[462] loop 0 , 2 , move v0 + ua , v0 + 2 
+[463] loop 0 , 7 , move v0 - 4 , ul 
+[464] ( move ua + ul , ua ; move 2 , ul ) 
+[465] ( move ua , 4 ; v0 = ul ; move ua , 2 ) 
+[466] loop 0 , 7 , move 4 - ua , v0 
+[467] ( move 3 , ua + ul ; move ul - ua , 2 ) 
+[468] loop 0 , 7 , move ul , ul / v0 
+[469] loop 0 , 3 , move 3 - ua , v0 * v0 
+[470] loop 0 , 4 , move v0 + v0 , 2 
+[471] loop 0 , 5 , move ua , 3 
+[472] ( move ua , ul ; move ua , ua * ua ) 
+[473] loop 0 , 2 , move v0 - ua , v0 + ul 
+[474] loop 0 , 2 , ( move v0 , 2 ; move ua , v0 ) 
+[475] ( move 3 , 2 / ua ; move ua , ul - 2 ) 
+[476] loop 0 , 4 , move v0 , v0 * v0 
+[477] loop 0 , 4 , move 4 / v0 , ul 
+[478] ( loop 0 , 5 , move ul , ua ; move v0 , v0 ) 
+[479] ( move 4 , ua ; move ul , ul ) 
+[480] loop 0 , 6 , move v0 , v0 - 2 
+[481] ( move ua , 4 ; move ul + ul , ul - 3 ) 
+[482] ( loop 0 , 2 , move 4 , ul ; move ua , v0 * v0 ) 
+[483] ( move ua , 0 ; move ul - ua , 3 / 4 ) 
+[484] loop 0 , 7 , move v0 - 3 , 3 - v0 
+[485] loop 0 , 3 , ( v1 = 0 ; move v1 - 3 , ul - v1 ) 
+[486] loop 0 , 2 , move 4 , ul + v0 
+[487] loop 0 , 2 , move v0 + 4 , ul - 2 
+[488] loop 0 , 3 , ( move ua , ul ; move 3 , 2 ; v1 = ul ) 
+[489] ( move ul , ul - 4 ; move ua , ul ) 
+[490] loop 0 , 3 , move v0 + ul , v0 * v0 
+[491] ( move 4 , 0 ; move ua , 2 - 4 ) 
+[492] ( move ua + ul , ua - 4 ; move 4 , 2 ) 
+[493] ( loop 0 , 3 , move v0 * v0 , v0 ; move ua , v0 ) 
+[494] ( move ua , ua ; move 2 , ua - ul ) 
+[495] loop 0 , 6 , move ul - v0 , v0 / ua 
+[496] loop 0 , 5 , move v0 , 0 - 3 
+[497] ( move ua , ul ; move 2 , 2 ) 
+[498] loop 0 , 3 , ( move v0 * 2 , 2 ; move v0 , v0 ) 
+[499] loop 0 , 6 , move v0 , v0 / 4 
+[500] loop 0 , 5 , move ul + v0 , 4 
+[501] loop 0 , 7 , move 2 / v0 , 3 + v0 
+[502] loop 0 , 3 , move ua - v0 , ul + v0 
+[503] ( move ua + ul , ua / 4 ; ( move 0 , ul ; move 4 , ul ) ) 
+[504] loop 0 , 5 , move v0 - ua , 2 
+[505] loop 0 , 5 , move ua - ul , v0 
+[506] ( move 4 , 4 / ua ; loop 1 , 3 , move v1 , v1 ) 
+[507] ( move ua , 0 ; loop 0 , 2 , move 4 , ul ) 
+[508] loop 0 , 4 , move v0 , v0 - 3 
+[509] ( move ua + 4 , ua - ul ; move ua , 4 ) 
+[510] loop 0 , 2 , move 4 + ul , ul 
+[511] loop 0 , 6 , loop 1 , ul , move ul , ul / ua 
+[512] ( loop 0 , 5 , move 3 - v0 , ul ; v1 = ul - ua ) 
+[513] ( loop 0 , 3 , move ul + v0 , ul ; move ua , 3 - ul ) 
+[514] loop 0 , 5 , move v0 , v0 - 4 
+[515] ( move 4 , ul + ul ; move ua , ul ) 
+[516] ( v0 = 4 ; loop 3 , 3 , move v0 - ua , v3 / ua ) 
+[517] ( loop 0 , 3 , move ul , v0 ; move 4 , 4 + v0 ) 
+[518] loop 0 , 5 , move 2 - v0 , v0 
+[519] loop 0 , 4 , move ul , ul / 2 
+[520] ( move 3 , ul ; move ua , 4 ; v0 = 0 ) 
+[521] loop 0 , 5 , move ul , v0 * v0 
+[522] move ua + 2 , ul / 4 
+[523] ( move ua , 4 ; move ul , ul ) 
+[524] ( move ul , ul / ua ; move ua + 4 , ua - 4 ) 
+[525] loop 0 , 5 , move ul , 2 / v0 
+[526] loop 0 , 2 , move 3 , 2 
+[527] loop 0 , 3 , move ua , 4 
+[528] ( ( move ul , ul ; move ua + ul , ul ) ; move ul , ul ) 
+[529] ( move 3 - ua , 4 ; move ua , 4 ) 
+[530] ( move ua , 2 ; move ua , 4 ) 
+[531] ( move ul , ul / 3 ; loop 0 , 4 , move v0 , ul ) 
+[532] move ua + 4 , 3 / 4 
+[533] loop 0 , 2 , move ul - 3 , v0 
+[534] ( move ua + ul , ul ; move ua , ua * ua ) 
+[535] loop 0 , 4 , move v0 , 3 + v0 
+[536] loop 0 , 5 , move v0 , 3 / v0 
+[537] loop 0 , 4 , move ul , v0 - 3 
+[538] ( move 3 + ul , ul ; move ua - ul , ul / 2 ) 
+[539] ( move ua / 2 , 0 ; move ua + 4 , ul ) 
+[540] loop 0 , 4 , move 3 + v0 , v0 
+[541] loop 0 , 5 , move 4 , 3 * v0 
+[542] loop 0 , 5 , move 4 , 3 
+[543] loop 0 , 6 , move 2 , v0 * 2 
+[544] loop 0 , 4 , move ua , ua * ua 
+[545] ( move ul , 3 ; move 3 , ul ) 
+[546] ( move 3 , 0 ; v0 = ua ; move v0 , 2 ) 
+[547] loop 0 , 6 , move v0 , v0 / 3 
+[548] loop 0 , 6 , move ua / v0 , ul + v0 
+[549] ( move ul , 4 ; loop 0 , 6 , move v0 , v0 ) 
+[550] ( move 2 - ua , 3 ; ( move ul , ul ; move ua , ul ) ) 
+[551] ( move ul , ul ; move ua , 4 ) 
+[552] loop 0 , 7 , move 3 , 4 
+[553] ( move 4 , ua * 2 ; move ua , 2 ) 
+[554] loop 0 , 7 , move ua , 2 
+[555] ( move 0 - ua , ua * ua ; move 4 , 4 * 2 ) 
+[556] loop 0 , 5 , move v0 , ua - v0 
+[557] ( move 0 , ul ; loop 0 , 6 , move ua + 2 , 3 ) 
+[558] loop 0 , 7 , move ua , ua * ua 
+[559] loop 0 , 2 , move ul - 3 , ul 
+[560] ( move ul + ul , ua + 2 ; v0 = ul ; move ua + ul , v0 ) 
+[561] ( loop 0 , 6 , move v0 , v0 ; move 2 , v0 ) 
+[562] loop 0 , 7 , move v0 , 3 - v0 
+[563] loop 0 , 5 , move ul , v0 + 3 
+[564] ( move ua , 2 / ua ; loop 0 , 5 , move ul , ul ) 
+[565] ( move ua , ua ; move 4 , 2 ) 
+[566] ( move ul , 4 ; move ua , ul ; move 2 , ul ) 
+[567] loop 0 , 3 , move v0 * v0 , 2 
+[568] ( move 2 , ua ; move ua + 2 , 4 / ua ) 
+[569] ( loop 0 , 4 , move v0 , v0 ; move v0 , v0 + v0 ) 
+[570] loop 0 , 5 , move 2 + v0 , v0 
+[571] ( move ua + ul , ua + ul ; move 2 , 2 ) 
+[572] ( move 3 + ul , ua ; move ul - 4 , ul ) 
+[573] ( move ul , ul / ua ; move ua , ul ) 
+[574] ( move ua + 2 , ua ; move 4 , 4 ) 
+[575] loop 0 , 4 , move v0 + ul , 4 
+[576] ( move 3 - ua , 3 / ua ; move ua + ul , ul ) 
+[577] loop 0 , 5 , move v0 , 2 / v0 
+[578] ( move ua + ul , ua - ul ; move ul , 3 ; move ua , 0 ) 
+[579] loop 0 , 4 , move v0 - 4 , 2 
+[580] loop 0 , 4 , move v0 + v0 , v0 * 3 
+[581] ( move ul , ul ; move 3 , 4 ) 
+[582] ( loop 0 , 4 , move v0 , v0 ; move v0 , ul ) 
+[583] loop 0 , 2 , move v0 - ua , v0 + v0 
+[584] ( move ul , ul ; loop 0 , 4 , move 3 , 4 ; move v0 , v0 ) 
+[585] loop 0 , 3 , ( move 3 , v0 ; move ua , ul ) 
+[586] loop 0 , 7 , move v0 , 2 - v0 
+[587] loop 0 , 7 , move 4 - v0 , v0 
+[588] ( move 0 - ua , 0 ; move ua , ul ) 
+[589] ( move 2 , ul / ua ; move 2 , 0 ; move ua , 2 ) 
+[590] loop 0 , 2 , loop 1 , 2 , move 2 , v1 
+[591] ( move ul , ua ; move ua , 4 + ul ) 
+[592] ( move ul - 2 , ul ; move 4 , ul ) 
+[593] ( v0 = 3 + 2 ; loop 1 , 4 , move v0 , v0 ) 
+[594] loop 0 , 7 , move v0 + ul , 4 
+[595] ( move ua , 0 - ul ; move ul , ul ) 
+[596] loop 0 , 4 , move 3 / v0 , v0 
+[597] ( move ul + ul , ul / ua ; move ua + ul , ul - 2 ) 
+[598] ( move 3 , ua ; move ua + 3 , ul ) 
+[599] loop 0 , 4 , move v0 + v0 , ua / v0 
+[600] loop 0 , 6 , move v0 , ua / v0 
+[601] loop 0 , 2 , move 3 + v0 , ul 
+[602] ( move ua - 2 , ua / 4 ; move ul , 2 ) 
+[603] ( v0 = 3 + 2 ; move v0 , ul ; move v0 , v0 ) 
+[604] loop 0 , 3 , move ua + ul , 2 
+[605] ( move ul - ua , ul ; move ua , ul ) 
+[606] ( move ua , ua * 3 ; move ua , ua / 4 ) 
+[607] ( ( move ul , ul / ua ; move ua , ul - ua ) ; move 2 , ul ) 
+[608] loop 0 , 3 , move 4 * v0 , 3 
+[609] ( move ua , ua ; move ua - 4 , 2 ) 
+[610] loop 0 , 7 , move ua - 4 , v0 
+[611] ( move ua + ul , ul ; move 4 , 2 ) 
+[612] ( move 2 , ua ; move 3 , 3 - ul ) 
+[613] ( v0 = ua - ul ; move ul , ul / 2 ; move v0 , ul ) 
+[614] loop 0 , 4 , move v0 , v0 / 3 
+[615] loop 0 , 2 , move ua + v0 , 4 
+[616] loop 0 , 3 , move ua - ul , v0 
+[617] loop 0 , 3 , move 3 , v0 - ul 
+[618] loop 0 , 5 , move ul , 2 - v0 
+[619] ( move ua , 4 ; move ua , 3 ) 
+[620] move ua + 4 , 0 - 4 
+[621] ( loop 0 , 4 , move v0 , ul ; move ua , v0 / 3 ) 
+[622] ( loop 0 , 5 , move ul , ua ; move 4 , ul ) 
+[623] ( move ul - 3 , ua ; move 2 , ul ) 
+[624] ( loop 0 , 6 , move v0 , v0 ; move ul , v0 * v0 ) 
+[625] ( move 3 , ua * ua ; move ul , 2 ; move ua , ua ) 
+[626] ( move ua , ul ; loop 0 , 4 , move ul , ul ) 
+[627] loop 0 , 5 , move v0 , v0 / ua 
+[628] ( move ua + ul , ua ; move ua , 2 ; move ua , ul ) 
+[629] loop 0 , 7 , move v0 , 0 - 3 
+[630] loop 0 , 3 , move ul - ua , v0 
+[631] ( move ua , ua - 3 ; move ua - ul , ul ) 
+[632] loop 0 , 6 , move ul - v0 , 2 - v0 
+[633] ( move 4 + ul , ua ; move ua + ul , ul ; v0 = ua ) 
+[634] move 3 * 3 , 0 - 3 
+[635] ( move ua , ul / ua ; move 4 , ul ) 
+[636] ( move 3 , ua - 2 ; move ua , ul ) 
+[637] ( move ul , ul ; move 3 , 2 ) 
+[638] loop 0 , 2 , ( move ua , ul ; move ul , ul ) 
+[639] ( move ul + ul , ua / 4 ; loop 0 , ul , move 4 , ul ) 
+[640] loop 0 , 5 , move 4 , v0 * v0 
+[641] loop 0 , 7 , move v0 , v0 + 3 
+[642] loop 0 , 7 , move v0 , v0 - 2 
+[643] loop 0 , 4 , move v0 , 3 * v0 
+[644] loop 0 , 4 , move v0 , ua * ua 
+[645] loop 0 , 5 , move 4 , 4 
+[646] loop 0 , 6 , move ua + ul , 4 
+[647] ( move 4 , 3 ; move 2 , ul ) 
+[648] ( move ua / 2 , ul / ua ; move ua , ul ; move ul , ua + ul ) 
+[649] loop 0 , 4 , move v0 , ul - v0 
+[650] ( move ua + 3 , ul ; move ul , ul ) 
+[651] loop 0 , 6 , move 2 - v0 , v0 * v0 
+[652] ( move ua , ul ; loop 0 , 4 , move v0 , ua - ul ) 
+[653] loop 0 , 3 , ( move ul + v0 , ua - v0 ; v1 = ul ) 
+[654] ( move ua + ul , 3 ; move ua , ua + 2 ; move 0 - ul , ul ) 
+[655] ( move 4 , 0 ; move 2 , ul - 2 ) 
+[656] loop 0 , 5 , move v0 , ul / ua 
+[657] ( ( move ua , ua ; move ua - ul , ua * ua ) ; move 4 , ul ) 
+[658] loop 0 , 7 , move 4 - v0 , ul 
+[659] loop 0 , 3 , ( move ul , ua ; move v0 - ua , ul + v0 ) 
+[660] ( move 4 , ul ; move 4 , ua * ua ) 
+[661] ( move 4 , ul ; move 3 , ua - ul ) 
+[662] loop 0 , 4 , move v0 , v0 / 4 
+[663] ( move 3 , ul ; move ul , 4 ) 
+[664] loop 0 , 5 , move v0 - ul , v0 * 2 
+[665] ( loop 0 , 2 , move 2 / v0 , v0 ; move 4 , ul ) 
+[666] ( move ul , 4 ; move 4 + ul , 4 / ua ) 
+[667] loop 0 , 7 , move ua , 0 - 3 
+[668] ( move ua , ul ; move 4 , 4 ) 
+[669] ( move ua , 3 - ua ; move ua - ul , 2 + ul ) 
+[670] loop 0 , 4 , move v0 , v0 - 2 
+[671] loop 0 , 5 , move v0 - ul , 2 - v0 
+[672] ( move ua , 2 / 4 ; move ul , ul ) 
+[673] ( loop 0 , 5 , move v0 , ul ; move ua , 3 ) 
+[674] loop 0 , 2 , move 3 - ua , v0 
+[675] loop 0 , 6 , move v0 + ul , 3 + ul 
+[676] loop 0 , 3 , move 4 * v0 , 2 
+[677] loop 0 , 4 , move 4 + v0 , v0 
+[678] loop 0 , 3 , move v0 + v0 , v0 + 3 
+[679] loop 0 , 2 , move 3 , v0 + ul 
+[680] loop 0 , 2 , move ua - 3 , ul / ua 
+[681] loop 0 , 5 , move 4 - ul , v0 - 2 
+[682] ( move ul - ua , ul / ua ; move ul , ul ; move ul , 0 ) 
+[683] loop 0 , 5 , move 2 * v0 , 2 
+[684] loop 0 , 3 , ( move v0 , v0 ; move ua , ul ) 
+[685] ( move ul - 2 , ua - ul ; move ua + 4 , 3 / ua ) 
+[686] loop 0 , 7 , move ul , ul / ua 
+[687] loop 0 , 7 , ( move 3 - ua , 4 + ul ; v2 = v0 + ua ) 
+[688] ( loop 0 , 4 , move 4 , v0 ; move 2 , 0 ; v1 = v0 ) 
+[689] ( move ul , 2 ; move 4 , ul ) 
+[690] ( move 3 + ul , 0 ; move 2 , ul ) 
+[691] ( move ua , ul ; move ul , ul ; move ua , ul ) 
+[692] ( v0 = 2 ; loop 1 , 3 , move ul - ua , v0 ) 
+[693] move ua , 0 - 2 
+[694] ( move 4 , ua + ua ; move 2 , 4 ) 
+[695] loop 0 , 5 , move 3 , ul - v0 
+[696] ( move 3 , 0 ; move ua , ul ) 
+[697] ( move ul - ua , ua ; move 3 , ul ) 
+[698] ( move 0 - ua , ua + ul ; move ua , ul ) 
+[699] ( move ua + ul , 0 ; move ul , ul ) 
+[700] ( move 3 , ua + ul ; move ua - ul , 4 ) 
+[701] loop 0 , 2 , move ua , 0 - 2 
+[702] ( move 3 , 2 ; move ua , ul ) 
+[703] loop 0 , 5 , move v0 + 3 , ul + ul 
+[704] ( move ua + ul , ul ; move 3 , ul ) 
+[705] ( move 4 , ul + ul ; move 2 + ul , ua - ul ; move ul , ul ) 
+[706] ( move 3 , ua - ul ; move ua , ul ) 
+[707] ( loop 0 , 5 , move ul , ul ; move ua , v0 ) 
+[708] ( ( move ua , ua + 2 ; move ua - 3 , 4 ) ; move ua , 4 ) 
+[709] ( move ua , ua / 4 ; loop 0 , 2 , move ul , v0 ) 
+[710] loop 0 , 3 , move 2 - ua , v0 
+[711] ( ( move ua , 3 ; move ul , 4 + ul ) ; move 2 , ul ) 
+[712] ( move 2 , ul ; move 4 , 4 ) 
+[713] loop 0 , 6 , move v0 + ul , ul - v0 
+[714] loop 0 , 5 , move v0 - 2 , v0 / 3 
+[715] ( move ua , ul / ua ; move 3 + ul , 3 + ul ; v0 = 4 ) 
+[716] loop 0 , 6 , move v0 - ul , 3 - v0 
+[717] loop 0 , 6 , move 3 - v0 , v0 
+[718] ( move ua , 0 ; move 2 , ul / 3 ) 
+[719] ( loop 0 , 4 , move 4 , v0 * v0 ; v1 = v0 + ua ) 
+[720] move ua + 2 , 4 + 3 
+[721] ( move ua - ul , ua + ua ; move ua - ul , 2 ) 
+[722] ( move 0 , 3 ; move ua , 4 ; move ua - ul , ua * ua ) 
+[723] ( ( move 3 , 2 ; move ua , 3 ) ; move ul , 3 + 3 ) 
+[724] loop 0 , 5 , move v0 , 0 - 4 
+[725] ( move 4 , ua ; move 4 + ul , 2 ) 
+[726] loop 0 , 7 , ( v1 = ul / ua ; move v0 - ul , 4 ) 
+[727] ( move 2 , ua + ul ; move ua / 2 , ul / 3 ) 
+[728] loop 0 , 3 , move ul - ua , 4 
+[729] ( v0 = ul ; loop 1 , 6 , move 2 , v0 ; move ua , ua ) 
+[730] ( move ua , ul ; move ul , 0 - ul ) 
+[731] loop 0 , 6 , move ul - 4 , ul 
+[732] ( move 3 , ua ; move 4 , ul ) 
+[733] ( move ua , ul / 3 ; move 3 , 3 ) 
+[734] loop 0 , 7 , move v0 - 3 , v0 
+[735] loop 0 , 3 , ( move v0 + ul , ul ; move ul , 2 - v0 ) 
+[736] loop 0 , 4 , move v0 , 2 - v0 
+[737] loop 0 , 2 , move ul - ua , v0 
+[738] loop 0 , 6 , move v0 - ul , 2 
+[739] ( move ua - ul , 2 ; move ua , 2 ; v0 = ul / 3 ) 
+[740] ( move ua , ul ; move 4 , ua * ua ) 
+[741] loop 0 , 7 , move ul - v0 , v0 / 3 
+[742] ( v0 = 4 ; move 2 , v0 ; move ua , v0 ) 
+[743] loop 0 , 5 , move 4 , ua * ua 
+[744] ( move ua , ua / 2 ; loop 0 , 3 , move v0 , v0 ) 
+[745] move ua , 2 / 3 
+[746] loop 0 , 3 , move v0 - ua , v0 + v0 
+[747] ( move 2 - ua , ua + 3 ; move ua , ul ) 
+[748] ( move ua - ul , 0 ; move 3 , 2 ) 
+[749] loop 0 , 6 , move 2 - v0 , v0 
+[750] move ua , 4 / 3 
+[751] ( move ua , ul / ua ; move ul , 2 ) 
+[752] ( ( move ua , ua ; move ul , 2 / ua ) ; move ua , 3 ) 
+[753] ( move ua , ul / 2 ; move 0 , ul ; move 3 , 3 + 3 ) 
+[754] ( move 4 , 4 ; move ul , ul ; move ul , ua - ul ) 
+[755] loop 0 , 4 , move ua + 2 , v0 + ul 
+[756] ( move 4 - ua , ul ; move 4 , ul ) 
+[757] loop 0 , 4 , move ul + v0 , ul 
+[758] ( move 2 - ua , ul ; move ua , ul / ua ) 
+[759] loop 0 , 5 , move 4 , 2 
+[760] loop 0 , 4 , move 3 , ul / v0 
+[761] ( move 4 , 2 ; move ul , ul ) 
+[762] ( move ua , ua * 4 ; move 2 , 4 ) 
+[763] loop 0 , 2 , ( move v0 - ua , ul ; move 4 , v0 ) 
+[764] loop 0 , 5 , move v0 , ua * ua 
+[765] loop 0 , 7 , move ul - v0 , v0 - ul 
+[766] loop 0 , 5 , move ul , 4 / ua 
+[767] loop 0 , 4 , move 4 + ul , v0 
+[768] ( move 2 , 3 ; loop 0 , 5 , move v0 - 4 , v0 ) 
+[769] loop 0 , 3 , ( move 0 , v0 + 3 ; move ul + v0 , v0 ) 
+[770] loop 0 , 6 , move v0 + ul , v0 - 3 
+[771] loop 0 , 6 , move ul + v0 , 2 
+[772] loop 0 , ul , ( loop 1 , 4 , move ul - ua , 4 ; v2 = ua ) 
+[773] loop 0 , 2 , move v0 + 4 , ul 
+[774] loop 0 , 4 , move 2 - ua , 2 
+[775] loop 0 , 4 , move v0 * v0 , 2 
+[776] ( move ul , 2 ; loop 0 , 6 , move ul - v0 , ul ) 
+[777] loop 0 , 6 , move ul - v0 , 4 
+[778] ( move ua , 3 ; move 4 , 4 ) 
+[779] ( move ul , 2 + ul ; move ua + 4 , ul ) 
+[780] ( move 0 , ua ; move ua , ul ; move ua + ul , 3 ) 
+[781] ( v1 = ua ; move ul , ul ; loop 2 , 5 , move 4 , 4 ) 
+[782] loop 0 , 4 , move 3 , 4 
+[783] ( v0 = 4 + ul ; loop 1 , 7 , move ul , v0 - v1 ) 
+[784] ( loop 0 , 2 , move 2 , v0 ; move ua , v0 ) 
+[785] loop 0 , 3 , ( move v0 , v0 ; move 4 , v0 ) 
+[786] ( move ua , 4 / ua ; move ul , ul ) 
+[787] ( move 4 , ua / 3 ; move ua , ul ) 
+[788] ( move 2 , 4 + ul ; move ua , ul ) 
+[789] ( move ua + ul , ua ; move ul - ua , ua ; move ua , 2 ) 
+[790] loop 0 , 7 , move 3 + v0 , ul + ul 
+[791] loop 0 , 5 , move 2 , v0 
+[792] ( move 2 - ul , ul ; move ua + ul , 4 ; move ua , ul ) 
+[793] loop 0 , 7 , move 3 - v0 , v0 
+[794] loop 0 , 3 , move 3 , 2 / v0 
+[795] ( loop 0 , 3 , move 3 , v0 - 4 ; move 3 , 3 ) 
+[796] loop 0 , 7 , move v0 + 2 , ul + ul 
+[797] loop 0 , 6 , move v0 , 4 * v0 
+[798] loop 0 , 5 , move 4 - v0 , v0 * v0 
+[799] ( loop 0 , 5 , move v0 , ul ; move ul , ua ) 
+[800] ( move ua , 3 ; move ua + ul , ul + ul ) 
+[801] ( move 3 , 4 + ul ; move ul , ul ) 
+[802] ( move ua , ul ; move ua + ul , 2 ) 
+[803] loop 0 , 2 , move 3 , 3 + v0 
+[804] ( move 2 , ul ; move 4 , 2 - 3 ) 
+[805] ( move 0 , ul ; move ua , ul / 2 ; move ua , ul + ul ) 
+[806] loop 0 , 4 , move v0 * v0 , v0 + ul 
+[807] loop 0 , 7 , ( v1 = v0 ; move v1 / 2 , ua / 3 ) 
+[808] loop 0 , 5 , move v0 , ul / v0 
+[809] ( move ul , 4 ; move 4 , ul ; move ul , ul ) 
+[810] loop 0 , 7 , move 2 , ua * ua 
+[811] ( loop 0 , 4 , move v0 , v0 ; move ua , v0 ) 
+[812] loop 0 , 6 , move ua - 3 , ul 
+[813] ( move ua , 4 - ul ; v0 = ua - ul ; move v0 , v0 ) 
+[814] ( move 2 - ul , 2 ; loop 0 , 5 , move v0 , ul ) 
+[815] loop 0 , 2 , ( move ul - 3 , v0 ; move v0 , v0 ) 
+[816] loop 0 , 6 , move v0 + ua , 3 
+[817] loop 0 , 5 , move v0 + ul , 4 + 4 
+[818] ( move ua , ul ; move ua , 4 ) 
+[819] ( loop 0 , 4 , move ul , ul / ua ; move v0 + v0 , ul ) 
+[820] ( move ua , ul / ua ; move ul + ul , ua - ul ) 
+[821] ( move ua , ul - ua ; move 2 , 3 + 2 ) 
+[822] ( ( move 0 , ua ; move 4 , 2 ) ; move ua , 3 * 3 ) 
+[823] ( move ul , 2 ; move ua , 0 - ul ) 
+[824] ( move ul , ul ; move ua , ul ; move 2 , ul ) 
+[825] ( loop 0 , 3 , move 2 , ul ; v1 = 4 ; move ua , ul ) 
+[826] loop 0 , 7 , move v0 / 4 , ul 
+[827] move 4 + 4 , 3 + 2 
+[828] ( move ua , ul ; loop 0 , 4 , move v0 , v0 - ul ) 
+[829] loop 0 , 7 , move ua - ul , 4 
+[830] loop 0 , 6 , move 0 - ul , v0 + v0 
+[831] ( move ua , ua - 2 ; move ul , ul ) 
+[832] loop 0 , 5 , move ul , v0 / ua 
+[833] loop 0 , 3 , move 2 , v0 * 4 
+[834] ( move ul , 0 ; loop 0 , 5 , move 2 , v0 * v0 ) 
+[835] ( move 4 , ua ; move ua , ul - 2 ; move 0 , 0 ) 
+[836] ( move 3 , ua ; move ua , 0 - ul ) 
+[837] loop 0 , 5 , move v0 - ua , 4 
+[838] loop 0 , 7 , move 2 , v0 + 2 
+[839] ( move 3 , 2 ; move ua - ul , 0 - ul ) 
+[840] ( move ul , 0 ; move ul - ua , ul ) 
+[841] ( move 4 , 0 ; move ua , ul ) 
+[842] ( move 2 , ul ; move 3 + 2 , ul ) 
+[843] ( move ul , ua ; move ua + ul , ua + ul ; move ua , 4 ) 
+[844] loop 0 , 6 , move 4 , 3 
+[845] loop 0 , 7 , move ua / 4 , v0 + 3 
+[846] loop 0 , 7 , move 4 , 4 
+[847] loop 0 , 4 , move ua - ul , 2 
+[848] ( move ua + 3 , ua - ul ; move ul , 3 - ua ; move ua , ul ) 
+[849] loop 0 , 6 , move 2 , 2 + v0 
+[850] ( move 4 , ul ; move 3 , ul ) 
+[851] ( move ul , 0 ; ( move ua , ul ; move ua , 4 ) ) 
+[852] loop 0 , 7 , move 2 - v0 , v0 
+[853] ( move ua + ul , 0 - ul ; move ul , ua ; move 4 , ul ) 
+[854] loop 0 , 6 , move ul , ua / v0 
+[855] ( move ua , ul / ua ; loop 0 , 3 , move ul , ul ) 
+[856] loop 0 , 6 , move ua - 4 , v0 * v0 
+[857] loop 0 , 4 , move ul , v0 * 4 
+[858] ( move 0 , ua ; move 2 , 2 ; move 4 * 2 , ua + ul ) 
+[859] ( move ul , ul ; move ua , 4 * 2 ) 
+[860] ( move ul , 4 * 3 ; move ua , ua + ul ) 
+[861] ( move ul + ul , 2 ; move ua , ul / ua ) 
+[862] ( move ua , 0 ; move 3 , 4 ) 
+[863] ( loop 0 , 9 , v1 = v0 ; loop 2 , 5 , move ua , v1 ) 
+[864] ( move 0 , ul ; loop 0 , 4 , move v0 , ul ) 
+[865] loop 0 , 5 , move ul - v0 , 2 
+[866] ( ( move ul - ua , ul ; move 2 , ul - 3 ) ; v2 = v1 ) 
+[867] ( move ua , ua - 4 ; move 4 , 3 / 2 ) 
+[868] ( move ua - ul , 3 + 3 ; move ul , 2 - 3 ) 
+[869] ( move ua , 3 + ul ; move 2 + 2 , 4 ) 
+[870] ( move ua , 3 + 2 ; move 2 , ul ) 
+[871] loop 0 , 3 , move 3 / v0 , v0 * v0 
+[872] ( move ua , ul / 4 ; move ul , ul ) 
+[873] ( move ul , ul ; move ua , 0 ; loop 0 , 3 , move 2 , ul ) 
+[874] ( move ua + ul , ua ; move ua , 4 ) 
+[875] loop 0 , 4 , move 2 - v0 , v0 + ul 
+[876] ( ( move 3 , 4 ; move 2 , ul ) ; v0 = ul ) 
+[877] loop 0 , 5 , move v0 , 4 / v0 
+[878] loop 0 , 5 , move ul - ua , ul + v0 
+[879] move ua , ua / 4 
+[880] loop 0 , 4 , move 2 , v0 + v0 
+[881] loop 0 , 6 , move ul - 3 , v0 + v0 
+[882] ( move 4 , ul ; v0 = 4 ; move ua , v0 ) 
+[883] loop 0 , 3 , move 4 / v0 , ul 
+[884] loop 0 , 3 , move 2 , v0 - ul 
+[885] ( move ua , ua * 2 ; move 4 + ul , ul ) 
+[886] ( move 4 , ua ; move ua + ul , 2 - ua ) 
+[887] loop 0 , 4 , move 2 , ua / 4 
+[888] ( move ua , 4 + ul ; move ua , 3 - ul ; move 4 , ul ) 
+[889] ( move ua , 2 ; move ua , 3 ) 
+[890] ( move ua / 2 , ua ; loop 0 , 4 , move ua - 2 , ua + ul ) 
+[891] ( move ul , 0 ; move ua , 3 * 2 ) 
+[892] loop 0 , 4 , move 4 , 4 
+[893] ( move ua - ul , ua ; move 0 , ul ; move ua + ul , ul / 2 ) 
+[894] ( move ua + 3 , ul ; move ua , 4 ) 
+[895] ( ( move ua , ua ; move 4 + ul , ua - 2 ) ; v0 = ul ) 
+[896] loop 0 , 4 , move ua - 4 , ul 
+[897] move 3 * 3 , ua / 3 
+[898] ( move ua / 2 , ul - 2 ; move ul , 4 ; move ul , ul - ua ) 
+[899] ( loop 0 , 5 , move 3 / v0 , v0 ; move ul - 4 , v0 ) 
+[900] loop 0 , 5 , move ua - 3 , ul 
+[901] ( v0 = ul + ul ; move ua , ua * ua ; move v0 , ul ) 
+[902] ( move ua - ul , 3 ; v0 = ul ; move 4 + ul , v0 ) 
+[903] ( move ua / 3 , ua + 3 ; move ua , ua - ul ) 
+[904] ( move 3 , 2 ; move ul , ul ) 
+[905] loop 0 , 3 , ( move ul , v0 ; move v0 , v0 ) 
+[906] loop 0 , 4 , move ul , ul / v0 
+[907] ( move 0 - ua , ul ; move 4 , 3 ) 
+[908] ( loop 0 , 2 , move ul , v0 ; move ua , ua ; move ul , v0 ) 
+[909] loop 0 , 2 , move v0 + ua , v0 + v0 
+[910] ( loop 0 , 6 , move v0 , v0 ; move ua , v0 ) 
+[911] ( move 3 , ua ; move 3 , 3 ) 
+[912] ( move ul , ua ; move ua , ul ; move ua - 3 , ul ) 
+[913] ( move ua / 2 , 4 + ul ; move ua , 3 / ua ; v0 = ul ) 
+[914] ( move ul - ua , ua - ul ; move ua , ul ) 
+[915] ( move ua , ul / 4 ; move 4 , ua + ul ) 
+[916] loop 0 , 6 , move ul - ua , 2 
+[917] loop 0 , 4 , move v0 + v0 , v0 * v0 
+[918] loop 0 , 7 , move 3 - ua , v0 
+[919] ( move ua + ul , ua ; move 3 , ul ) 
+[920] ( move ua , 3 ; move 2 , ua - ul ) 
+[921] ( move 3 , ul ; move ul , ua * ua ) 
+[922] loop 0 , 7 , move ul - 4 , v0 
+[923] ( move ua , ul ; loop 0 , 6 , move ul + v0 , v0 ) 
+[924] loop 0 , 3 , move 3 , ul / 4 
+[925] loop 0 , 6 , move ua - ul , v0 
+[926] ( move 3 + ul , ua ; ( v0 = ul ; move 2 , 4 + v0 ) ) 
+[927] ( move 4 , 3 ; move 2 , ul + ul ) 
+[928] ( loop 0 , 8 , v1 = ua ; move v0 , ua - v0 ) 
+[929] loop 0 , 2 , move ua - v0 , ua - 2 
+[930] ( move ul , 0 ; loop 0 , 6 , move ul , v0 + v0 ) 
+[931] ( ( move ul , 3 ; move ua , ul / 3 ) ; move ul , ul + ul ) 
+[932] loop 0 , 5 , move v0 + ul , v0 * 2 
+[933] ( move 3 + 2 , ua ; move ul + ul , ul ) 
+[934] ( move 3 , 4 ; move ua - ul , ul ) 
+[935] loop 0 , 2 , move ua + ul , 4 
+[936] ( loop 0 , 6 , move 2 , ua - 2 ; move v0 , ul ) 
+[937] loop 0 , 2 , loop 1 , 3 , move ul , v1 - v0 
+[938] loop 0 , 5 , move v0 , v0 - ul 
+[939] loop 0 , 7 , move v0 , 3 + 2 
+[940] loop 0 , 6 , move 2 , v0 * v0 
+[941] loop 0 , 4 , move v0 , 2 / ua 
+[942] loop 0 , 3 , move ul - 4 , v0 
+[943] loop 0 , 7 , move 2 + ul , v0 + v0 
+[944] ( move ua - ul , ua ; move ua / 4 , 4 * 3 ; move 3 , 4 ) 
+[945] ( move 2 , ua ; move ua + ul , ul ) 
+[946] loop 0 , 4 , move ua , v0 + 2 
+[947] ( move 4 , ul ; move 3 - ua , ul ) 
+[948] loop 0 , 3 , move 2 , v0 * v0 
+[949] loop 0 , 6 , move v0 - 2 , v0 * v0 
+[950] ( move 3 , 3 ; move ua , 4 ; move 0 , ua ) 
+[951] loop 0 , 4 , move v0 , 4 + v0 
+[952] ( loop 0 , 3 , move 2 , v0 ; move 4 , v0 ) 
+[953] ( move ua , 3 ; move ua / 4 , ua - ul ) 
+[954] ( move ua , ul ; loop 1 , 3 , move ua , 2 ) 
+[955] ( v0 = ul - ua ; move ua , ul ; move v0 , ul / ua ) 
+[956] ( move ua , ua ; move ua , 0 - 2 ) 
+[957] loop 0 , 6 , move v0 - 2 , ul 
+[958] ( ( move ul , ul ; move 3 * 2 , ua ) ; move ul - ua , ul ) 
+[959] ( move ua , ua - 2 ; move 3 , ua + ul ) 
+[960] ( move ul , 4 ; loop 0 , 5 , move v0 , v0 ; v1 = ul ) 
+[961] loop 0 , 5 , move ul , ul / 2 
+[962] ( move ua , 2 ; move 4 , ul ) 
+[963] ( move ul , ua ; ( move ul , ua ; move 4 - ua , 2 ) ) 
+[964] ( move ua , ua / 3 ; move ul , 2 ) 
+[965] loop 0 , 4 , move v0 + v0 , 4 + ul 
+[966] loop 0 , 7 , loop 1 , ul , move 4 , v0 - ul 
+[967] ( v0 = ua / 3 ; ( move 2 , ul + v0 ; move ua , ua ) ) 
+[968] loop 0 , 3 , move 4 - ua , 2 
+[969] loop 0 , 3 , move 4 - v0 , v0 - ul 
+[970] loop 0 , 3 , move v0 * v0 , ul / v0 
+[971] ( move ul / ua , ul ; loop 0 , 6 , move v0 , v0 + v0 ) 
+[972] loop 0 , 4 , move v0 + 3 , v0 * v0 
+[973] loop 0 , 3 , ( move ul , v0 ; move v0 + v0 , v0 ) 
+[974] move ua + 2 , 4 / ua 
+[975] ( loop 0 , 6 , move v0 , 4 ; move ul , ua ) 
+[976] loop 0 , 4 , move v0 + v0 , ua / 4 
+[977] ( move 2 , ul ; move ua + ul , ul ; move ua , 4 ) 
+[978] ( move 3 , ua - ul ; move ua - ul , ul / ua ) 
+[979] ( move 2 , 4 ; move 4 + ul , ua + ul ) 
+[980] ( move ua - 2 , ul ; move 4 , ua / 3 ) 
+[981] ( move 2 , ua + 4 ; loop 0 , 5 , move v0 , ul ) 
+[982] loop 0 , 4 , move 4 + ul , 2 
+[983] ( loop 0 , 4 , move 2 , ua * v0 ; move v0 , v0 ) 
+[984] loop 0 , 7 , move ua - 4 , ua - v0 
+[985] ( move ua , ua ; move 4 , ua - ul ) 
+[986] loop 0 , 2 , ( move 4 , ul ; move v0 , ul ) 
+[987] loop 0 , 3 , move v0 + ul , 2 
+[988] ( loop 0 , 6 , move ul , v0 ; move ua , ul ) 
+[989] loop 0 , 5 , move 3 , v0 / 2 
+[990] loop 0 , 3 , ( move 4 - ul , 3 ; move ul , v0 ) 
+[991] ( loop 0 , 4 , move v0 , v0 ; move 4 , ul - v0 ) 
+[992] ( move ua , ua ; ( move ul / ua , 3 ; move 3 , 4 + ul ) ) 
+[993] loop 0 , 4 , move v0 , v0 + 2 
+[994] loop 0 , 6 , move 3 - v0 , ul 
+[995] ( move ua + 3 , ua / 3 ; move ul , ul + ul ) 
+[996] loop 0 , 5 , move 3 , v0 + v0 
+[997] loop 0 , 7 , move v0 + 2 , 3 
+[998] loop 0 , 3 , move v0 + v0 , 2 
+[999] loop 0 , 3 , move v0 + 4 , v0 
+[1000] ( move ua , ul + ul ; loop 0 , 3 , move 2 , ul ) 
+[1001] ( move ua , 4 - ul ; move 4 , ua * ua ) 
+[1002] loop 0 , 3 , move ua - ul , 2 + v0 
+[1003] loop 0 , 4 , move ua , 4 
+[1004] ( move 3 , ua - ul ; move 4 , 2 ) 
+[1005] loop 0 , 6 , move v0 , v0 - 3 
+[1006] ( loop 0 , 3 , move v0 , ul ; move ul + v0 , v0 ) 
+[1007] ( v1 = 0 ; loop 2 , 3 , move v2 - ua , 3 / v2 ) 
+[1008] ( loop 0 , 5 , move 2 , ul ; move v0 , v0 ) 
+[1009] ( v0 = ua + ul ; move v0 , ul ; move 2 , v0 ) 
+[1010] loop 0 , 3 , move ua - 2 , 2 
+[1011] loop 0 , 5 , move v0 , 4 * 3 
+[1012] ( move ul - 4 , 4 ; ( move ua , ul ; v0 = ul ) ) 
+[1013] ( move ul / 2 , 4 * 2 ; loop 0 , 6 , move v0 , ul ) 
+[1014] loop 0 , 3 , loop 1 , 2 , move v0 * v0 , v0 
+[1015] ( move ua , ua + 2 ; move ua + ul , 4 ) 
+[1016] ( move ua + 2 , ua ; move ul , ua + 2 ) 
+[1017] move 4 * 2 , 2 - 3 
+[1018] loop 0 , 6 , move 2 , 2 / v0 
+[1019] ( loop 0 , 3 , move ua , 2 ; move 3 / 2 , ua ; v1 = ul ) 
+[1020] loop 0 , 5 , move 2 - 4 , ul - v0 
+[1021] ( move ul - ua , 3 - ul ; move ua , ua * ua ) 
+[1022] loop 0 , 6 , move 4 - v0 , ul 
+[1023] loop 0 , 3 , move v0 - 3 , ul 
+[1024] ( loop 0 , 3 , move v0 , v0 ; move ua , v0 * v0 ) 
+[1025] ( move ul - 4 , ua + ua ; move 2 + 2 , ul ) 
+[1026] ( move ua , 4 ; move ua - 3 , 3 - 4 ) 
+[1027] loop 0 , 4 , move v0 + v0 , v0 - ul 
+[1028] ( move 4 - ua , ul + ul ; move ua , ul ) 
+[1029] loop 0 , 6 , move ul , 4 - v0 
+[1030] ( move 4 + ul , ul / ua ; move ua , ua + ul ) 
+[1031] ( move ul , ua ; move 4 , ul ) 
+[1032] ( loop 0 , 4 , move v0 , ul ; move ul , ul ) 
+[1033] ( move 2 - ua , ua ; loop 0 , 5 , move v0 , ul ) 
+[1034] ( v0 = 3 ; move ul , v0 ; move v0 , v0 / 4 ) 
+[1035] ( move 2 - ua , 3 - ua ; move 4 , 2 ) 
+[1036] loop 0 , 3 , move v0 * v0 , 3 / v0 
+[1037] ( move ua , ua ; move ua - 2 , ua - 4 ) 
+[1038] loop 0 , 7 , move ua - 3 , v0 
+[1039] ( move ua - ul , ua + ul ; move 3 - ul , ul ) 
+[1040] ( move ua , ua ; ( move ua , 4 ; move 3 , ul ) ) 
+[1041] loop 0 , 4 , move v0 + v0 , 3 / 2 
+[1042] ( move 2 - ua , ul ; move ua , ua - ul ; v0 = 0 ) 
+[1043] loop 0 , 6 , move ua - 2 , ua - v0 
+[1044] ( move 4 + ul , ul ; move ul - 3 , ul + ul ) 
+[1045] loop 0 , 7 , move v0 , 4 * 2 
+[1046] loop 0 , 3 , move ua + ul , 3 
+[1047] ( loop 0 , 6 , move 3 , 4 + ul ; move ul , 3 ) 
+[1048] ( move ua , ul ; move 2 , 4 * 2 ; move ul , ua - ul ) 
+[1049] ( move 3 , 4 + ul ; move 4 , ul + ul ) 
+[1050] ( move ua , 3 ; move ul , 3 + 3 ) 
+[1051] loop 0 , 3 , ( move ua + v0 , v0 ; move v0 , ul ) 
+[1052] ( move 2 , ul - ua ; loop 0 , 2 , move 3 , ul - 2 ) 
+[1053] loop 0 , 5 , move ul - 4 , ul 
+[1054] ( move 3 , ua ; v0 = 4 ; move ua - v0 , v0 ) 
+[1055] ( ( move ul + ul , ua - ul ; move 2 , ul ) ; move ul , ul ) 
+[1056] ( move 2 + ul , ua * ua ; move 3 , ul ) 
+[1057] ( move ul , ua ; loop 0 , 4 , move 3 + ul , v0 ) 
+[1058] ( v0 = ua * ua ; move ua , 2 * v0 ) 
+[1059] ( move 4 / 3 , ua ; move ua + ul , ul ) 
+[1060] ( move 4 , ua ; move ul , ul ; move ul - ua , ua ) 
+[1061] ( move ua - 2 , ul + ul ; move ua , ua + 2 ) 
+[1062] loop 0 , 3 , ( move 3 , v0 * v0 ; move v0 , 2 ) 
+[1063] ( move 2 , ul ; move 0 , 3 ; move ua + ul , 3 ) 
+[1064] ( move 2 , 4 ; move 3 , ul ) 
+[1065] ( move ul - ua , 4 ; move 4 + ul , ua - ul ) 
+[1066] ( move 3 , 3 ; move ua , ul ) 
+[1067] ( v0 = 3 - ua ; loop 1 , 7 , move v1 + v0 , v1 ) 
+[1068] ( move 2 , ul / ua ; ( move ua , ua + ul ; v0 = ua ) ) 
+[1069] ( loop 0 , 6 , move ul + v0 , v0 ; move 4 , v0 ) 
+[1070] ( move ul , 0 ; move ua , 3 + ul ; move ul , ua - ul ) 
+[1071] loop 0 , 3 , move 2 , ua * ua 
+[1072] loop 0 , 3 , move ul + v0 , 4 
+[1073] loop 0 , 4 , move v0 + ul , v0 + v0 
+[1074] loop 0 , 2 , loop 1 , 3 , move v1 , 3 - ua 
+[1075] ( move ul - ua , 4 ; move ua / 2 , 2 ) 
+[1076] loop 0 , 7 , move 3 , 3 - v0 
+[1077] loop 0 , 3 , move ua / v0 , 2 
+[1078] loop 0 , 3 , ( move v0 , ua ; move 3 , ul ) 
+[1079] ( ( move 2 , 4 - ul ; v0 = ul ) ; move 4 , ul ) 
+[1080] loop 0 , 3 , ( move v0 , 2 ; move ua , v0 ) 
+[1081] ( move ua , ul ; loop 0 , 6 , move v0 , 3 ) 
+[1082] ( move ua + ul , 4 ; move ua , 4 ) 
+[1083] loop 0 , 7 , move v0 - ul , v0 * v0 
+[1084] move 4 , 2 / 4 
+[1085] ( move ua , ul - ua ; move ua + ul , ul - 3 ) 
+[1086] loop 0 , 5 , move ul , v0 / 3 
+[1087] ( move ul - ua , 0 ; move ua , ul ) 
+[1088] ( move ua , 0 ; move 2 - ua , ua / 3 ) 
+[1089] ( loop 0 , 4 , move v0 , ul ; move ua , v0 ) 
+[1090] loop 0 , 4 , move 2 - ua , ul 
+[1091] ( move 3 , ua ; loop 0 , 5 , move v0 , v0 ) 
+[1092] loop 0 , 2 , move 3 , 4 * v0 
+[1093] loop 0 , 5 , move 4 , ul - 4 
+[1094] ( move 3 + ul , 3 ; loop 0 , 3 , move v0 , v0 ) 
+[1095] loop 0 , 2 , loop 1 , 3 , move v1 + v0 , v1 
+[1096] ( move ua , ua ; move 3 + 2 , ul + ul ) 
+[1097] ( loop 0 , 5 , move v0 , v0 + v0 ; move ul , ua ) 
+[1098] loop 0 , 5 , move v0 - 4 , ul 
+[1099] ( move 2 - ua , 3 ; ( move ul , ul ; move ua , 4 + ul ) ) 
+[1100] ( loop 0 , 6 , move v0 , v0 ; move v0 , 2 ) 
+[1101] ( move 3 + ul , ua ; move 4 - ua , 3 ) 
+[1102] ( loop 0 , 5 , move v0 + ul , ul ; move v0 , v0 ) 
+[1103] loop 0 , 5 , move ul + ul , ul / v0 
+[1104] loop 0 , 2 , move ua - v0 , 2 
+[1105] ( move 4 , ua ; move 3 + ul , ua * ua ) 
+[1106] loop 0 , 2 , move 4 + v0 , v0 
+[1107] ( move ul - ua , ua - 3 ; move 2 + ul , ul ; move ua , ul ) 
+[1108] loop 0 , 2 , move 4 + 3 , 2 
+[1109] loop 0 , 7 , move 2 - v0 , v0 + v0 
+[1110] ( move ua , 0 - ul ; move ua + ul , 4 ; v1 = v0 ) 
+[1111] loop 0 , 5 , move 2 - ua , v0 
+[1112] loop 0 , 4 , move 3 , v0 * v0 
+[1113] loop 0 , 7 , move v0 , v0 / 3 
+[1114] loop 0 , 4 , move 4 , ua - ul 
+[1115] loop 0 , 4 , move v0 + ul , v0 / 2 
+[1116] loop 0 , 6 , move v0 / 2 , 2 * v0 
+[1117] loop 0 , 6 , move 2 , ua / v0 
+[1118] loop 0 , 6 , move v0 , 4 + ul 
+[1119] loop 0 , 5 , move 2 * v0 , ua + 4 
+[1120] loop 0 , ul , loop 1 , 7 , move 4 + ul , ua * ua 
+[1121] ( move ul - ua , 4 ; move ua - 3 , ul ) 
+[1122] ( move ua , ua + 2 ; move 2 , ul ) 
+[1123] ( move 3 , 4 ; move ua , ul ) 
+[1124] loop 0 , 6 , move ul + v0 , v0 - ul 
+[1125] ( loop 0 , 3 , move ua + ul , 4 - ul ; move ul , ul ) 
+[1126] ( move 3 , 3 / ua ; move ul , ua * ua ) 
+[1127] ( move ua , ua / 3 ; move 0 , 3 ; move ua , ua ) 
+[1128] ( move 2 , ul ; move 4 + ul , ul ; move ul , ul ) 
+[1129] ( move 3 , 3 ; move ua + ul , ul ) 
+[1130] loop 0 , 4 , move v0 , ul / 2 
+[1131] loop 0 , 3 , move ua / v0 , 3 + v0 
+[1132] loop 0 , 4 , move ua / 2 , ul 
+[1133] ( move ua , ul ; move 3 + ul , ua * ua ; move 4 , ua ) 
+[1134] loop 0 , 3 , ( move v0 - 4 , v0 ; move v0 , v0 ) 
+[1135] ( loop 0 , 5 , move ul , ul / v0 ; move v0 + ul , v0 ) 
+[1136] loop 0 , 2 , ( move v0 , ul ; move 3 , ul / v0 ) 
+[1137] ( move 2 , 3 + 3 ; move 4 , 4 ) 
+[1138] loop 0 , 7 , move 3 / v0 , ua - v0 
+[1139] ( move ua , 4 ; loop 0 , 4 , move v0 * v0 , 4 ) 
+[1140] ( move ul , ul ; move ua , 4 - 3 ; move ul , ul ) 
+[1141] ( move ua , ul / ua ; move ua , 2 ) 
+[1142] loop 0 , 2 , move ua - ul , ua + v0 
+[1143] ( move 3 , ua ; move ul - ua , 4 ) 
+[1144] loop 0 , 3 , move v0 + 3 , v0 
+[1145] ( move ua , 3 * 2 ; loop 0 , 6 , move v0 , v0 ) 
+[1146] ( move 0 - 3 , ul ; move ua , ul ) 
+[1147] ( loop 0 , 6 , move v0 , v0 - ul ; move 3 , v0 ) 
+[1148] ( loop 0 , 4 , move v0 , v0 ; move v0 + v0 , ul ) 
+[1149] ( move ul , 4 ; loop 0 , 3 , move 2 , v0 ) 
+[1150] ( loop 0 , 5 , move 2 , ul ; move v0 , ul + v0 ) 
+[1151] ( move ul , ul ; move 4 , ua * ua ) 
+[1152] ( move ul , 4 ; loop 0 , 4 , move v0 , v0 * v0 ) 
+[1153] loop 0 , 5 , move v0 - 2 , 2 / ua 
+[1154] loop 0 , 6 , move v0 , ul - 4 
+[1155] loop 0 , 5 , move 3 , v0 / 3 
+[1156] ( v0 = 3 ; loop 1 , 6 , move v0 - ua , ul ) 
+[1157] loop 0 , 4 , move v0 , 3 - v0 
+[1158] ( move ua , 3 ; move ua , 2 ) 
+[1159] ( loop 0 , 6 , move 3 - 4 , v0 ; move 4 , v0 * v0 ) 
+[1160] ( move 3 , 2 ; move 3 , ua * ua ) 
+[1161] ( ( move 3 , ul ; move 0 , 3 / 4 ) ; move ua , ul ) 
+[1162] loop 0 , 4 , move 2 , v0 / ua 
+[1163] ( loop 0 , 4 , move v0 , v0 ; v1 = ul ; move 4 , ul ) 
+[1164] loop 0 , 3 , move 3 / v0 , ul 
+[1165] loop 0 , 7 , move 4 , v0 * v0 
+[1166] loop 0 , 5 , move v0 - 2 , 4 
+[1167] ( move 4 , ua * ua ; move ul , ua * ua ) 
+[1168] loop 0 , 2 , move v0 + ua , 2 
+[1169] ( loop 0 , 2 , move v0 - 4 , ua ; move 4 , v0 ) 
+[1170] ( move ua , 3 / ua ; ( move 3 , 3 ; move ul + ul , 0 ) ) 
+[1171] loop 0 , 4 , move v0 + v0 , ua - v0 
+[1172] ( loop 0 , 3 , move v0 , ul ; move 2 , v0 ) 
+[1173] ( move ua , ul - 3 ; move ua , 4 + ul ; v0 = 0 ) 
+[1174] loop 0 , 5 , ( loop 1 , 5 , v2 = ul ; move ua , ul - 4 ) 
+[1175] ( loop 0 , 5 , move v0 , ua - v0 ; move ul , v0 ) 
+[1176] ( move ua , 4 + ul ; move 3 , 4 ) 
+[1177] loop 1 , 3 , loop 2 , 2 , move 3 + v2 , v1 
+[1178] loop 0 , 4 , move v0 + v0 , ua - 4 
+[1179] loop 0 , 5 , move v0 , 4 + ul 
+[1180] loop 0 , 5 , move v0 , 3 * v0 
+[1181] loop 0 , 3 , move ul - 3 , v0 + v0 
+[1182] ( move 4 + 4 , ul ; move 0 , ul ; move 4 , ua + 4 ) 
+[1183] loop 0 , 4 , move v0 + v0 , 3 / v0 
+[1184] ( move ua , ua - 3 ; move 2 , ul / ua ; move 2 , ua - 4 ) 
+[1185] ( loop 0 , 4 , move 2 , 0 ; move ua , v0 ) 
+[1186] loop 0 , 6 , move ua - v0 , ua * ua 
+[1187] loop 0 , 7 , move v0 / 3 , v0 - ul 
+[1188] ( loop 0 , 5 , move ul , ul ; move ul , v0 ) 
+[1189] ( loop 0 , 3 , move v0 * 3 , v0 ; move ul , ul ) 
+[1190] loop 0 , 3 , move ua + ul , v0 + 2 
+[1191] ( loop 0 , 5 , move 2 , v0 ; move ul , ul ) 
+[1192] loop 0 , 3 , ( move v0 + ul , ua ; move v0 , 2 * v0 ) 
+[1193] loop 0 , 3 , move 3 , 4 / v0 
+[1194] ( move 0 , 4 ; move ua , 3 ; move 3 , ua + ul ) 
+[1195] ( move 4 , 4 + ul ; move 4 + ul , ul ; move ul , 4 ) 
+[1196] loop 0 , 4 , move ua - 3 , v0 
+[1197] loop 0 , 4 , move v0 , ul - 3 
+[1198] loop 0 , 6 , move v0 - ul , ua - v0 
+[1199] loop 0 , 6 , move 2 , ul - 2 
+[1200] loop 0 , 3 , loop 1 , 2 , move v0 , v0 - v1 
+[1201] ( loop 0 , 5 , move v0 , v0 ; move ua , v0 ) 
+[1202] loop 0 , 6 , move v0 , 0 - 4 
+[1203] ( move ul , 4 ; loop 0 , 4 , move v0 , ul ; move ul , v0 ) 
+[1204] loop 0 , 4 , move v0 , 4 * v0 
+[1205] ( move ul , ul ; loop 0 , 4 , move v0 , v0 + ul ) 
+[1206] ( move 0 , 3 / ua ; loop 0 , 2 , move ul - ua , v0 ) 
+[1207] loop 0 , 3 , move v0 + 2 , v0 + v0 
+[1208] ( move ua + ul , 4 + ul ; move ua , 2 ) 
+[1209] ( loop 0 , 5 , move v0 , v0 ; move v0 , 2 ) 
+[1210] ( move ua , ul ; move 4 , ul / ua ) 
+[1211] loop 0 , 2 , move 4 , v0 / 4 
+[1212] loop 0 , 3 , move 2 , v0 + 4 
+[1213] ( move ua + 4 , ul ; move ul / 3 , ua + ul ) 
+[1214] ( move 3 , ul ; loop 0 , 6 , move v0 , ul ) 
+[1215] loop 0 , 4 , move 2 , ul / v0 
+[1216] loop 0 , 7 , move 2 - ua , ul 
+[1217] ( loop 0 , 3 , move ul , ul ; move v0 * v0 , ul ) 
+[1218] ( move 3 , 4 + ul ; move 4 , ul ) 
+[1219] ( move ul - ua , ul ; move ua , ul ; move ul , ua + ul ) 
+[1220] ( move ul - ua , 2 ; move ua - 3 , ul + ul ; move ul , ul ) 
+[1221] loop 0 , 2 , move 4 , ua - ul 
+[1222] ( loop 0 , 2 , move 4 , ul ; move ul , v0 ) 
+[1223] ( move 4 * 2 , 3 ; loop 0 , 4 , move v0 , ua / v0 ) 
+[1224] ( v0 = ua ; move 4 - ua , ua ; move v0 , 2 ) 
+[1225] ( move 3 , ua ; move ua , ua * ua ) 
+[1226] loop 0 , 7 , move ul , 4 * 3 
+[1227] ( move 4 , ul ; move ua , ua - ul ) 
+[1228] loop 0 , 7 , move ua + ul , ua + 3 
+[1229] ( move ua , 4 ; loop 0 , 4 , move v0 , ul ) 
+[1230] loop 0 , 3 , ( move ul , v0 + v0 ; move ul , ul ) 
+[1231] ( move ua , ua - 4 ; move ul , ua ; move 2 + ul , ul ) 
+[1232] ( loop 0 , 5 , move 3 , ua / v0 ; v2 = 3 - v0 ) 
+[1233] ( loop 0 , 2 , move 4 , v0 ; move ul , ul ) 
+[1234] loop 0 , 2 , move 4 , 2 / ua 
+[1235] ( move 3 - ua , ul ; move ul - ua , ul - ua ) 
+[1236] ( move 3 + ul , ul ; move ul - ua , ul ) 
+[1237] loop 0 , 5 , move v0 , 3 - v0 
+[1238] ( ( move ua / 2 , ul / ua ; move ul , ul ) ; move 4 , ul ) 
+[1239] ( move ua + ul , ua ; move ua , ua - 3 ) 
+[1240] ( move ua + ul , 4 ; move 3 , ul ) 
+[1241] loop 0 , 6 , move 3 - v0 , 2 
+[1242] loop 0 , 3 , move v0 * v0 , ul - 3 
+[1243] loop 0 , 3 , move ua / 2 , v0 * 4 
+[1244] loop 0 , 6 , move 3 - ua , v0 
+[1245] ( move 0 , ul ; move ua + ul , ul ; loop 0 , 2 , move ul , ul ) 
+[1246] ( loop 0 , 4 , move 2 , v0 ; move 4 , v0 ) 
+[1247] loop 0 , 5 , move v0 - 3 , ul 
+[1248] loop 0 , 6 , move ua , ua * ua 
+[1249] ( move ua , ua + 4 ; move 4 , ul ) 
+[1250] ( v0 = 4 ; loop 1 , 7 , move ua / v0 , v1 ) 
+[1251] ( move ua , ua ; v0 = ul - ua ; move v0 , 4 / v0 ) 
+[1252] loop 0 , 3 , ( move v0 , 4 ; move v0 - ua , 0 ) 
+[1253] loop 0 , 5 , move 4 + 4 , ul + ul 
+[1254] ( move ua + ul , 4 + ul ; move ua , ul ) 
+[1255] ( v0 = ul ; move 3 , ul / 4 ; move ua , v0 ) 
+[1256] ( move ua , ua - 4 ; move ul , ul ) 
+[1257] ( move ua , ua ; move ua , 3 * 3 ) 
+[1258] ( move ua , ul ; move ul + ul , ua ; move ua , ua - 4 ) 
+[1259] ( loop 0 , 4 , move v0 , 0 ; move v0 , ul - v0 ) 
+[1260] loop 0 , 7 , move v0 / 2 , ua - v0 
+[1261] loop 0 , 7 , move v0 , ua / 3 
+[1262] ( move ua + 4 , ul ; move ul - ua , 4 * 3 ) 
+[1263] loop 0 , 6 , move 2 , v0 - 2 
+[1264] loop 0 , 6 , move v0 - 2 , 3 - ua 
+[1265] loop 0 , 4 , move v0 + ua , ua / 3 
+[1266] ( move ua , ua ; ( move ua , ua - 3 ; move 4 + ul , ul ) ) 
+[1267] loop 0 , 4 , move 3 , v0 + v0 
+[1268] loop 0 , 7 , move 3 / v0 , ua * ua 
+[1269] ( move 4 , 3 ; move 2 / ua , ua ; move ua , 2 ) 
+[1270] ( move ua / 2 , ua ; loop 0 , 5 , move ul + ul , ul ) 
+[1271] ( move ua , 2 + ul ; move ua , 4 ) 
+[1272] loop 0 , 3 , ( move 3 / v0 , 0 ; move v0 , ua + ul ) 
+[1273] ( move ua , ua ; loop 0 , 6 , move ul , v0 * v0 ) 
+[1274] loop 0 , 6 , move 4 , v0 * v0 
+[1275] loop 0 , 7 , move ua - 4 , 3 + v0 
+[1276] ( loop 0 , 6 , move v0 - ul , 4 ; move ul + v0 , v0 ) 
+[1277] loop 0 , 5 , move v0 * 2 , 3 
+[1278] ( move ua , ul ; move ua + ul , 4 ) 
+[1279] ( move ul , 4 ; loop 0 , 4 , move v0 , v0 ) 
+[1280] ( move ul , 4 ; move ua , ua * ua ) 
+[1281] loop 0 , 3 , ( move 3 , ua ; move v0 * v0 , v0 ) 
+[1282] loop 0 , 6 , ( v1 = 4 ; move 2 , v1 + ul ) 
+[1283] ( move 0 , ua * 3 ; move ua + ul , 3 ; move ua + 3 , 2 ) 
+[1284] ( move ua - ul , ua - 3 ; move ua , 3 ) 
+[1285] ( v0 = 4 + ul ; move v0 , v0 ; move ua - 4 , v0 ) 
+[1286] loop 0 , 2 , move 3 , 2 / ua 
+[1287] ( move ua / 4 , 4 + ul ; move ua , ul + ul ; v0 = ul ) 
+[1288] ( move ua - 3 , 2 - ua ; move ua , ul - ua ) 
+[1289] ( move 2 , ua ; v0 = 3 ; move ua , v0 - 4 ) 
+[1290] loop 0 , 4 , move 2 / v0 , v0 + 3 
+[1291] loop 0 , 7 , move ul , 3 / ua 
+[1292] ( move ua - ul , ua - ul ; move 3 , ul ) 
+[1293] loop 0 , 3 , move 2 , v0 + v0 
+[1294] ( move ul - ua , 2 ; move 3 , 2 - ul ) 
+[1295] ( move ua + ul , ul - ua ; move ua / 4 , ua - ul ) 
+[1296] loop 0 , 4 , move ua + v0 , 3 
+[1297] loop 0 , 5 , move v0 , ul / 4 
+[1298] loop 0 , 3 , move ua , 3 / v0 
+[1299] loop 0 , 3 , loop 1 , 2 , move v1 + ua , 3 
+[1300] ( move ua + ul , ul ; move ua , 2 ; v0 = ul ) 
+[1301] ( move 4 , ul ; move ua , 2 ) 
+[1302] loop 0 , 7 , move ua / v0 , ul + ul 
+[1303] loop 0 , 6 , move 3 , ua / v0 
+[1304] ( move 3 , 4 - ua ; move 4 , ua - 4 ) 
+[1305] loop 0 , 6 , move 2 - v0 , ul + v0 
+[1306] ( move ua + ul , 0 ; move ul , ua - 2 ) 
+[1307] ( move ua , 2 ; move 4 + ul , ul ) 
+[1308] loop 0 , 6 , move ul - ua , ua + 3 
+[1309] loop 0 , 5 , move v0 + ul , 4 / v0 
+[1310] loop 0 , 2 , ( move ua , v0 ; move ul , 4 - ul ) 
+[1311] ( move ul , 2 - ul ; loop 0 , 2 , move ua , ul ; v1 = ua ) 
+[1312] loop 0 , ul , loop 1 , 6 , move v0 - v1 , 3 * v1 
+[1313] ( move ua , 2 - ua ; loop 0 , 4 , move v0 , ul ) 
+[1314] loop 0 , 5 , ( v1 = 4 ; move ul + v1 , 2 ) 
+[1315] ( move ul , ul - 4 ; move 3 + ul , ua ; move ul , ul ) 
+[1316] ( move 3 , 0 ; v0 = 4 + 2 ; move 2 - v0 , ul ) 
+[1317] ( move ua , ua ; v0 = ua / 4 ; move 4 , v0 ) 
+[1318] ( move ua , 2 ; loop 0 , 6 , move 2 , v0 ) 
+[1319] ( move ua , ul ; move 4 , ul - 2 ) 
+[1320] ( move ua , ua / 3 ; move ua + ul , 3 + ul ; v0 = ua ) 
+[1321] ( move ua , ua ; move ul - ua , ua * ua ) 
+[1322] loop 0 , 3 , ( move v0 , 3 ; move v0 * v0 , v0 ) 
+[1323] loop 0 , 7 , move ul , 3 / 4 
+[1324] loop 0 , 6 , move 3 , ua - v0 
+[1325] loop 0 , 6 , move ul - v0 , ul + v0 
+[1326] ( ( move ua + ul , 4 * 3 ; v0 = ul ) ; move ul , v0 ) 
+[1327] ( move ua , 4 ; move 4 , ul / ua ) 
+[1328] loop 0 , 6 , move 4 , ua / 4 
+[1329] loop 0 , 4 , move 4 + v0 , ul - 3 
+[1330] ( move ua , 3 ; move ua + ul , ul - 4 ) 
+[1331] loop 0 , 4 , move 4 - ua , ul 
+[1332] ( move ua , 3 ; loop 0 , 4 , move v0 , 2 + v0 ) 
+[1333] loop 0 , 5 , move v0 + ul , ua - v0 
+[1334] ( move ua + ul , 4 ; move ul - ua , ul ; move ul , 0 ) 
+[1335] loop 0 , 2 , ( move ul + ul , 4 ; move v0 * ua , v0 ) 
+[1336] ( loop 0 , 3 , move 3 , v0 + ua ; move ua + ul , v0 ) 
+[1337] ( move ua , 2 ; move 4 , 4 - ua ) 
+[1338] loop 0 , 7 , move 2 - v0 , ul 
+[1339] loop 0 , 3 , move 4 + v0 , ul 
+[1340] loop 0 , 5 , move v0 , v0 / 4 
+[1341] ( move 4 + ul , ua ; move 3 , ul ) 
+[1342] ( move 2 , ul / 3 ; move ua , 3 - ul ) 
+[1343] loop 0 , 3 , move ua , 2 + v0 
+[1344] ( move ua , ul ; move 2 , 3 ) 
+[1345] ( move ul , ul ; move ua + 2 , 4 ) 
+[1346] loop 0 , 3 , ( move v0 , v0 / ua ; move ul - 4 , ul ) 
+[1347] ( move 3 + ul , ua ; move 4 + ul , 4 ) 
+[1348] ( loop 0 , 3 , move ul , ul ; move ua + v0 , ul ) 
+[1349] ( loop 0 , 6 , move v0 , ul ; move 3 , v0 * v0 ) 
+[1350] ( move ua , 3 - 4 ; ( move ul , ul ; move 3 + ul , ul ) ) 
+[1351] loop 0 , 6 , move v0 + v0 , 3 
+[1352] loop 0 , 5 , move ul - 3 , v0 + ul 
+[1353] ( move 2 , ul ; move ua , ua + 4 ; move ul , ua ) 
+[1354] loop 0 , 4 , move ul - v0 , ul - v0 
+[1355] loop 0 , 2 , move ua + v0 , v0 - 4 
+[1356] loop 0 , 5 , move ul - v0 , v0 + v0 
+[1357] ( move 3 + ul , 4 ; move ua - 2 , ua * ua ) 
+[1358] loop 0 , 7 , move v0 - 2 , ul 
+[1359] ( move ua , ul ; loop 1 , 4 , move 3 , ul ) 
+[1360] ( move ua - ul , 0 ; move ul , ul ; move ua , 4 ) 
+[1361] ( loop 0 , 5 , move v0 , 4 ; move v0 , v0 ) 
+[1362] ( move 4 , ua * ua ; loop 0 , 4 , move ul - ua , v0 + ul ) 
+[1363] ( move ua , ul ; loop 0 , 3 , move v0 * v0 , ul ) 
+[1364] loop 0 , 7 , move 4 , 3 
+[1365] ( move ul , ul ; move 2 + ul , ua * ua ) 
+[1366] ( loop 0 , 4 , move 4 + v0 , v0 ; move ua , v0 ) 
+[1367] ( loop 0 , 5 , move ul , v0 ; move ua + 4 , ul / ua ) 
+[1368] ( move ul - ua , 3 ; move ua , ul ; move ul , ua - ul ) 
+[1369] ( move ua - ul , 4 + 2 ; move ul + ul , ul ) 
+[1370] ( ( move 4 , ua ; move 4 , 4 ) ; move ul , ua + 3 ) 
+[1371] ( move ul / ua , 4 - ul ; loop 0 , 6 , move v0 , 2 ) 
+[1372] ( move ua + ul , 2 ; move ua , 3 ) 
+[1373] ( move 4 - ul , 3 ; move ua + 2 , ul ) 
+[1374] loop 0 , 7 , move 2 , 4 / v0 
+[1375] loop 0 , 5 , move 2 * v0 , v0 - ul 
+[1376] ( move ul / ua , ua * ua ; move ua , ul ) 
+[1377] loop 0 , 7 , move ua - 4 , ul 
+[1378] ( move 4 , ua + 2 ; move 2 - ul , ua ; move 4 , ua + 4 ) 
+[1379] ( move 4 , ul ; move 3 , 4 ) 
+[1380] ( move 4 , ua + ua ; move ua , 4 * 2 ) 
+[1381] ( loop 0 , 4 , move ul , ul ; move v0 , v0 ) 
+[1382] loop 0 , 2 , move v0 - ua , 2 
+[1383] loop 0 , 6 , move v0 + ul , ua / v0 
+[1384] ( loop 0 , 4 , move ul , v0 ; move ua , ua / v0 ) 
+[1385] loop 0 , 4 , move 4 , v0 / 2 
+[1386] ( move 4 , 4 ; move ua - ul , ua - ul ) 
+[1387] ( move 4 , 2 ; move ua , 4 ) 
+[1388] ( move ul + ul , ul ; move ua + 2 , ua * ua ; v0 = 2 ) 
+[1389] ( move ul , ul ; move 4 , 2 * 2 ; move ua , 3 ) 
+[1390] ( move ul , ua ; loop 0 , 5 , move ul - v0 , ul ) 
+[1391] loop 0 , 6 , move ua / 4 , ul 
+[1392] loop 0 , 2 , move v0 - ua , 4 
+[1393] loop 0 , 3 , move ua / v0 , v0 * 2 
+[1394] ( v0 = 2 - ua ; move 4 , v0 ; move v0 , ua * v0 ) 
+[1395] ( move ua / 4 , 2 ; move ua + 4 , 2 ) 
+[1396] ( move ul , ul - ua ; move ua , ul ; move 2 + ul , ul ) 
+[1397] ( move 4 , ua ; v0 = ua ; loop 1 , 4 , move v1 , 2 ) 
+[1398] loop 0 , 3 , ( move v0 , v0 ; move ul + v0 , 4 ) 
+[1399] ( move ul , 2 ; loop 0 , 7 , v1 = ul ; move v0 , v0 ) 
+[1400] ( move ul + ul , 4 ; move ua - ul , ua + 2 ) 
+[1401] loop 0 , 3 , ( move 2 , v0 ; move v0 , ul ) 
+[1402] ( move 4 , 3 - ul ; move ua , ua - ul ) 
+[1403] ( loop 0 , 5 , move v0 , v0 ; move ul , ul ) 
+[1404] loop 0 , 3 , move 4 , 4 * v0 
+[1405] loop 0 , 3 , ( move v0 , v0 ; move ua , v0 ) 
+[1406] loop 0 , 4 , move 3 , ua - ul 
+[1407] ( loop 0 , 5 , move v0 , v0 ; move v0 , ua ) 
+[1408] ( loop 0 , 4 , move ua , v0 + ul ; move v0 , ua ) 
+[1409] loop 0 , 4 , move ul , v0 + 3 
+[1410] loop 0 , 5 , move v0 + 2 , ul - v0 
+[1411] ( loop 0 , 4 , move v0 , 4 ; move v0 , ul ) 
+[1412] loop 0 , 5 , move v0 - ua , v0 + ul 
+[1413] ( loop 0 , 6 , move 4 , v0 ; move v0 , v0 - ua ) 
+[1414] loop 0 , 4 , move v0 * v0 , v0 - ul 
+[1415] loop 0 , 2 , move ua , ua / 4 
+[1416] loop 0 , 7 , move v0 / 3 , 2 * v0 
+[1417] ( ( move ua , 0 ; move 4 - ua , ul ) ; v0 = 2 ) 
+[1418] ( move ua , 4 + ul ; move ul , 2 ) 
+[1419] ( move ul , 3 ; loop 0 , 6 , move v0 , ul ) 
+[1420] ( move ul , ul ; move ul , 4 + 2 ; move ua , ua / 3 ) 
+[1421] ( move ua , ua * ua ; ( move 3 - ua , ul ; v1 = 0 ) ) 
+[1422] ( loop 0 , 4 , move ul , 2 - 3 ; move ul , ua ) 
+[1423] ( move ul , ul ; move ua , ua / 4 ) 
+[1424] ( loop 0 , 6 , move v0 , v0 ; move v0 - 3 , 0 ) 
+[1425] loop 0 , 3 , move 3 , v0 / ua 
+[1426] ( v0 = 2 ; ( move ul + v0 , 4 ; move ua , 4 ) ) 
+[1427] ( move ua - ul , ua ; move ua , 4 ; v0 = 2 ) 
+[1428] ( move 3 , 4 ; move ul , ul ; move 4 , ul ) 
+[1429] loop 0 , 7 , move v0 - 2 , v0 
+[1430] ( move ul , 2 ; move ua , ua ; move ua , ua * ua ) 
+[1431] ( loop 0 , 5 , move 4 , v0 + ua ; move v0 , v0 ) 
+[1432] ( move ua - ul , ul ; move 2 + 2 , 2 ) 
+[1433] loop 0 , 3 , move 4 - ua , v0 
+[1434] ( move ua , 2 ; move ua - 3 , 4 ) 
+[1435] ( move 3 , ul + ul ; move ua , ua - ul ) 
+[1436] ( move ul - ua , ua ; move ua , ul / ua ) 
+[1437] loop 0 , 3 , ( move ul , ua ; move 3 , ul ) 
+[1438] loop 0 , 4 , move 3 , ua * ua 
+[1439] loop 0 , 3 , ( move v0 , v0 ; move ul , ua - v0 ) 
+[1440] loop 0 , 2 , move ua , v0 - 4 
+[1441] loop 0 , 5 , move 4 , v0 - ul 
+[1442] ( move ua , ul ; move ul - ua , ul ) 
+[1443] loop 0 , 6 , move ul , 4 / v0 
+[1444] ( move ul , ul ; move 2 - ua , 3 - ul ) 
+[1445] loop 0 , 6 , move v0 + 2 , 3 
+[1446] loop 0 , 6 , move 3 / v0 , v0 + ul 
+[1447] loop 0 , 7 , move v0 / 2 , v0 
+[1448] loop 0 , 7 , move 3 , ul - v0 
+[1449] ( move ua , 4 ; move ul - ua , ul ) 
+[1450] loop 0 , 5 , move 4 / v0 , ul / v0 
+[1451] ( loop 0 , 5 , move v0 , v0 ; move ul , v0 - 2 ) 
+[1452] loop 0 , 2 , move ua - v0 , 4 + v0 
+[1453] ( move 2 , 0 ; move 4 , ul ) 
+[1454] loop 0 , 5 , move ul , 4 - v0 
+[1455] ( loop 0 , 2 , move ua , 2 + v0 ; move 2 , v0 ) 
+[1456] loop 0 , 4 , move 4 , v0 + ul 
+[1457] ( loop 0 , 3 , move v0 + ul , v0 ; move ua , ul / v0 ) 
+[1458] loop 0 , 3 , move v0 + v0 , v0 - 3 
+[1459] loop 0 , 2 , loop 1 , 3 , move ul , v0 - v1 
+[1460] loop 0 , 2 , move v0 - ua , 3 
+[1461] ( v0 = 0 - 4 ; loop 1 , 3 , move ul - ua , v0 ) 
+[1462] loop 0 , 2 , move 3 + 2 , ua - ul 
+[1463] loop 0 , 6 , move ua , ua - 4 
+[1464] ( loop 0 , 3 , move 3 , 0 ; move v0 , 4 ) 
+[1465] ( move 0 - 3 , ul - ua ; move 4 * 2 , ua - ul ) 
+[1466] ( move ul , ua + ul ; loop 0 , 3 , move v0 , 3 + ul ) 
+[1467] ( move ul - ua , ua ; move ul - ua , 2 + ul ; move ul , ul ) 
+[1468] ( v0 = 2 - ua ; ( move ua , ul ; move v0 , v0 ) ) 
+[1469] ( move 4 + ul , ul ; move ua , ua / 4 ) 
+[1470] ( move 3 , ua ; move ua + ul , 0 - ul ) 
+[1471] loop 0 , 4 , move v0 + 3 , 4 
+[1472] ( move ua , 0 ; move ul / 3 , ul ; move ua , 2 ) 
+[1473] loop 0 , 5 , move v0 - ul , v0 * v0 
+[1474] loop 0 , 5 , move v0 - ua , ua / 3 
+[1475] ( v0 = ua + 3 ; ( move ua , v0 ; move v0 , 4 ) ) 
+[1476] ( move 2 + ul , ua ; v0 = 4 ; move v0 , v0 ) 
+[1477] loop 0 , 2 , loop 1 , 2 , move ua , v1 - 4 
+[1478] ( move ua , ua ; ( move ul , 3 ; move ua , ul + ul ) ) 
+[1479] loop 0 , 6 , move ul + v0 , ua / 3 
+[1480] ( move ul , ul / ua ; move ul , 0 ; move ua - ul , ua - ul ) 
+[1481] loop 0 , 2 , move ua , ua * ua 
+[1482] ( move ul , ul ; loop 0 , 2 , move v0 + ua , 3 ) 
+[1483] loop 0 , 4 , move ua - v0 , 3 - v0 
+[1484] loop 0 , 6 , move 2 + v0 , 2 
+[1485] ( loop 0 , 6 , move v0 , 3 + ul ; move ul , v0 ) 
+[1486] ( move 2 + ul , ul ; move ua , ul - 2 ; v0 = ul / ua ) 
+[1487] ( move 0 - ua , ua * ua ; ( v0 = 2 ; move v0 , ul ) ) 
+[1488] ( loop 0 , 3 , move ua , 3 ; move v0 - ul , 4 + ul ) 
+[1489] ( move ul + ul , ua - ul ; move ua , ul ) 
+[1490] ( move ul - ua , ul + ul ; move 3 + ul , ua - ul ) 
+[1491] loop 0 , 3 , ( move ul , v0 ; move 0 - ua , ul ) 
+[1492] loop 0 , 4 , move ul - ua , v0 
+[1493] ( move 3 + ul , ul ; loop 0 , 5 , move v0 , v0 ) 
+[1494] loop 0 , 7 , move v0 , v0 - 3 
+[1495] ( move 4 + ul , ua ; loop 0 , 5 , move v0 , v0 ) 
+[1496] loop 0 , 3 , move v0 * 4 , ua - v0 
+[1497] ( move ua , 2 + ul ; move ul , ul ; move 4 , ul ) 
+[1498] loop 0 , 3 , ( move v0 , 4 ; move ul , v0 ) 
+[1499] ( move ua , 4 ; move ua + 2 , 2 ) 
+[1500] loop 0 , ul , loop 1 , 6 , move v1 - ul , 4 
+[1501] ( move 4 , ua + 4 ; move ua , 2 / ua ) 
+[1502] loop 0 , 3 , move ua , 4 * v0 
+[1503] ( move ua + 2 , ul ; move ua - ul , ua * ua ) 
+[1504] ( v0 = 4 ; move v0 , v0 ; move v0 , ul ) 
+[1505] ( move 4 , ua + 2 ; move 3 , ul ) 
+[1506] loop 0 , 2 , move ua / v0 , ua / 3 
+[1507] ( move 4 , ul ; move 0 , ul ; move 4 + ul , 3 ) 
+[1508] loop 0 , 5 , move 3 + v0 , v0 
+[1509] loop 0 , 4 , move ua / v0 , v0 + 3 
+[1510] loop 0 , 6 , move 3 , v0 * 4 
+[1511] loop 0 , 2 , move 4 , v0 + v0 
+[1512] loop 0 , ul , loop 1 , 6 , move 3 - ua , ul - v1 
+[1513] loop 0 , 7 , move v0 - ul , v0 / ua 
+[1514] loop 0 , 6 , move 3 / v0 , ul / 4 
+[1515] ( move ul , 4 / 3 ; move 3 , ua ; move ul + ul , ul ) 
+[1516] loop 0 , 2 , move 3 - ua , v0 / 4 
+[1517] loop 0 , 6 , move ul - v0 , ua / v0 
+[1518] ( move 2 , 4 ; move 2 , 4 + ul ) 
+[1519] ( loop 0 , 4 , move v0 , 3 ; move v0 , ul ) 
+[1520] loop 0 , 3 , ( move ua , v0 ; move 0 , ul ) 
+[1521] ( move ul , 4 ; move ua , ul / 2 ; loop 0 , 3 , v1 = ua ) 
+[1522] ( move ul , 2 ; move ua , ul ) 
+[1523] loop 0 , 6 , move v0 / 2 , ul + v0 
+[1524] ( move 3 + ul , 3 ; move ua + ul , ul ) 
+[1525] ( loop 0 , 3 , move v0 , ul / v0 ; move v0 , v0 ) 
+[1526] ( ( move ul , 2 ; move ul , ul ) ; move 3 , ua - ul ) 
+[1527] ( move ua , 0 ; v0 = 2 ; loop 1 , 6 , move v0 , v0 ) 
+[1528] loop 0 , 5 , move 3 / v0 , ul 
+[1529] ( move ul , 4 + ul ; move ua , 3 / ua ) 
+[1530] ( move 3 + 3 , ua ; loop 0 , 2 , move 3 + ul , 2 - ua ) 
+[1531] ( move ua + ul , ua + ul ; move ul - ua , ua - ul ) 
+[1532] ( move ul , 3 ; loop 0 , 5 , move 3 , ul ) 
+[1533] ( move ua , ua ; move 3 , 2 ) 
+[1534] loop 0 , 6 , move 4 + ul , v0 
+[1535] move ua , 3 * 3 
+[1536] loop 0 , 6 , move 3 - ua , 4 
+[1537] ( move ua + ul , ua * ua ; move 2 , ul ) 
+[1538] ( ( move 2 , ua ; move ul - ua , 3 + ul ) ; move ua , ul ) 
+[1539] ( move ua , ua * 4 ; move ul , ul ; move 3 , ul ) 
+[1540] loop 0 , 5 , move ua - ul , 3 - ua 
+[1541] ( move ua / 2 , ul ; move ua , 2 / ua ) 
+[1542] ( loop 0 , 6 , move v0 , v0 ; move ul , ua + v0 ) 
+[1543] loop 0 , 5 , move ul , ul / v0 
+[1544] ( move 2 , ul ; move ua , ua * ua ) 
+[1545] ( loop 0 , 4 , move v0 , 4 ; move ua , 2 ) 
+[1546] ( move ua , 3 ; loop 0 , 4 , move v0 , v0 ) 
+[1547] ( move ua + ul , ua ; v0 = 4 ; move v0 , v0 ) 
+[1548] ( loop 0 , 3 , move ul , 2 + v0 ; move ua - v0 , v0 ) 
+[1549] ( move ua , ua / 2 ; ( v0 = ua + ua ; move 4 , 4 ) ) 
+[1550] ( move 4 , ua ; move 4 - ul , 2 ) 
+[1551] ( move ul - ua , ul / ua ; move ua , ul ) 
+[1552] loop 0 , 7 , move v0 , ua / 4 
+[1553] ( move ul - ua , ua + ul ; move ua , 2 / ua ) 
+[1554] ( move 2 , ua + ul ; move ul - ua , 2 ) 
+[1555] ( move 4 / ua , ul ; loop 0 , 5 , move v0 , 4 ) 
+[1556] loop 0 , 6 , move 3 + v0 , 2 
+[1557] ( loop 0 , 5 , move v0 , 3 ; move ua , v0 ) 
+[1558] loop 0 , 4 , move v0 * v0 , ul - v0 
+[1559] loop 0 , 4 , move 3 - ua , v0 
+[1560] ( move ua , 0 - 4 ; move ul , ul + ul ; move 4 , ul ) 
+[1561] ( move ul , ua * 2 ; ( move 4 , ul ; move ua , 4 ) ) 
+[1562] loop 0 , ul , loop 1 , 3 , move ua , ua / 4 
+[1563] ( loop 0 , 6 , move v0 , ul + v0 ; move 2 , v0 ) 
+[1564] ( move ua , 3 ; move ul - 4 , 0 - ul ) 
+[1565] ( loop 0 , 5 , move ul , ul ; move v0 , 4 ) 
+[1566] ( v0 = ul - 3 ; move v0 , v0 ; move ua , 2 ) 
+[1567] ( move 2 , ua / 4 ; loop 0 , 6 , move ul , v0 ) 
+[1568] ( move ul - 3 , ul ; move ua , ul ) 
+[1569] loop 0 , 5 , move 2 + v0 , v0 / 3 
+[1570] ( v0 = 3 ; move v0 , v0 ; move v0 , v0 * v0 ) 
+[1571] loop 0 , 7 , ( move ul - v0 , 3 + ul ; v1 = v0 ) 
+[1572] loop 0 , 5 , move 0 - 3 , v0 
+[1573] loop 0 , 4 , loop 1 , ul , move 3 , 4 + ul 
+[1574] loop 0 , 2 , loop 1 , 3 , move v1 , 4 
+[1575] loop 0 , 4 , move 4 - v0 , ul 
+[1576] loop 0 , 6 , move 2 , 2 
+[1577] ( move ua + 3 , ul ; move 2 , 4 + ul ) 
+[1578] ( v0 = ua + 4 ; move v0 , ul ; move ua , v0 ) 
+[1579] ( move ua / 2 , ua - ul ; move ua + ul , ua + 4 ) 
+[1580] ( move 3 , ul / ua ; loop 0 , ul , move ua - ul , ul ) 
+[1581] ( move ua , ul / 4 ; move ua , 4 ) 
+[1582] ( move 3 , 2 ; move 2 , ul ) 
+[1583] ( move ua / 3 , ul / ua ; move 3 + ul , ua + ul ) 
+[1584] ( move ul , ua - ul ; move ua , ul / 4 ) 
+[1585] ( move ua + ul , 4 ; move 2 , ul ) 
+[1586] loop 0 , 4 , move 4 , v0 - ul 
+[1587] ( move ua , ul - ua ; move ua , ua / 3 ) 
+[1588] ( move 2 , 0 ; move ua , 4 + ul ) 
+[1589] loop 0 , 6 , move v0 - 3 , 2 - 3 
+[1590] ( loop 0 , 6 , move v0 , v0 ; move ul , ul - ua ) 
+[1591] loop 0 , 7 , move 4 , ul - v0 
+[1592] loop 0 , 2 , ( move v0 , v0 ; move ua + ul , ul ) 
+[1593] ( move ua , 3 / ua ; ( move 2 , ua + ul ; v0 = ul ) ) 
+[1594] loop 0 , 4 , move v0 + v0 , v0 / ua 
+[1595] ( move 3 , 2 ; move 4 , ul ) 
+[1596] ( move ul - ua , ul ; move ua - ul , ul ) 
+[1597] loop 0 , 2 , ( move ua , 4 ; move v0 + ul , v0 ) 
+[1598] loop 0 , 7 , move ul , v0 + 2 
+[1599] ( move 3 - ua , ul / ua ; move 3 , ul ) 
+[1600] loop 0 , 4 , move v0 , ul / ua 
+[1601] loop 0 , 4 , move v0 , v0 / 2 
+[1602] ( move ua , 4 + 2 ; move ua - ul , 2 ) 
+[1603] ( move ua , 3 + 2 ; v0 = 4 ; move 3 + v0 , v0 ) 
+[1604] ( move 4 , ua ; move 4 , ua ; move ua , 3 - ul ) 
+[1605] loop 0 , 4 , move ua , ua / 3 
+[1606] loop 0 , 4 , move 3 * v0 , v0 * v0 
+[1607] loop 0 , ul , ( move 3 , ua ; loop 1 , 4 , move 2 , 2 ) 
+[1608] ( move 2 , ul / ua ; move ua , 2 - 4 ) 
+[1609] loop 0 , 4 , move ul + v0 , 3 * v0 
+[1610] ( move ul - ua , ul ; move ua , ua * ua ; v0 = ua - 4 ) 
+[1611] loop 0 , 2 , move ua , v0 - 3 
+[1612] ( move ul + ul , ua + ul ; loop 0 , 4 , move v0 , v0 ) 
+[1613] ( move ua + 2 , 3 ; move ua , ua / 3 ) 
+[1614] loop 0 , 2 , loop 1 , 3 , move v0 * ua , v1 + v0 
+[1615] ( loop 0 , 5 , move v0 + v0 , 2 ; move v0 , v0 ) 
+[1616] loop 0 , ul , loop 1 , 7 , move ua - 2 , 2 
+[1617] ( move ua , 0 ; v0 = ua ; move v0 , v0 - 4 ) 
+[1618] ( loop 0 , 5 , move v0 , v0 ; move v0 , v0 + v0 ) 
+[1619] ( move ul + ul , ul ; loop 0 , 5 , move 4 / v0 , ul ) 
+[1620] loop 0 , 2 , move v0 - ua , 2 - v0 
+[1621] ( move 2 - ua , ul ; loop 0 , 3 , move ul , v0 ) 
+[1622] loop 0 , 4 , move v0 , 4 - v0 
+[1623] loop 0 , 2 , ( move ua + v0 , v0 ; move 3 * v0 , ul ) 
+[1624] loop 0 , 5 , move v0 , 4 - v0 
+[1625] ( move ul , ul ; move 4 + 4 , ul ) 
+[1626] ( move ua , ul ; loop 0 , 3 , move v0 , ul - v0 ) 
+[1627] ( move ul , 4 + ul ; move 3 , ul ; move ua , ul ) 
+[1628] ( move ua + ul , ul / ua ; move ua / 3 , 4 ) 
+[1629] ( move ua + ul , ua + ul ; loop 0 , 6 , move ul , v0 ) 
+[1630] ( move ua , ua ; move ul , 3 ; move ua , 2 / 3 ) 
+[1631] ( move ua + ul , ul ; v0 = 4 + ul ; move v0 , v0 ) 
+[1632] loop 0 , 6 , move ul - 4 , v0 
+[1633] loop 0 , 6 , move ul - v0 , v0 * v0 
+[1634] ( move 4 , ul + ul ; move ua + 3 , 2 ) 
+[1635] loop 0 , 6 , ( v1 = ua / 3 ; move ul - v1 , ul ) 
+[1636] ( move 2 , 4 ; loop 0 , 3 , move v0 , v0 ) 
+[1637] loop 0 , 4 , move 4 - v0 , 4 
+[1638] loop 0 , 4 , move 3 * v0 , 2 
+[1639] ( move ul , ua * ua ; move ua , ua ; move 3 + ul , ul - 3 ) 
+[1640] loop 0 , 4 , move v0 , 3 / v0 
+[1641] loop 0 , 5 , move ua - 2 , ul 
+[1642] ( move ul - 4 , ua ; move 3 , ul ) 
+[1643] ( move ul - 3 , 2 ; move 4 - ul , 2 ; move ul , 0 ) 
+[1644] loop 0 , 4 , move ua + v0 , 4 
+[1645] ( move ua , ul - ua ; move 3 , 3 + 2 ) 
+[1646] loop 0 , 4 , move ua + ul , 3 - ul 
+[1647] loop 0 , 3 , ( move v0 , ul ; move ua , v0 ) 
+[1648] loop 0 , 7 , move 4 / v0 , v0 
+[1649] ( move 4 * 2 , ul ; move ua , 2 ) 
+[1650] loop 0 , 3 , ( move ua - ul , v0 ; move v0 , ua ) 
+[1651] ( move ul , ul ; move 4 , ul ) 
+[1652] ( loop 0 , 4 , move ul , v0 ; move v0 , ul ) 
+[1653] ( move 4 , ul ; move ul , ul ; move ul - ua , ua ) 
+[1654] loop 0 , 2 , move v0 + 4 , 2 
+[1655] ( loop 0 , 7 , move ul + v0 , ua / 3 ; v1 = ul ) 
+[1656] loop 0 , 6 , move ua / v0 , 4 - ua 
+[1657] ( move ua , 0 - ul ; move ua + 4 , 0 - 3 ) 
+[1658] ( move ua + ul , ua + ul ; move ua , 3 ) 
+[1659] loop 0 , 2 , ( move v0 , v0 ; move 4 , v0 ) 
+[1660] ( loop 0 , 6 , move v0 - 2 , v0 / ua ; v1 = v0 ) 
+[1661] ( move ua - ul , ua / 2 ; loop 1 , ul , move 2 , ua + ul ) 
+[1662] ( move ua , ua + ul ; move 2 + ul , 4 / ua ) 
+[1663] ( v0 = ua ; loop 1 , 6 , move ul , ul ; move ua , ul ) 
+[1664] ( move ua - ul , ua + ul ; loop 0 , 5 , move v0 , 2 ) 
+[1665] ( move ua , 4 + ul ; move 3 , ul ) 
+[1666] loop 0 , 5 , move v0 - 4 , ul + v0 
+[1667] loop 0 , 6 , move v0 - ul , ul - v0 
+[1668] loop 0 , 5 , move 2 , 3 - v0 
+[1669] ( move ua , ua + 4 ; move ua - ul , 2 ) 
+[1670] ( move ua , ua ; loop 0 , 3 , move v0 , 2 ) 
+[1671] ( move 2 - ua , ul ; move ua , ul ) 
+[1672] ( move 4 , 4 ; v0 = 4 ; move ua , v0 * v0 ) 
+[1673] ( move ua , 4 * 2 ; move 2 , 2 - 4 ) 
+[1674] ( loop 0 , 6 , move v0 , ua * ua ; move 3 , v0 ) 
+[1675] loop 0 , 7 , move 4 / 3 , v0 + 3 
+[1676] loop 0 , 4 , move 2 , ul - 2 
+[1677] ( loop 0 , 4 , move ul , v0 ; move ul , ul ) 
+[1678] loop 0 , 7 , move 4 , ua - v0 
+[1679] loop 0 , 6 , move ul - 3 , v0 + ul 
+[1680] ( move ul + ul , ul ; move ua + ul , ul ) 
+[1681] ( move ua , 3 / 2 ; loop 0 , 3 , move v0 , v0 ) 
+[1682] loop 0 , 3 , move 3 , ul - v0 
+[1683] loop 0 , 3 , move ua - ul , v0 + v0 
+[1684] ( ( move ul - ua , ul ; v0 = ul - ua ) ; move v0 , 2 ) 
+[1685] ( loop 0 , 6 , move ul , v0 ; move v0 , 4 - 3 ) 
+[1686] loop 0 , 5 , move 2 , v0 / ua 
+[1687] loop 0 , 5 , move ua - ul , ul + v0 
+[1688] loop 0 , 4 , move v0 + ul , v0 / 4 
+[1689] ( move ua + ul , ul ; move ua - ul , 4 ) 
+[1690] loop 0 , 5 , move ua + ul , ul - 3 
+[1691] loop 0 , 5 , move 2 , ul - 3 
+[1692] ( move ua , 3 - ua ; move ua , 3 / 2 ; move 0 , 0 ) 
+[1693] ( move ua , 2 ; move ul , ul - 2 ) 
+[1694] ( move ua , ua * ua ; move 2 + ul , ul + ul ) 
+[1695] loop 0 , 6 , ( v1 = 3 ; move ul - v1 , v1 + v0 ) 
+[1696] loop 0 , 6 , move 4 , ua - v0 
+[1697] loop 0 , 2 , ( move 3 / v0 , 3 - v0 ; move ul , ul ) 
+[1698] loop 0 , 2 , move 2 - ua , v0 
+[1699] ( loop 0 , 2 , move 3 , 4 ; move v0 - ua , v0 ) 
+[1700] ( ( move ul , ua ; move ua , ul ) ; move ul , ul ) 
+[1701] loop 0 , 2 , ( move ua , ul ; move v0 , ul ) 
+[1702] loop 0 , ul , loop 1 , 7 , move 4 , v1 / 2 
+[1703] ( loop 0 , 6 , move ul , ua / v0 ; move 0 - 2 , ul ) 
+[1704] ( move ul , 2 ; move ua , 4 ; move 2 , ul ) 
+[1705] ( move ul , ul + ul ; move ua , 2 / ua ; move ul , 3 ) 
+[1706] ( move 4 , ul - 3 ; move ua , ul ) 
+[1707] loop 0 , 3 , ( move 3 + v0 , ua ; move v0 , 4 ) 
+[1708] loop 0 , 5 , move v0 , 3 * 2 
+[1709] ( move 0 , ul ; loop 0 , 4 , move 3 , ua / v0 ) 
+[1710] ( move ul , ul ; move ul , ul ; move ua , ua - ul ) 
+[1711] loop 0 , 3 , ( loop 1 , 9 , v2 = ua ; move v1 , 4 ) 
+[1712] loop 0 , 4 , move v0 - ua , 4 - v0 
+[1713] loop 0 , 5 , move ua + ul , 2 
+[1714] ( move 2 , 3 ; move 3 , 2 ) 
+[1715] ( move 2 , 2 + ul ; move ua , ul / 4 ) 
+[1716] ( loop 0 , 5 , move v0 , 2 / v0 ; move v0 , v0 ) 
+[1717] loop 0 , 6 , move ul , 2 / v0 
+[1718] ( move 2 , ua + ua ; move ua + 3 , ul ; move 0 , 4 ) 
+[1719] loop 0 , 7 , move v0 - ul , ua + 2 
+[1720] ( move ua , ul ; ( move ul , ul ; move 3 , ul ) ) 
+[1721] loop 0 , 4 , move v0 + ul , 3 - v0 
+[1722] ( move 3 - ul , 3 ; move ua + ul , ul ) 
+[1723] ( move ua , ua - 2 ; v0 = ul + ul ; move ua , 4 ) 
+[1724] loop 0 , 2 , move ua - v0 , 3 / 2 
+[1725] ( move 4 - 2 , ul / ua ; move ua - 3 , ul ) 
+[1726] ( move ua , 4 ; move 2 - ua , 0 - ul ) 
+[1727] ( loop 0 , 5 , move ul , ua + ul ; move v0 , ua / 2 ) 
+[1728] ( move ua , ua ; loop 0 , 6 , move v0 , ul ) 
+[1729] loop 0 , 6 , move ul - v0 , ua - ul 
+[1730] ( move 4 + ul , 4 + ul ; move ua , ua + ul ) 
+[1731] loop 0 , 4 , move ua - 4 , 2 - v0 
+[1732] ( move ul , ua ; move 3 * 3 , 4 * 3 ; v0 = ul ) 
+[1733] loop 0 , 5 , ( move 0 - 4 , ul ; v1 = ua ) 
+[1734] ( move ua , ua - ul ; move ua + 3 , 2 ) 
+[1735] loop 0 , 4 , move 3 + ul , 3 
+[1736] ( loop 0 , 6 , move v0 + ul , 3 ; move v0 , v0 ) 
+[1737] ( loop 0 , 6 , move v0 , v0 ; move v0 , v0 ) 
+[1738] loop 0 , 6 , move 2 , v0 - ul 
+[1739] loop 0 , 5 , ( v1 = ua + v0 ; move v1 , 3 ) 
+[1740] ( move ua , 4 + ul ; v0 = 2 ; move 4 , ul ) 
+[1741] loop 0 , 3 , move ua / v0 , ul + v0 
+[1742] ( move ua , ul ; loop 0 , 5 , move v0 , ua - v0 ) 
+[1743] ( move 3 , ua ; loop 0 , 4 , move v0 , ul + v0 ) 
+[1744] loop 0 , 7 , ( v1 = v0 - ua ; move ua , 0 - 2 ) 
+[1745] ( move ul , ul ; loop 0 , 6 , move 3 - v0 , v0 ) 
+[1746] loop 0 , 5 , move ua + v0 , ul - 4 
+[1747] ( loop 0 , 3 , move ul , v0 ; move v0 , v0 + v0 ) 
+[1748] ( move ua , 4 * 2 ; move ua , ua + ul ; v0 = ul - ua ) 
+[1749] ( move 4 , 4 + 2 ; move ua , ul ) 
+[1750] ( move 4 , 4 ; move ul , ul ) 
+[1751] ( move ua , ul / 3 ; ( v2 = ul ; move v2 , v2 ) ) 
+[1752] ( move 2 , ul ; loop 0 , 6 , move v0 , 0 - ul ) 
+[1753] ( move ul , ua + ul ; move ul - ua , ul ; move ul - 4 , ua ) 
+[1754] ( move ua , 0 ; move 4 * 2 , 3 ) 
+[1755] loop 0 , 3 , ( move ul , 4 ; move v0 , v0 ) 
+[1756] ( move 4 , 2 ; loop 0 , 6 , move v0 , v0 ) 
+[1757] ( move ua - ul , ul ; move 4 + ul , ul + ul ) 
+[1758] ( move ua , ua ; move ul , ul ; move 2 - 4 , ul ) 
+[1759] ( move ul - ua , ua ; move ua - ul , ul ) 
+[1760] ( move 2 + ul , 2 ; v0 = ua ; move ua , 2 ) 
+[1761] loop 0 , 4 , move 3 , v0 * 4 
+[1762] ( move 4 , ul ; loop 0 , 6 , move 3 , v0 ) 
+[1763] loop 0 , 3 , move 3 , v0 + 3 
+[1764] ( loop 0 , 6 , move v0 + ul , 2 ; move 2 , v0 + ua ) 
+[1765] ( move 3 , ul ; move 0 - 4 , ul ) 
+[1766] ( move ul + ul , ua ; move 4 , ua - ul ) 
+[1767] loop 0 , 6 , move ua / 4 , v0 * v0 
+[1768] ( move 2 , ua * 2 ; move ua , 4 * 2 ; v0 = 4 - ul ) 
+[1769] ( v0 = ul ; move ua , ua ; loop 1 , 3 , move v1 , v1 ) 
+[1770] ( move 4 , 4 + 4 ; move ua - 4 , ul ) 
+[1771] loop 0 , 4 , loop 1 , ul , move v0 - 4 , 3 + ul 
+[1772] ( move ua , ua + 4 ; loop 0 , 5 , move v0 , v0 ) 
+[1773] move ua + 4 , 4 * 3 
+[1774] ( move 4 + ul , ua ; move ul + ul , 2 ; v0 = ua ) 
+[1775] loop 0 , 7 , move ul - v0 , v0 - 4 
+[1776] loop 0 , 2 , move 4 , v0 / ua 
+[1777] ( ( move ua , ul / 2 ; move ua , 3 + ul ) ; move ul , 4 ) 
+[1778] loop 0 , 5 , move v0 , v0 / 3 
+[1779] ( loop 0 , 4 , move 2 , v0 ; move ul , ul ) 
+[1780] ( v0 = 4 ; loop 1 , 7 , move ul - v0 , 4 ) 
+[1781] ( move 4 , ua ; ( move 3 , 4 ; move ua , 0 ) ) 
+[1782] ( ( move ua , ua ; move ua , ua - 2 ) ; move ul + ul , ul ) 
+[1783] loop 0 , 5 , ( v1 = 3 + v0 ; move ul + ul , ul / ua ) 
+[1784] loop 0 , 2 , ( move ul , ua - v0 ; move ua , ul - 3 ) 
+[1785] loop 0 , 7 , move ul - v0 , 2 
+[1786] loop 0 , 7 , ( move v0 / 2 , ua - ul ; v1 = v0 ) 
+[1787] ( move 4 + ul , ua ; move 4 , 2 ) 
+[1788] ( move 4 , ua ; move ul , ul ; loop 0 , 4 , move ua , 3 ) 
+[1789] ( move ua + 2 , ul ; move ua + ul , 2 ; move ul , ul / 4 ) 
+[1790] ( move ul - 3 , ul ; move ua , 3 - ua ) 
+[1791] loop 0 , 3 , move v0 - 4 , ul / 3 
+[1792] ( move ua + ul , 2 + 2 ; move ua , 3 ; v0 = ul + ul ) 
+[1793] ( ( move ua , 3 - ul ; move 2 , 3 + ul ) ; move ua , 4 ) 
+[1794] ( move ua , ua ; loop 0 , 6 , move v0 , v0 ) 
+[1795] loop 0 , 3 , move ul - ua , 4 * 2 
+[1796] loop 0 , 3 , move 3 , v0 + v0 
+[1797] ( loop 0 , 4 , move 4 , v0 ; v1 = ua ; move ua , v0 ) 
+[1798] ( loop 0 , 5 , move 3 , v0 ; move v0 , ua ) 
+[1799] ( move 3 , 2 ; move 3 , ul ; move ua , ua + 2 ) 
+[1800] ( move ua , ua / 4 ; move 4 / 3 , 2 ) 
+[1801] ( move 2 , ua * ua ; move ul - ua , 3 / 2 ) 
+[1802] ( move 3 , 2 - ul ; loop 0 , 6 , move v0 , v0 ) 
+[1803] ( loop 0 , 3 , move v0 + 2 , v0 ; move 3 , ul ) 
+[1804] ( move 3 , 3 * 2 ; ( move ul , 2 ; move ua - 2 , 3 ) ) 
+[1805] loop 0 , 7 , move v0 / 2 , ua / v0 
+[1806] loop 0 , 4 , move 2 , ua / v0 
+[1807] ( ( move ul , ua - ul ; move ul , ul ) ; move ua + 3 , ul ) 
+[1808] loop 0 , 5 , move 3 , v0 - ul 
+[1809] ( move ul - 4 , ua ; loop 0 , 3 , move v0 , v0 ) 
+[1810] ( move 2 , ul ; loop 0 , 5 , move v0 , ul ) 
+[1811] ( move 4 - ul , ul ; move 3 , ua / 4 ) 
+[1812] ( move ua + ul , ua + 4 ; move 4 - ua , ul ) 
+[1813] ( move 3 , ua - ul ; move ua , ua - ul ) 
+[1814] ( loop 0 , 5 , move 3 / v0 , ul ; move 3 , v0 ) 
+[1815] ( move 4 , 3 ; move 3 , ul ) 
+[1816] loop 0 , 5 , move 4 - v0 , 2 
+[1817] ( loop 0 , 5 , move v0 , ul ; move v0 , 4 ) 
+[1818] loop 0 , 6 , move ua - ul , ua - v0 
+[1819] ( move 2 , 4 ; v0 = ul ; move 4 , ul ) 
+[1820] ( move ua - ul , 0 ; move ua , 2 ) 
+[1821] ( move ul / ua , 4 ; loop 0 , 5 , move 4 , ul - ua ) 
+[1822] ( move 0 , 2 + ul ; loop 0 , 4 , move v0 , ul ) 
+[1823] loop 0 , 4 , move v0 - ua , v0 + 2 
+[1824] loop 0 , 3 , ( move v0 * v0 , v0 ; move ul , ua + ul ) 
+[1825] loop 0 , 7 , move ul , 4 * v0 
+[1826] ( loop 0 , 4 , move ul , v0 + 3 ; move 3 , v0 ) 
+[1827] ( v0 = ul ; loop 1 , 6 , move ul , ul / 2 ) 
+[1828] ( move ua , ul ; loop 0 , 4 , move v0 , v0 ) 
+[1829] ( move ua - ul , ua ; move ua , ua - ul ) 
+[1830] loop 0 , 6 , move v0 - 2 , v0 + v0 
+[1831] loop 0 , 6 , move 3 / v0 , 4 * v0 
+[1832] ( move ua , 0 ; loop 0 , 4 , move v0 , v0 ) 
+[1833] ( loop 0 , 6 , move ul + v0 , v0 ; move ul , v0 ) 
+[1834] ( ( move ua , 2 + ul ; move ua , 3 + ul ) ; move 4 , ul ) 
+[1835] ( move ul , ua ; move ua + 4 , ul ) 
+[1836] ( loop 0 , 6 , move v0 - ul , v0 ; move v0 , 4 ) 
+[1837] ( move 2 - ua , 2 ; move ua - ul , 2 ) 
+[1838] move ua + 3 , 3 / ua 
+[1839] ( move ua , ua - ul ; v0 = ua + ul ; move 3 , ul / 4 ) 
+[1840] ( move 2 - 4 , 4 ; move 4 * 2 , 3 ) 
+[1841] ( loop 1 , 5 , move v1 , ua + ul ; move ua , ul ) 
+[1842] ( move ua , ua ; move 3 , ul ; move 2 , 4 ) 
+[1843] ( move ua , ua * 2 ; ( move ul , 0 ; move 4 - ua , ul ) ) 
+[1844] loop 0 , 3 , ( move v0 , ua - v0 ; move v0 , 2 ) 
+[1845] ( move ul , ul ; loop 0 , 6 , move v0 , v0 * v0 ) 
+[1846] loop 0 , 4 , move 4 , 3 - v0 
+[1847] ( move ua + ul , ua / 3 ; move ul , ul ) 
+[1848] ( move ua , ul ; v0 = ul ; move 3 , v0 - 3 ) 
+[1849] ( move ua , 0 ; loop 0 , 5 , move v0 , v0 ) 
+[1850] ( move ua , ua ; move ua - 4 , ul ) 
+[1851] loop 0 , 4 , move v0 + v0 , v0 + v0 
+[1852] ( move ua / 2 , 2 + ul ; move ul , ul ; move ul + ul , ua ) 
+[1853] ( move ul - ua , ul + ul ; move ua + ul , ul ) 
+[1854] loop 0 , 7 , move 4 + ul , 2 
+[1855] loop 0 , 2 , move v0 - 4 , ul 
+[1856] ( move ua , ul ; move ua , ua - 3 ) 
+[1857] ( move ua , ua ; loop 0 , 4 , move 4 , 4 - v0 ) 
+[1858] ( loop 0 , 3 , move v0 , ul ; move ua , v0 ) 
+[1859] loop 0 , 3 , move 4 * v0 , 2 + v0 
+[1860] ( move ua + ul , ua ; move ul - ua , ul ) 
+[1861] ( move ua , ua ; loop 0 , 3 , move ul , 4 ; move v0 , ul ) 
+[1862] loop 0 , 6 , move v0 - ua , ua * ua 
+[1863] ( loop 0 , 6 , move ul , ul + v0 ; move 2 , ua / v0 ) 
+[1864] ( move 0 , ua + 4 ; loop 1 , 4 , move ul + v1 , ul ) 
+[1865] ( move ua , ua - 3 ; loop 0 , 5 , move ul , v0 + ul ) 
+[1866] ( loop 0 , 5 , move ul , 2 ; move ua , ua + ua ) 
+[1867] loop 0 , 6 , move v0 - ul , v0 + ul 
+[1868] ( move ul , ul ; loop 0 , 4 , move v0 , v0 ) 
+[1869] loop 0 , 2 , move ua - v0 , 4 - ua 
+[1870] ( move ul + ul , ul ; loop 0 , 5 , move ul , ul ) 
+[1871] ( move 3 / ua , ul ; loop 0 , 5 , move v0 , v0 / ua ) 
+[1872] ( move 4 , 0 - ul ; move ua , ul ) 
+[1873] ( move ua , ua * ua ; move 4 , ua - 2 ) 
+[1874] ( move ua , ua - ul ; move ul - ua , ul ; move ua , ua ) 
+[1875] ( move 4 , ul ; move 0 , 4 ; move ua , ul ) 
+[1876] ( v0 = ua + ul ; move ul + ul , ul / ua ; move v0 , ul ) 
+[1877] loop 0 , 6 , move v0 , 4 * 2 
+[1878] ( move ul , ua ; loop 0 , 5 , move v0 , v0 * v0 ) 
+[1879] ( move 4 , ua + ul ; loop 0 , 5 , move 2 , ul ) 
+[1880] ( ( v1 = ul ; move ul , ul ) ; move ua , ul / 4 ) 
+[1881] ( move ua , ua * ua ; move ul + ul , ul / 4 ) 
+[1882] ( move ua , ul ; move 3 , ua / 4 ; loop 0 , 9 , v1 = 0 ) 
+[1883] loop 0 , 3 , ( move 3 * v0 , v0 ; move ul , v0 * ua ) 
+[1884] ( move 3 , ua ; move ua , 4 + ul ) 
+[1885] loop 0 , 2 , ( move v0 , v0 ; move 3 , v0 ) 
+[1886] loop 0 , 5 , move v0 , 4 / ua 
+[1887] ( move ua , ul - 2 ; loop 0 , 4 , move v0 , v0 ) 
+[1888] ( move ua - 2 , ul ; move ua + ul , 4 - 2 ) 
+[1889] loop 0 , 7 , move v0 - 4 , v0 
+[1890] ( move ua , ul ; loop 0 , 2 , move ua , 3 ) 
+[1891] ( move ua , 2 / 4 ; move ua , 2 ) 
+[1892] ( move ua + ul , 4 + ul ; ( move ul , ul ; v0 = 0 ) ) 
+[1893] ( move ua , 0 - 3 ; loop 0 , 5 , move v0 , v0 ) 
+[1894] ( move ua , 4 ; move 3 , ul ) 
+[1895] ( move 4 , ua + ul ; ( move ul , ul + ul ; move 4 , ua ) ) 
+[1896] loop 0 , 3 , move 4 - v0 , v0 * 3 
+[1897] loop 0 , 3 , move 3 * v0 , 3 
+[1898] loop 0 , 3 , move v0 + 3 , 2 
+[1899] ( move ua - ul , ua * 4 ; loop 0 , 5 , move 3 , 2 ) 
+[1900] ( loop 0 , 4 , move ul , 0 ; move 3 , ua / 4 ) 
+[1901] ( v0 = ua ; move v0 , ul ; loop 1 , 6 , move 4 , 2 ) 
+[1902] loop 0 , 3 , ( move v0 , ua ; move v0 + v0 , ul ) 
+[1903] loop 0 , 2 , ( move ul / ua , v0 ; move ua + ul , ul ) 
+[1904] ( loop 0 , 6 , move v0 , 3 - ua ; move ul , 2 ) 
+[1905] ( move 3 - ua , ua + 2 ; move 3 + ul , 3 / ua ) 
+[1906] ( loop 0 , 6 , move ul , 0 ; move v0 , ul ) 
+[1907] loop 0 , 3 , loop 1 , ul , move 3 - v0 , ua - v0 
+[1908] ( move ua , 4 - ul ; move ua - 4 , 4 ) 
+[1909] loop 0 , 7 , move 3 - 4 , v0 - ul 
+[1910] ( move ua / 2 , 3 ; loop 0 , 4 , move v0 , v0 ) 
+[1911] ( v0 = 2 / ua ; loop 1 , 6 , move v0 * v1 , v0 ) 
+[1912] ( v0 = 2 ; move v0 , v0 ; move ua , ul / 4 ) 
+[1913] ( move ua , ul / ua ; move 2 - ua , 2 ; v0 = ua ) 
+[1914] ( move ul - ua , 2 ; ( move ua , ul ; v0 = ul / ua ) ) 
+[1915] ( move ua , ul - 2 ; move ua - ul , ul ; v0 = ul ) 
+[1916] loop 0 , 5 , move 3 + 2 , v0 
+[1917] loop 0 , 5 , move v0 , ul - 3 
+[1918] ( move ua - 3 , ul ; ( move ul , ul ; move 3 , ul ) ) 
+[1919] loop 0 , 2 , move ua , ua - 3 
+[1920] ( move 4 + ul , 2 ; move ua - 2 , ua ; move 3 , ul ) 
+[1921] ( ( move 2 + ul , ul ; move ua , ul ) ; move ul , ul ) 
+[1922] ( loop 0 , 3 , move 2 , ul ; move v0 , ul ; move ua , ul ) 
+[1923] loop 0 , 3 , move 2 + v0 , 3 - ul 
+[1924] ( move ua - ul , 4 ; v0 = ua ; move 3 + v0 , 2 ) 
+[1925] ( move ua + ul , ua - ul ; move ua , 4 ) 
+[1926] ( move ua , ul / 4 ; ( move ul - ua , ul ; v0 = ua ) ) 
+[1927] ( loop 0 , 4 , move v0 , v0 ; move ua , v0 + v0 ) 
+[1928] ( loop 0 , 6 , move ul , ul ; move 3 , ua * v0 ) 
+[1929] ( v0 = 4 / 3 ; move v0 , v0 ; move 4 , v0 ) 
+[1930] ( loop 0 , 2 , move ua , 4 ; move ul , v0 ) 
+[1931] ( loop 0 , 4 , move v0 , v0 ; move v0 , 2 ) 
+[1932] ( move ul + ul , ua ; move 4 , ua / 3 ; move ua / 2 , ul ) 
+[1933] ( loop 0 , 6 , move ul , v0 ; move ua , 0 ; v1 = v0 ) 
+[1934] loop 0 , 6 , move v0 - ul , ul - 3 
+[1935] ( move ua + ul , 4 ; loop 0 , 4 , move 2 / v0 , ul ) 
+[1936] loop 0 , 2 , ( move v0 , 2 ; move ua , ul ) 
+[1937] loop 0 , 7 , move v0 , v0 / 2 
+[1938] ( move 2 , ua ; move ul , ua + 4 ; move 0 - 4 , 4 ) 
+[1939] loop 0 , 2 , ( move v0 , v0 ; move v0 + 2 , v0 ) 
+[1940] ( move 3 + ul , ua / 2 ; move 4 , ul ) 
+[1941] ( v0 = ua * ua ; loop 1 , 3 , move ua , v1 * v0 ) 
+[1942] loop 0 , 5 , move v0 / 2 , ul 
+[1943] ( move ul , ua * ua ; move 4 , ua * ua ; move ua , 3 - ul ) 
+[1944] ( move ua / 4 , 3 ; move ua , ul ) 
+[1945] loop 0 , 3 , move ua - v0 , v0 + v0 
+[1946] ( move 3 , 4 ; move 3 , ua + ul ; move ul , ul ) 
+[1947] ( move 4 - 2 , ua - ul ; move 4 , 4 ) 
+[1948] ( move 4 , 3 ; v0 = 4 ; move v0 , v0 ) 
+[1949] ( loop 0 , 3 , move ul , v0 ; move v0 - ua , v0 ) 
+[1950] loop 0 , 3 , ( move 4 , ul ; v1 = v0 ; move v1 , ul ) 
+[1951] loop 0 , 3 , move 4 / v0 , ua - ul 
+[1952] ( v0 = ua - 2 ; move v0 , ul ; move ul , v0 ) 
+[1953] loop 0 , 4 , move 4 + v0 , 2 
+[1954] loop 0 , 3 , ( move v0 , 4 ; move v0 , ul ) 
+[1955] ( move ul , 4 ; ( move ua , ul ; move 2 - ua , ul / 4 ) ) 
+[1956] ( loop 0 , 3 , move 2 , ua ; loop 1 , 3 , move v0 , ul ) 
+[1957] ( move ua , 2 ; move 4 , 4 + ul ) 
+[1958] ( move 4 , ua + ul ; move 2 / ua , ua - 2 ; move ua , ua ) 
+[1959] ( move ua , ua ; move ua + ul , 4 ) 
+[1960] loop 0 , 4 , move v0 , 3 * 3 
+[1961] loop 0 , 7 , move v0 - 3 , ua * ua 
+[1962] loop 0 , 5 , move v0 + 4 , 3 
+[1963] ( move ua + 3 , ua - ul ; move ua , 3 ) 
+[1964] ( move 2 , 2 / 3 ; ( v0 = ul ; move ua , ul ) ) 
+[1965] ( move ua , ua ; move 4 , ua / 3 ) 
+[1966] ( move 0 - ua , ul / ua ; move ua , ul ) 
+[1967] ( move ua - ul , 3 ; move ua , 2 ; v0 = ua ) 
+[1968] loop 0 , 7 , move ul + ul , v0 * 4 
+[1969] ( move ua + ul , ul ; move 4 , ua + 4 ) 
+[1970] ( move ul , ua - 3 ; v0 = 4 ; move v0 , ul ) 
+[1971] ( move ua , ul + ul ; move 3 + ul , 2 ) 
+[1972] ( move 4 , ua ; move ua + ul , ul ; move ul , ul ) 
+[1973] loop 0 , 7 , ( move 2 , ua - v0 ; v1 = ua ) 
+[1974] ( move 4 - ul , ul ; loop 0 , 5 , move ul - 3 , ul + v0 ) 
+[1975] loop 0 , 6 , move 2 - v0 , ul 
+[1976] ( loop 0 , 6 , move ul , v0 ; move 3 , ul ) 
+[1977] ( move ua , 2 ; move ul - ua , ul - 2 ) 
+[1978] ( loop 0 , 5 , move v0 , v0 ; move ul + v0 , v0 ) 
+[1979] loop 0 , 2 , loop 1 , 3 , move ul + v1 , v1 * v1 
+[1980] ( move ul - 4 , ul ; move 4 , ul ) 
+[1981] ( loop 0 , 5 , move ul , v0 ; move v0 , 2 / v0 ) 
+[1982] loop 0 , 3 , loop 1 , 2 , move v1 + ua , 4 
+[1983] loop 0 , 5 , move ul + v0 , v0 * v0 
+[1984] loop 0 , 2 , move 4 , v0 / 3 
+[1985] ( move ul + ul , ul + ul ; ( move ua , 3 ; move ua , ul ) ) 
+[1986] ( move 2 + ul , ua ; loop 0 , 3 , move v0 + v0 , 4 ) 
+[1987] loop 0 , 4 , move v0 , 4 + ul 
+[1988] ( move ua , ua + 2 ; move 3 , 2 ) 
+[1989] loop 0 , 2 , move 4 + ul , v0 
+[1990] ( move 3 , 3 ; move ul , 4 ; move v0 , ua + v0 ) 
+[1991] ( move ua , ul - 4 ; move 3 , ul ) 
+[1992] loop 0 , 6 , move 0 - 3 , 3 
+[1993] loop 0 , 2 , loop 1 , 3 , move ul / v1 , v1 
+[1994] ( loop 0 , 5 , move v0 , v0 ; move v0 , 3 + v0 ) 
+[1995] loop 0 , 3 , ( v1 = ul - v0 ; move 4 , v1 ) 
+[1996] ( move 3 , ul ; move 2 - ua , 4 * 2 ) 
+[1997] ( move ua , 3 + ul ; loop 0 , 2 , move 2 , v0 ) 
+[1998] ( move 4 , 4 / ua ; move ua , ul - ua ) 
+[1999] ( move ua , ul - 4 ; move 2 , ul ) 
+[2000] ( move 4 + 3 , 3 ; move ul + ul , ua + ul ) 
+[2001] ( move 0 - ua , 4 ; move 0 , 2 ; move ul + ul , ua * ua ) 
+[2002] ( move ua , ua / 4 ; move ua , 2 ; v0 = ua + ul ) 
+[2003] loop 0 , 7 , move ul - ua , 4 
+[2004] ( move ul - 4 , 2 / 3 ; move ua , ul ) 
+[2005] ( move 3 , 4 - ua ; move 4 , ul ) 
+[2006] loop 0 , 6 , move v0 / 2 , ul - ua 
+[2007] ( move ua + 2 , 2 ; move ua , ul - 3 ; v0 = 2 ) 
+[2008] loop 0 , 6 , move v0 - 3 , ul 
+[2009] ( loop 0 , 5 , move 2 , v0 ; move ua , v0 * v0 ) 
+[2010] ( v0 = 4 ; loop 1 , 6 , move v0 + v0 , 3 ) 
+[2011] ( move ua , 4 ; v0 = 2 ; move 0 - 2 , v0 ) 
+[2012] ( loop 0 , 6 , move v0 / 3 , v0 ; move v0 , ua ) 
+[2013] ( move ua , ua + ul ; loop 0 , 5 , move v0 , v0 ) 
+[2014] ( move ul , ul - 2 ; move ua + ul , ul / 3 ; v0 = ua ) 
+[2015] ( move ua , ul ; loop 0 , 4 , move ul , v0 ; move 4 , 3 ) 
+[2016] ( move ul , ua ; move 2 , ul ; loop 0 , 5 , move ul , v0 ) 
+[2017] ( move ua + ul , ua ; move 3 , ul + ul ; move ul , ua + 2 ) 
+[2018] loop 0 , 2 , loop 1 , 3 , move ul , v1 + v1 
+[2019] ( move 2 - ua , ua ; move 2 , ul ; move ul , ua ) 
+[2020] ( move ua - ul , 4 + 3 ; loop 0 , 2 , move ul , 2 ) 
+[2021] loop 0 , 2 , loop 1 , 3 , move v1 * 2 , v0 
+[2022] loop 0 , 2 , move ua , 4 + 4 
+[2023] loop 0 , 3 , loop 1 , 2 , move v0 + v1 , v0 
+[2024] ( move ul , ul ; ( move 4 , ul ; move ul , ua + ul ) ) 
+[2025] ( move 2 , ua ; move 2 , 4 ) 
+[2026] ( move 2 , ua - 3 ; move ua + ul , ul ) 
+[2027] loop 0 , 6 , move 3 , ua - ul 
+[2028] ( move ua , ua - ul ; move ua , ua + 4 ) 
+[2029] loop 0 , 5 , move ua , 3 * 3 
+[2030] loop 0 , 4 , move v0 + 2 , ul 
+[2031] ( move ul - ua , ua ; move ul , 0 ; move 4 + ul , 2 / ua ) 
+[2032] ( move ul - ua , ul ; move ul + ul , ul + ul ) 
+[2033] ( move 3 , ua ; loop 0 , 2 , move v0 * 3 , 4 ) 
+[2034] loop 0 , 6 , move ul - v0 , 2 
+[2035] loop 0 , 6 , move v0 - 3 , 2 
+[2036] ( move ul - 3 , ua ; move ua , 2 ; move ul , ul ) 
+[2037] ( loop 0 , 6 , move ul , v0 ; move v0 , 0 ) 
+[2038] ( move 2 , 2 / ua ; ( move ul , ua ; move ua , ul ) ) 
+[2039] ( move 2 - ua , ua + ua ; move ua - ul , ul ; v0 = 2 ) 
+[2040] ( move 2 , 0 ; loop 0 , 2 , move 4 , ul ) 
+[2041] ( move ua , ul + ul ; move ul - ua , ul - ua ) 
+[2042] ( loop 0 , 4 , move v0 + ul , ua - ul ; v1 = v0 ) 
+[2043] ( move ua , 0 ; move ul , ul / 4 ; move ul - 4 , ua * ua ) 
+[2044] ( move ua , 0 ; loop 0 , 9 , v1 = v0 ; move ua , v0 ) 
+[2045] loop 0 , 5 , move 2 * v0 , ul - v0 
+[2046] loop 0 , 4 , move v0 , 4 / 3 
+[2047] ( move ul + ul , ul / ua ; move ua , ul + ul ; move ul , ul ) 

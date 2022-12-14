@@ -57,7 +57,7 @@ let dec_item1 i =
 	| 1 -> "( "
 	| 2 -> ") "
 	| 3 -> ", "
-	| 4 -> ";\n"
+	| 4 -> "; " (* if we want a \n, add later *)
 	| 5 -> "+ "
 	| 6 -> "- "
 	| 7 -> "* "
@@ -77,7 +77,9 @@ let enc_char c s =
 	s := (enc_char1 c) :: !s
 	
 let enc_int i s = 
-	s := (i - 10) :: !s
+	let j = if i > 9 then 9 
+		else (if i < 0 then 0 else i) in
+	s := (j - 10) :: !s
 	
 let dec_item i =
 	if i < 0 then 

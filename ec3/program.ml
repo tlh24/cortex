@@ -24,9 +24,18 @@ let nulpdata =
 	; segs = [] 
 	}
 	
-let image_count = 5*2048 
+let image_count = 1*2048 
 let image_res = 30
 let g_logEn = ref true (* yes global but ... *)
+
+let read_lines name : string list =
+	let ic = open_in name in
+	let try_read () =
+		try Some (input_line ic) with End_of_file -> None in
+	let rec loop acc = match try_read () with
+		| Some s -> loop (s :: acc)
+		| None -> close_in ic; List.rev acc in
+	loop []
 
 let print_position outx lexbuf = (*that's a cool tryck!*)
   let pos = lexbuf.lex_curr_p in
@@ -543,6 +552,13 @@ let segs_bbx segs =
 		(fun c (_,y0,_,y1) -> max (max y0 y1) c) 0.0 segs in
 	(minx,maxx,miny,maxy)
 	
+let segs_to_cost segs = 
+	let seglen (x0,y0,x1,y1) = 
+		Float.hypot (x0-.x1) (y0-.y1) in
+	let cost = List.fold_left 
+		(fun c s -> c +. (seglen s)) 0.0 segs in
+	cost
+
 let rec generate_random_logo lg id res =
 	(*if !g_logEn then Printf.fprintf lg "program %d : \n" id;*)
 	let actvar = Array.init 5 (fun _i -> false) in
@@ -557,10 +573,7 @@ let rec generate_random_logo lg id res =
 	
 	let (_,_,segs) = Logo.eval (Logo.start_state ()) pro in
 	(* heuristics for selecting programs... *)
-	let seglen (x0,y0,x1,y1) = 
-		Float.hypot (x0-.x1) (y0-.y1) in
-	let cost = List.fold_left 
-		(fun c s -> c +. (seglen s)) 0.0 segs in
+	let cost = segs_to_cost segs in
 	let lx,hx,ly,hy = segs_bbx segs in
 	let dx = hx-.lx in
 	let dy = hy-.ly in
@@ -762,12 +775,7 @@ let init_database channels device db (dbf : Tensor.t) =
 			Printf.fprintf sout "%d: adding [%d] = %s \n" !iters !i 
 				(Logo.output_program_pstr data.pro) ; 
 			Vector.push db data; 
-			(let open Tensor in
-			for r = 0 to 29 do (
-				for c = 0 to 29 do (
-					dbf.%.{[!i;r;c]} <- img.%.{[r;c]}; 
-				) done
-			) done ); 
+			Tensor.copy_ (Tensor.narrow dbf ~dim:0 ~start:!i ~length:1) ~src:img;
 			incr i;
 			flush sout
 		) else (
@@ -780,12 +788,7 @@ let init_database channels device db (dbf : Tensor.t) =
 					(Logo.output_program_pstr data.pro) 
 					(Logo.output_program_pstr data2.pro);
 				Vector.set db mindex data;
-				(let open Tensor in
-				for r = 0 to 29 do (
-					for c = 0 to 29 do (
-						dbf.%.{[mindex;r;c]} <- img.%.{[r;c]}; 
-					) done
-				) done );
+				Tensor.copy_ (Tensor.narrow dbf ~dim:0 ~start:mindex ~length:1) ~src:img;
 				incr replace; 
 				flush sout
 			)
@@ -796,6 +799,60 @@ let init_database channels device db (dbf : Tensor.t) =
 		incr iters
 	) done; 
 	Printf.fprintf sout "%d done; %d sampled; %d replacements\n" !i !iters !replace
+	
+let save_database db = 
+	let fil = open_out "db_prog.txt" in
+	Printf.fprintf fil "%d\n" image_count; 
+	Vector.iteri (fun i d -> 
+		let pstr = Logo.output_program_pstr d.pro in
+		Printf.fprintf fil "[%d] %s\n"  i pstr ) db ; 
+	close_out fil; 
+	Printf.printf "saved %d to db_prog.txt\n" image_count; 
+	
+	let fil = open_out "db_prog_v.txt" in
+	Printf.fprintf fil "%d\n" image_count; 
+	Vector.iteri (fun i d -> 
+		Printf.fprintf fil "\n[%d]\t" i ; 
+		Logo.output_program_h fil d.pro) db ; 
+	close_out fil; 
+	Printf.printf "saved %d to db_prog_v.txt\n" image_count
+	
+let load_database channels device db dbf = 
+	let sout, serr, _ic, lg = channels in
+	let lines = read_lines "db_prog.txt" in
+	let a,progs = match lines with
+		| h::r -> h,r
+		| [] -> "0",[] in
+	let ai = int_of_string a in
+	if ai <> image_count then (
+		Printf.fprintf sout "image_count mismatch, %d != %d\n" ai image_count; 
+		false
+	) else (
+		List.iter (fun s -> 
+			let sl = Pcre.split ~pat:"[\\[\\]]+" s in
+			let _h,ids,ps = match sl with
+				| h::m::t -> h,m,t
+				| h::[] -> h,"",[]
+				| [] -> "0","0",[] in
+			let pid = int_of_string ids in
+			let pr = if pid = 0 || (List.length ps) < 1
+				then Some `Nop
+				else parse_logo_string lg serr (List.hd ps) in
+			(match pr with 
+			| Some pro -> 
+				let progenc = Logo.encode_program pro |> intlist_to_string in
+				let (_,_,segs) = Logo.eval (Logo.start_state ()) pro in
+				let cost = segs_to_cost segs in
+				let img,_ = Logo.segs_to_array_and_cost segs image_res in
+				let data = {pid; pro; progenc; img; cost; segs} in
+				Vector.push db data ; 
+				let imgf = bigarray_img2tensor data.img device in
+				Tensor.copy_ (Tensor.narrow dbf ~dim:0 ~start:pid ~length:1) ~src:imgf;
+			| _ -> Printf.fprintf sout 
+					"could not parse program %d %s\n" pid s )
+			) progs; 
+		true
+	)
 	
 let rec loop_random channels cnt db dba = 
 	if cnt > (100 * 20000) then () else (
@@ -986,7 +1043,6 @@ let () =
 	
 	
 	let db = Vector.create ~dummy:nulpdata in
-	let dba = Array.make 1 nulpdata in
 	
 	Printf.printf "cuda available: %b\n%!" (Cuda.is_available ());
 	Printf.printf "cudnn available: %b\n%!" (Cuda.cudnn_is_available ());
@@ -1011,20 +1067,27 @@ let () =
 	let stop = Unix.gettimeofday () in
 	Printf.fprintf sout "100k dbf_dist w real images: %fs\n%!" (stop -. start); 
 	flush sout; *)
+	let g = if Sys.file_exists "db_prog.txt" 
+		then load_database channels device db dbf 
+		else false in
+	if g then (
+		Printf.fprintf sout "Loaded %d programs from db_prog.txt\n" image_count; 
+		flush sout
+	) else (
+		let start = Unix.gettimeofday () in
+		init_database channels device db dbf;
+		let stop = Unix.gettimeofday () in
+		Printf.printf "Execution time: %fs\n%!" (stop -. start); 
 	
-	let start = Unix.gettimeofday () in
-	init_database channels device db dbf;
-	let stop = Unix.gettimeofday () in
-	Printf.printf "Execution time: %fs\n%!" (stop -. start); 
-	
-	Printf.fprintf lg "render_simplest: first 10 programs\n";
-	for i = 0 to 9 do (
-		let p = Vector.get db i in
-		Printf.fprintf lg "%d: %s\n" i
-				(Logo.output_program_pstr p.pro); 
-	) done; 
-	render_simplest db true 
-
+		Printf.fprintf lg "render_simplest: first 10 programs\n";
+		for i = 0 to 9 do (
+			let p = Vector.get db i in
+			Printf.fprintf lg "%d: %s\n" i
+					(Logo.output_program_pstr p.pro); 
+		) done; 
+		let _dba = render_simplest db true in
+		save_database db ; 
+	); 
 	close_out sout; 
 	close_out serr;
 	close_out lg
