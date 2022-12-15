@@ -23,9 +23,49 @@ let nulpdata =
 	; cost = -1.0 
 	; segs = [] 
 	}
+
+type batche = 
+	{ a_pid : int 
+	; b_pid : int
+	; a_progenc : string (* these are redundant, but useful *)
+	; b_progenc : string
+	; c_progenc : string
+	; edits : (string*int*char) list
+	; edited : float array
+	}
 	
-let image_count = 1*2048 
+let nulbatche = 
+	{ a_pid = 0
+	; b_pid = 0
+	; a_progenc = ""
+	; b_progenc = ""
+	; c_progenc = ""
+	; edits = []
+	; edited = [| 0.0 |]
+	}
+	
+type batchd = 
+	{ bpro : (float, Bigarray.float32_elt, Bigarray.c_layout)
+				Bigarray.Array3.t (* btch , p_ctx , p_indim *)
+	; bimg : (float, Bigarray.float32_elt, Bigarray.c_layout) 
+				Bigarray.Array3.t (* btch*3, image_res, image_res *)
+	; bedt : (float, Bigarray.float32_elt, Bigarray.c_layout) 
+				Bigarray.Array2.t (* btch , e_indim *)
+	; posenc : (float, Bigarray.float32_elt, Bigarray.c_layout) 
+				Bigarray.Array2.t (* p_ctx , poslen*2 *)
+	; bea : batche array
+	; fresh : bool array
+	}
+
+let pi = 3.1415926
+let image_count = 6*2048 
 let image_res = 30
+let batch_size = 24
+let toklen = 30
+let poslen = 6
+let p_indim = toklen + 1 + poslen*2
+let e_indim = 5 + toklen + poslen*2
+let p_ctx = 36
 let g_logEn = ref true (* yes global but ... *)
 
 let read_lines name : string list =
@@ -711,6 +751,230 @@ let make_batch lg dba nbatch =
 	) done;
 	flush lg; 
 	!batch
+	
+(* because we include position encodings, need to be float32 *)
+let mmap_bigarray2 fname rows cols = 
+	(let open Bigarray in
+	let fd = Unix.openfile fname
+		[Unix.O_RDWR; Unix.O_TRUNC; Unix.O_CREAT] 0o666 in
+	let a = Bigarray.array2_of_genarray 
+		(Unix.map_file fd float32 c_layout true [|rows; cols|]) in (* true = shared *)
+	(* return the file descriptor and array. 
+	will have to close the fd later *)
+	fd,a )
+	
+let mmap_bigarray3 fname batches rows cols = 
+	(let open Bigarray in
+	let fd = Unix.openfile fname
+		[Unix.O_RDWR; Unix.O_TRUNC; Unix.O_CREAT] 0o666 in
+	let a = Bigarray.array3_of_genarray 
+		(Unix.map_file fd float32 c_layout true [|batches;rows;cols|]) in (* true = shared *)
+	(* return the file descriptor and array. 
+	will have to close the fd later *)
+	fd,a )
+	
+let init_batchd () =
+	let fd_bpro,bpro = mmap_bigarray3 "bpro.mmap" 
+			batch_size p_ctx p_indim in
+	let fd_bimg,bimg = mmap_bigarray3 "bimg.mmap" 
+			(batch_size*3) image_res image_res in
+			(* note needs a reshape on python side!! *)
+	let fd_bedt,bedt = mmap_bigarray2 "bedt.mmap" 
+			batch_size e_indim in
+	let fd_posenc,posenc = mmap_bigarray2 "posenc.mmap"
+			p_ctx (poslen*2) in
+	let bea = Array.init batch_size (fun _i -> nulbatche) in
+	let fresh = Array.init batch_size (fun _i -> true) in
+	(* fill out the posenc matrix *)
+	let scl = 2.0 *. pi /. (foi p_ctx) in
+	for i = 0 to (p_ctx-1) do (
+		(* i is the position *)
+		let fi = foi i in
+		for j = 0 to (poslen-1) do (
+			(* j is the frequency; j=0 means once cycle in p_ctx *)
+			(* posenc[i,j*2+0] = sin((2*pi*i / p_ctx) * (j+1)) *)
+			let fj = foi (j+1) in
+			posenc.{i, j*2+0} <- sin(scl *. fi *. fj); 
+			posenc.{i, j*2+1} <- cos(scl *. fi *. fj)
+		) done
+	) done ;
+	Bigarray.Array3.fill bpro 0.0 ;
+	Bigarray.Array3.fill bimg 0.0 ;
+	Bigarray.Array2.fill bedt 0.0 ; 
+	(* return batchd struct & list of files to close later *)
+	{bpro; bimg; bedt; posenc; bea; fresh}, 
+	[fd_bpro; fd_bimg; fd_bedt; fd_posenc]
+	
+let rec new_batche dba = 
+	let ndba = min (Array.length dba) 1024 in (* FIXME 2048 *)
+	let nb = (Random.int (ndba-1)) + 1 in
+	let na = 0 in (* FIXME *)
+	(*let na = if (Random.int 10) = 0 then 0 else (Random.int nb) in*)
+	(* small portion of the time na is the empty program *)
+	let a = dba.(na) in
+	let b = dba.(nb) in
+	let a_ns = List.length a.segs in
+	let b_ns = List.length b.segs in
+	let a_np = String.length a.progenc in
+	let b_np = String.length b.progenc in
+	if a_ns <= 4 && b_ns <= 4 && a_np < 16 && b_np < 16 then (
+		let dist,_ = Levenshtein.distance a.progenc b.progenc false in
+		if !g_logEn then
+		Printf.printf "trying [%d] [%d] for batch; dist %d\n" na nb dist;
+		if dist > 0 && dist < 16 then ( (* FIXME: dist < 7 *)
+			(* "move a , b ;" is 5 insertions; need to allow *)
+			let _, edits = Levenshtein.distance a.progenc b.progenc true in
+			let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
+			(* verify ..*)
+			let re = Levenshtein.apply_edits a.progenc edits in
+			if re <> b.progenc then (
+				Printf.printf "error! %s edits should be %s was %s\n"
+					a.progenc b.progenc re
+			);
+			(* edits are applied in reverse, do it here not py *)
+			(* also add a 'done' edit/indicator *)
+			let edits = ("fin",0,'0') :: edits in
+			let edits = List.rev edits in
+			if !g_logEn then Printf.printf "adding [%d] %s [%d] %s to batch (unsorted pids: %d %d)\n"
+				na a.progenc nb b.progenc a.pid b.pid;
+			let edited = Array.make p_ctx 0.0 in
+			{a_pid=na; b_pid=nb; 
+				a_progenc = a.progenc; 
+				b_progenc = b.progenc; 
+				c_progenc = a.progenc; 
+				edits; edited }
+		) else new_batche dba
+	) else new_batche dba
+
+let apply_edits be = 
+	(* apply after (of course) sending to python. *)
+	(* edit length must be > 0 *)
+	let ed = List.hd be.edits in
+	let c = Levenshtein.apply_edits be.c_progenc [ed] in
+	(* in-place modify the 'edited' array, too *)
+	let la = String.length be.a_progenc in
+	let lc = String.length be.c_progenc in
+	let typ,pp,_chr = ed in (* chr already used above *)
+	(match typ with 
+	| "sub" -> (
+		let pp = if pp > lc-1 then lc-1 else pp in
+		let pp = if pp < 0 then 0 else pp in
+		be.edited.(la+pp) <- 0.6 )
+	| "del" -> (
+		(* lc is already one less at this point -- c has been edited *)
+		let pp = if pp >= lc-1 then lc-1 else pp in
+		let pp = if pp < 0 then 0 else pp in
+		(* shift left *)
+		for i = la+pp to p_ctx-2 do (
+			be.edited.(i) <- be.edited.(i+1)
+		) done; 
+		be.edited.(la+pp) <- ( -1.0 ) )
+	| "ins" -> (
+		let pp = if pp > lc then lc else pp in
+		let pp = if pp < 0 then 0 else pp in
+		(* shift right one *)
+		for i = p_ctx-2 downto la+pp+1 do (
+			be.edited.(i) <- be.edited.(i+1)
+		) done; 
+		be.edited.(la+pp) <- 1.0 )
+	| _ -> () ); 
+	{be with c_progenc=c; edits=(List.tl be.edits) }
+	
+	
+let update_bea dba bd = 
+	(* iterate over batchd struct, make new program pairs when edits are empty *)
+	let bea2 = Array.mapi (fun i be -> 
+		if List.length be.edits = 0 then (
+			bd.fresh.(i) <- true; 
+			new_batche dba 
+		) else apply_edits be ) bd.bea in
+	{bd with bea=bea2}
+	
+(*let bigcopy_2to3 a b u = 
+	(* equivalent of a[u,:,:] = b *)
+	let a2 = Genarray.slice_left a [| u |] in
+	Genarray.blit b a2 ; ()
+	
+let bigcopy_2to3off a b u off len = 
+	(* equivalent of a[i,:,:] = b *)
+	(* remove the batch dimension *)
+	let a2 = Genarray.slice_left a [| u |] in
+	(* narrow the new leading dimension *)
+	let a3 = Genarray.sub_left a2 off len in
+	Genarray.blit b a3 ; ()*)
+	
+let bigfill_batchd dba bd = 
+	(* convert bea to the 3 mmaped bigarrays *)
+	(* first clear them *)
+	(*Bigarray.Array3.fill bd.bpro 0.0 ;*)
+	Bigarray.Array3.fill bd.bimg 0.0 ;
+	Bigarray.Array2.fill bd.bedt 0.0 ; 
+	(* fill one-hots *)
+	Array.iteri (fun u be -> 
+		let a = dba.(be.a_pid) in
+		let b = dba.(be.b_pid) in
+	  (* - bpro - *)
+		let offs = Char.code '0' in
+		let l = String.length be.a_progenc in
+		if l > 16 then Printf.printf "too long:%s" be.a_progenc ; 
+		String.iteri (fun i c -> 
+			let j = (Char.code c) - offs in
+			bd.bpro.{u,i,j} <- 1.0 ) be.a_progenc ; 
+		let lc = String.length be.c_progenc in
+		if lc > 16 then Printf.printf "too long:%s" be.a_progenc ; 
+		String.iteri (fun i c -> 
+			let j = (Char.code c) - offs in
+			bd.bpro.{u,i+l,j} <- 1.0; 
+			(* inidicate this is c, to be edited *)
+			bd.bpro.{u,i+l,toklen-1} <- 1.0 ) be.a_progenc ;
+		(* copy over the edited tags (set in apply_edits) *)
+		for i = 0 to p_ctx-1 do (
+			bd.bpro.{u,i,toklen} <- be.edited.(i)
+		) done; 
+		(* position encoding *)
+		for i = 0 to l-1 do (
+			for j = 0 to poslen*2-1 do (
+				bd.bpro.{u,i,toklen+1+j} <- bd.posenc.{i,j}
+			) done
+		) done; 
+		for i = 0 to lc-1 do (
+			for j = 0 to poslen*2-1 do (
+				bd.bpro.{u,i+l,toklen+1+j} <- bd.posenc.{i,j}
+			) done
+		) done; 
+	  (* - bimg - *)
+		if bd.fresh.(u) then (
+			(* could do this with blit, but need int -> float conv *)
+			for i=0 to (image_res-1) do (
+				for j=0 to (image_res-1) do (
+					let aif = a.img.{i*image_res+j} |> foi in
+					let bif = b.img.{i*image_res+j} |> foi in
+					bd.bimg.{3*u+0,i,j} <- aif; 
+					bd.bimg.{3*u+1,i,j} <- bif;
+					bd.bimg.{3*u+2,i,j} <- aif -. bif;
+				) done
+			) done; 
+			bd.fresh.(u) <- false
+		); 
+	  (* - bedt - *)
+		if (List.length be.edits) < 1 then Printf.printf "zero-length edit list, should not happen!\n"; 
+		let (typ,pp,c) = List.hd be.edits in
+		(match typ with
+		| "sub" -> bd.bedt.{u,0} <- 1.0
+		| "del" -> bd.bedt.{u,1} <- 1.0
+		| "ins" -> bd.bedt.{u,2} <- 1.0
+		| "fin" -> bd.bedt.{u,3} <- 1.0
+		| _ -> () ); 
+		let ci = (Char.code c) - offs in
+		if ci >= 0 && ci < toklen then 
+			bd.bedt.{u,4+ci} <- 1.0 ; 
+		(* position encoding *)
+		if pp >= 0 && pp < p_ctx then (
+			for i = 0 to poslen*2-1 do (
+				bd.bedt.{u,5+toklen+i} <- bd.posenc.{pp,i}
+			) done
+		); 
+	) bd.bea 
 
 let bigarray_img2tensor img device = 
 	let stride = (Bigarray.Array1.dim img) / image_res in
@@ -1085,9 +1349,16 @@ let () =
 			Printf.fprintf lg "%d: %s\n" i
 					(Logo.output_program_pstr p.pro); 
 		) done; 
-		let _dba = render_simplest db true in
 		save_database db ; 
 	); 
+	let dba = render_simplest db true in
+	
+	let bd,fdlist = init_batchd () in
+	let bd = update_bea dba bd in
+	bigfill_batchd dba bd ; 
+	(* check on the python side! *)
+	
+	List.iter (fun fd -> Unix.close fd) fdlist; 
 	close_out sout; 
 	close_out serr;
 	close_out lg

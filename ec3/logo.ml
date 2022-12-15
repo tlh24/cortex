@@ -154,7 +154,8 @@ let decode_program il =
 	
 let intlist_to_string e =
 	(* convenience encoding -- see asciitable for what it turns to *)
-	let offs = 10 + (Char.to_int '0') in (* integers are mapped 1:1 *)
+	let offs = 10 + (Char.to_int '0') in 
+	(* integers are mapped 1:1, 0 -> [-10] -> 0 -> '0' *)
 	let cof_int i =
 		match Char.of_int (i + offs) with 
 		| Some c -> c 
@@ -162,6 +163,13 @@ let intlist_to_string e =
 	let bf = Buffer.create 32 in
 	List.iter ~f:(fun a -> Buffer.add_char bf (cof_int a)) e;
 	Buffer.contents bf
+	
+let string_to_intlist e = 
+	(* outputs a list, range [-10 17] *)
+	let offs = 10 + (Char.to_int '0') in
+	String.fold ~f:(fun a c -> 
+		let i = (Char.to_int c) - offs in
+		i :: a) ~init:[] e
 	
 let output_program_p bf g = (* p is for parseable *)
 	let gl = encode_program g in (* compressed encoding *)
