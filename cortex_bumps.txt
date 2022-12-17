@@ -3215,3 +3215,6 @@ So, the conversion code is not so bad, considering there is probably fixed overh
 Note: doing the same thing, with random images, in python (100k iterations, 5*2048 db size) takes 39.3 seconds. 
 So, ocaml is still faster, even when also generating the program + image pairs
 
+December 15 2022
+Seems like there is some corruption in bimg.  Hmm. 
+Igored the stride, whoops. 

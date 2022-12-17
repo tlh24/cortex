@@ -2,9 +2,10 @@
 open Lexer
 open Lexing
 open Printf
-open Unix
+(*open Unix*)
 open Logo
 open Torch
+open Lwt (* I have my resevations *)
 
 type pdata = 
 	{ pid : int
@@ -63,10 +64,14 @@ let image_res = 30
 let batch_size = 24
 let toklen = 30
 let poslen = 6
-let p_indim = toklen + 1 + poslen*2
+let p_indim = toklen + 1 + poslen*2 (* 31 + 12 = 43 *)
 let e_indim = 5 + toklen + poslen*2
 let p_ctx = 36
 let g_logEn = ref true (* yes global but ... *)
+
+let listen_address = Unix.inet_addr_loopback
+let port = 4340
+let backlog = 10
 
 let read_lines name : string list =
 	let ic = open_in name in
@@ -77,35 +82,34 @@ let read_lines name : string list =
 		| None -> close_in ic; List.rev acc in
 	loop []
 
-let print_position outx lexbuf = (*that's a cool tryck!*)
-  let pos = lexbuf.lex_curr_p in
-  fprintf outx "%s:%d:%d" pos.pos_fname
-    pos.pos_lnum (pos.pos_cnum - pos.pos_bol + 1)
+let print_position lexbuf = 
+	let pos = lexbuf.lex_curr_p in
+	let bf = Buffer.create 64 in
+	Printf.bprintf bf "%s:%d:%d" pos.pos_fname
+		pos.pos_lnum (pos.pos_cnum - pos.pos_bol + 1); 
+	(Buffer.contents bf)
     
-let print_log lg str = 
+(*let print_log lg str = 
 	if !g_logEn then (
 		Printf.fprintf lg "%s" str; 
 		flush lg;
-	) 
+	) *)
 	
-let print_prog p = 
+(*let print_prog p = 
 	let bf = Buffer.create 30 in
-	Logo.output_program_p bf p; 
-	Printf.printf "%s\n" (Buffer.contents bf)
+	Logo.output_program_pstr bf p; 
+	Printf.printf "%s\n" (Buffer.contents bf)*)
 
-let parse_with_error lg serr lexbuf =
+let parse_with_error  lexbuf =
 	let prog = try Some (Parser.parse_prog Lexer.read lexbuf) with
 	| SyntaxError msg ->
-		Printf.fprintf serr "%a: %s\n" print_position lexbuf msg;
-		if !g_logEn then (
-			(* %a doesn't work with sprintf .. *)
-			Printf.fprintf lg "%a: %s\n" print_position lexbuf msg;
-		);  None
+		Logs.err (fun m -> m "%s: %s" 
+			(print_position lexbuf) msg); 
+		None
 	| Parser.Error ->
-		Printf.fprintf serr "%a: syntax error\n" print_position lexbuf;
-		if !g_logEn then (
-			Printf.fprintf lg "%a: syntax error\n" print_position lexbuf;
-		);  None in
+		Logs.err (fun m -> m "%s: syntax error" 
+			(print_position lexbuf));
+		None in
 	prog
     
 
@@ -115,9 +119,6 @@ let bigarray_to_bytes arr =
 	let len = Bigarray.Array1.dim arr in
 	Bytes.init len 
 		(fun i -> Bigarray.Array1.get arr i |> Char.chr)
-
-let encode_program_str prog = 
-	Logo.encode_program prog |> intlist_to_string 
 	
 let read_protobuf lg ic pfunc = 
 	(* polymorphic! so cool *)
@@ -130,7 +131,7 @@ let read_protobuf lg ic pfunc =
 			Some ( pfunc
 				(Pbrt.Decoder.of_bytes (Bytes.sub buf 0 len)))
 		with _ -> ( 
-			print_log lg "Could not decode protobuf\n";
+			Logs.err(fun m -> m "Could not decode protobuf\n");
 			None
 		) in
 		lp
@@ -144,25 +145,21 @@ let write_protobuf sout pfunc r =
 	pfunc r encoder; 
 	output_bytes sout (Pbrt.Encoder.to_bytes encoder);
 	flush sout
-    
-let run_prog lg sout serr prog id res =
-	print_log lg "enter run_prog\n";
+
+	
+let run_prog prog id res =
+	Logs.debug(fun m -> m "enter run_prog\n");
 	match prog with
 	| Some(prog) -> (
 		let (_,_,segs) = Logo.eval (Logo.start_state ()) prog in
-		if !g_logEn then ( 
-			Logo.output_program_h lg prog; 
-			print_log lg "\n"; 
-			Logo.output_segments lg segs; 
-			print_log lg "\n"; 
-			Logo.segs_to_png segs res "test.png"
-		); 
+		Logs.debug(fun m -> m "%s" (Logo.output_program_pstr prog)); 
+		Logs.debug(fun m -> m "%s" (Logo.output_segments_str segs)); 
+		Logo.segs_to_png segs res "test.png"; 
 		let arr,cost = Logo.segs_to_array_and_cost segs res in
 		let stride = (Bigarray.Array1.dim arr) / res in
 		let bf = Buffer.create 30 in
 		Logo.output_program_p bf prog; 
-		let progenc = Logo.encode_program prog
-			|> intlist_to_string in
+		let progenc = Logo.encode_program_str prog in
 		let progstr = Buffer.contents bf in
 		let r = Logo_types.({
 			id = id; 
@@ -176,39 +173,34 @@ let run_prog lg sout serr prog id res =
 			progenc = progenc;
 		}) in
 		(* write the data to stderr, message to stdout *)
-		let arr = bigarray_to_bytes arr in
+		(*let arr = bigarray_to_bytes arr in
 		output_bytes serr arr ;
 
 		(* Create a Protobuf encoder and encode value *)
-		write_protobuf sout Logo_pb.encode_logo_result r; 
+		write_protobuf sout Logo_pb.encode_logo_result r; *)
 
-		if !g_logEn then (
-			Printf.fprintf lg "run_prog result %s\n" (Format.asprintf "%a" Logo_pp.pp_logo_result r);
-			print_log lg "run_prog done\n"
-		); 
-		flush sout; 
-		flush serr; 
+		Logs.debug(fun m -> m "run_prog result %s\n" (Format.asprintf "%a" Logo_pp.pp_logo_result r)); 
+			(* another good way of doing it*)
+		Logs.debug(fun m -> m  "run_prog done\n");
 		true)
 	| None -> ( 
-		output_bytes sout (Bytes.create 4) ;  (* keep things moving *)
-		flush sout; 
-		flush serr; 
+		(*output_bytes sout (Bytes.create 4) ;*)  (* keep things moving *)
 		false )
 
-let parse_logo_string lg serr s = 
+let parse_logo_string s = 
 	let lexbuf = Lexing.from_string s in
 	lexbuf.lex_curr_p <- { lexbuf.lex_curr_p with pos_fname = "from string" };
-	parse_with_error lg serr lexbuf
+	parse_with_error lexbuf
 	
-let parse_logo_file lg serr fname = 
+let parse_logo_file fname = 
 	let ic = open_in fname in
 	let s = really_input_string ic (in_channel_length ic) in
 	close_in ic;
-	parse_logo_string lg serr s
+	parse_logo_string s
 
-let run_logo_file lg sout serr fname =
-	let prog = parse_logo_file lg serr fname in
-	ignore(run_prog lg sout serr prog 0 256 )
+let run_logo_file fname =
+	let prog = parse_logo_file fname in
+	ignore(run_prog prog 0 256 )
 
 
 let num_actvar actvar =
@@ -374,13 +366,13 @@ let rec chng_ast ast st =
 		( `Def(i, chng_ast a st, nulptag ) ) )
 	| `Nop -> `Nop
 	
-let change_ast ast lg = 
+let change_ast ast = 
 	let cnt = count_ast ast in
 	let n = ref 0 in
 	let sel = Random.int cnt in
-	printf "count_ast %d labelling %d\n" cnt sel;
+	Logs.debug(fun m -> m  "count_ast %d labelling %d\n" cnt sel);
 	let marked = mark_ast ast n sel in
-	Logo.output_program_h lg marked ; 
+	Logs.debug(fun m -> m  "%s\n" (Logo.output_program_pstr marked) ); 
 	let actvar = Array.init 5 (fun _i -> false) in
 	let st = (2,3,actvar) in
 	chng_ast marked st
@@ -599,18 +591,11 @@ let segs_to_cost segs =
 		(fun c s -> c +. (seglen s)) 0.0 segs in
 	cost
 
-let rec generate_random_logo lg id res =
-	(*if !g_logEn then Printf.fprintf lg "program %d : \n" id;*)
+let rec generate_random_logo id res =
 	let actvar = Array.init 5 (fun _i -> false) in
-	(*Printf.printf "=======\n";*) 
 	let prog = gen_ast false (3,1,actvar) in
-	(*if !g_logEn then Logo.output_program_plg lg prog;*)
-	(*if !g_logEn then Printf.fprintf lg "\ncompressed %d : \n" id;*)
 	let pro = compress_ast prog in
-	let progenc = Logo.encode_program pro |> intlist_to_string in
-	(*if !g_logEn then Logo.output_program_plg lg pro;
-	if !g_logEn then Printf.fprintf lg "\n\n";*)
-	
+	let progenc = Logo.encode_program_str pro in
 	let (_,_,segs) = Logo.eval (Logo.start_state ()) pro in
 	(* heuristics for selecting programs... *)
 	let cost = segs_to_cost segs in
@@ -622,20 +607,20 @@ let rec generate_random_logo lg id res =
 		let img, _ = Logo.segs_to_array_and_cost segs res in
 		{pid=id; pro; progenc; img; cost; segs}
 	) else ( 
-		generate_random_logo lg id res
+		generate_random_logo id res
 	)
 
-let generate_empty_logo lg id res =
+let generate_empty_logo id res =
 	(* the first program needs to be empty, for diffing *)
 	let pro = `Nop in
-	let progenc = Logo.encode_program pro |> intlist_to_string in
-	Printf.fprintf lg "empty program encoding: \"%s\"\n" progenc;
+	let progenc = Logo.encode_program_str pro in
+	Logs.debug(fun m -> m  "empty program encoding: \"%s\"\n" progenc);
 	let segs = [] in
 	let cost = 0.0 in
 	let img, _ = Logo.segs_to_array_and_cost segs res in
 	{pid=id; pro; progenc; img; cost; segs}
 
-let transmit_result channels data res = 
+(*let transmit_result channels data res = 
 	let sout, serr, _ic, lg = channels in
 	let stride = (Bigarray.Array1.dim data.img) / res in
 	let bf = Buffer.create 30 in
@@ -658,16 +643,14 @@ let transmit_result channels data res =
 	
 	write_protobuf sout Logo_pb.encode_logo_result r; 
 
-	if !g_logEn then (
-		Printf.fprintf lg "transmit_result %s\n" (Format.asprintf "%a" Logo_pp.pp_logo_result r);
-		print_log lg "transmit_result done\n"
-	); 
-	flush sout
+	Logs.debug (fun m -> m "transmit_result %s\n" (Format.asprintf "%a" Logo_pp.pp_logo_result r));
+	Logs.debug (fun m -> m "transmit_result done\n"); 
+	flush sout*)
 	
-let transmit_ack channels id = 
+(*let transmit_ack channels id = 
 	let sout, _serr, _ic, _lg = channels in
 	let r = Logo_types.({ going=true; ackid=id;}) in
-	write_protobuf sout Logo_pb.encode_logo_ack r
+	write_protobuf sout Logo_pb.encode_logo_ack r*)
 
 let render_simplest db dosort =
 	(* render the shortest 4*1024 programs in the database.*)
@@ -681,7 +664,7 @@ let render_simplest db dosort =
 		if la = lb then compare na nb else compare la lb ) dba; 
 		(* in-place sorting *)
 	let res = 48 in
-	let lg = open_out "/tmp/png/log.txt" in
+	let lg = open_out "/tmp/png/Logs.txt" in
 	for id = 0 to min (4*1024-1) (dbal-1) do (
 		let data = dba.(id) in
 		let (_,_,segs) = Logo.eval (Logo.start_state ()) data.pro in
@@ -697,7 +680,7 @@ let make_batch lg dba nbatch =
 	(* make a batch of pre, post, edits *)
 	(* image is saved in python, no need to duplicate *)
 	let ndba = min (Array.length dba) 1024 in (* FIXME 2048 *)
-	if !g_logEn then Printf.fprintf lg "entering make_batch, req %d of %d\n" nbatch ndba; 
+	Logs.debug(fun m -> m "entering make_batch, req %d of %d\n" nbatch ndba); 
 	(* sorting is done in render_simplest *)
 	let batch = ref [] in
 	while List.length !batch < nbatch do (
@@ -714,7 +697,7 @@ let make_batch lg dba nbatch =
 		if a_ns < 4 && b_ns < 4 && a_np < 16 && b_np < 16 then (
 			let dist,_ = Levenshtein.distance a.progenc b.progenc false in
 			if !g_logEn then
-			Printf.fprintf lg "trying [%d] [%d] for batch; dist %d\n" na nb dist;
+			Logs.debug(fun m -> m "trying [%d] [%d] for batch; dist %d\n" na nb dist);
 			if dist > 0 && dist < 16 then ( (* FIXME: dist < 7 *)
 				(* "move a , b ;" is 5 insertions; need to allow *)
 				let _, edits = Levenshtein.distance a.progenc b.progenc true in
@@ -731,8 +714,9 @@ let make_batch lg dba nbatch =
 				(* verify ..*)
 				let re = Levenshtein.apply_edits a.progenc edits in
 				if re <> b.progenc then (
-					Printf.fprintf lg "error! %s edits should be %s was %s\n"
-						a.progenc b.progenc re
+					Logs.err(fun m -> m  
+						"error! %s edits should be %s was %s\n"
+						a.progenc b.progenc re)
 				);
 				let a_progstr = Logo.output_program_pstr a.pro in
 				let b_progstr = Logo.output_program_pstr b.pro in
@@ -742,8 +726,8 @@ let make_batch lg dba nbatch =
 				let edits = List.rev edits in
 				batch := (a.pid, b.pid, a.progenc, b.progenc,
 					a_progstr, b_progstr, edits) :: !batch;
-				if !g_logEn then Printf.fprintf lg "adding [%d] %s [%d] %s to batch (unsorted pids: %d %d)\n"
-					na a.progenc nb b.progenc a.pid b.pid;
+				Logs.debug(fun m -> m "adding [%d] %s [%d] %s to batch (unsorted pids: %d %d)\n"
+					na a.progenc nb b.progenc a.pid b.pid);
 				(*Levenshtein.print_edits edits*)
 				(* ) *)
 			)
@@ -808,7 +792,8 @@ let init_batchd () =
 let rec new_batche dba = 
 	let ndba = min (Array.length dba) 1024 in (* FIXME 2048 *)
 	let nb = (Random.int (ndba-1)) + 1 in
-	let na = 0 in (* FIXME *)
+	let na = (Random.int (ndba-1)) + 1 in
+	(*let na = 0 in (* FIXME *)*)
 	(*let na = if (Random.int 10) = 0 then 0 else (Random.int nb) in*)
 	(* small portion of the time na is the empty program *)
 	let a = dba.(na) in
@@ -820,7 +805,8 @@ let rec new_batche dba =
 	if a_ns <= 4 && b_ns <= 4 && a_np < 16 && b_np < 16 then (
 		let dist,_ = Levenshtein.distance a.progenc b.progenc false in
 		if !g_logEn then
-		Printf.printf "trying [%d] [%d] for batch; dist %d\n" na nb dist;
+		Logs.debug(fun m -> m  
+			"trying [%d] [%d] for batch; dist %d\n" na nb dist);
 		if dist > 0 && dist < 16 then ( (* FIXME: dist < 7 *)
 			(* "move a , b ;" is 5 insertions; need to allow *)
 			let _, edits = Levenshtein.distance a.progenc b.progenc true in
@@ -828,15 +814,17 @@ let rec new_batche dba =
 			(* verify ..*)
 			let re = Levenshtein.apply_edits a.progenc edits in
 			if re <> b.progenc then (
-				Printf.printf "error! %s edits should be %s was %s\n"
-					a.progenc b.progenc re
+				Logs.err(fun m -> m  
+					"error! %s edits should be %s was %s\n"
+					a.progenc b.progenc re)
 			);
 			(* edits are applied in reverse, do it here not py *)
 			(* also add a 'done' edit/indicator *)
 			let edits = ("fin",0,'0') :: edits in
 			let edits = List.rev edits in
-			if !g_logEn then Printf.printf "adding [%d] %s [%d] %s to batch (unsorted pids: %d %d)\n"
-				na a.progenc nb b.progenc a.pid b.pid;
+			Logs.debug(fun m -> m 
+				"adding [%d] %s [%d] %s to batch (unsorted pids: %d %d)\n"
+				na a.progenc nb b.progenc a.pid b.pid);
 			let edited = Array.make p_ctx 0.0 in
 			{a_pid=na; b_pid=nb; 
 				a_progenc = a.progenc; 
@@ -906,8 +894,8 @@ let bigcopy_2to3off a b u off len =
 let bigfill_batchd dba bd = 
 	(* convert bea to the 3 mmaped bigarrays *)
 	(* first clear them *)
-	(*Bigarray.Array3.fill bd.bpro 0.0 ;*)
-	Bigarray.Array3.fill bd.bimg 0.0 ;
+	(*Bigarray.Array3.fill bd.bimg 0.0 ;*)
+	Bigarray.Array3.fill bd.bpro 0.0 ;
 	Bigarray.Array2.fill bd.bedt 0.0 ; 
 	(* fill one-hots *)
 	Array.iteri (fun u be -> 
@@ -916,17 +904,19 @@ let bigfill_batchd dba bd =
 	  (* - bpro - *)
 		let offs = Char.code '0' in
 		let l = String.length be.a_progenc in
-		if l > 16 then Printf.printf "too long:%s" be.a_progenc ; 
+		if l > 16 then 
+			Logs.err(fun m -> m  "too long:%s" be.a_progenc); 
 		String.iteri (fun i c -> 
 			let j = (Char.code c) - offs in
 			bd.bpro.{u,i,j} <- 1.0 ) be.a_progenc ; 
 		let lc = String.length be.c_progenc in
-		if lc > 16 then Printf.printf "too long:%s" be.a_progenc ; 
+		if lc > 16 then 
+			Logs.err(fun m -> m  "too long:%s" be.c_progenc); 
 		String.iteri (fun i c -> 
 			let j = (Char.code c) - offs in
 			bd.bpro.{u,i+l,j} <- 1.0; 
 			(* inidicate this is c, to be edited *)
-			bd.bpro.{u,i+l,toklen-1} <- 1.0 ) be.a_progenc ;
+			bd.bpro.{u,i+l,toklen-1} <- 1.0 ) be.c_progenc ;
 		(* copy over the edited tags (set in apply_edits) *)
 		for i = 0 to p_ctx-1 do (
 			bd.bpro.{u,i,toklen} <- be.edited.(i)
@@ -945,10 +935,11 @@ let bigfill_batchd dba bd =
 	  (* - bimg - *)
 		if bd.fresh.(u) then (
 			(* could do this with blit, but need int -> float conv *)
+			let stride = (Bigarray.Array1.dim a.img) / image_res in
 			for i=0 to (image_res-1) do (
 				for j=0 to (image_res-1) do (
-					let aif = a.img.{i*image_res+j} |> foi in
-					let bif = b.img.{i*image_res+j} |> foi in
+					let aif = a.img.{i*stride+j} |> foi in
+					let bif = b.img.{i*stride+j} |> foi in
 					bd.bimg.{3*u+0,i,j} <- aif; 
 					bd.bimg.{3*u+1,i,j} <- bif;
 					bd.bimg.{3*u+2,i,j} <- aif -. bif;
@@ -957,7 +948,8 @@ let bigfill_batchd dba bd =
 			bd.fresh.(u) <- false
 		); 
 	  (* - bedt - *)
-		if (List.length be.edits) < 1 then Printf.printf "zero-length edit list, should not happen!\n"; 
+		if (List.length be.edits) < 1 then 
+			Logs.err(fun m -> m "zero-length edit list, should not happen!\n"); 
 		let (typ,pp,c) = List.hd be.edits in
 		(match typ with
 		| "sub" -> bd.bedt.{u,0} <- 1.0
@@ -1022,39 +1014,38 @@ let dbf_dist _device dbf img =
 	let dist = Tensor.get d mindex |> Tensor.float_value in
 	dist,mindex
 	
-let init_database channels device db (dbf : Tensor.t) = 
+let init_database device db (dbf : Tensor.t) = 
 	(* generate the initial program, image pairs *)
-	let sout, _serr, _ic, lg = channels in
-	Printf.fprintf sout "init_database %d\n" image_count; 
+	Logs.info(fun m -> m  "init_database %d\n" image_count); 
 	let i = ref 0 in
 	let iters = ref 0 in
 	let replace = ref 0 in
 	while !i < image_count do (
 		let data = if !i = 0 then
-			generate_empty_logo lg !i image_res else
-			generate_random_logo lg !i image_res in
+			generate_empty_logo !i image_res else
+			generate_random_logo !i image_res in
 		let img = bigarray_img2tensor data.img device in
 		let dist,mindex = dbf_dist device dbf img in
 		if dist > 5. then (
-			Printf.fprintf sout "%d: adding [%d] = %s \n" !iters !i 
-				(Logo.output_program_pstr data.pro) ; 
+			Logs.debug(fun m -> m 
+				"%d: adding [%d] = %s \n" !iters !i 
+				(Logo.output_program_pstr data.pro) ); 
 			Vector.push db data; 
 			Tensor.copy_ (Tensor.narrow dbf ~dim:0 ~start:!i ~length:1) ~src:img;
 			incr i;
-			flush sout
 		) else (
 			(* see if there's a replacement *)
 			let data2 = Vector.get db mindex in
 			let c1 = progenc_cost data.progenc in
 			let c2 = progenc_cost data2.progenc in
 			if c1 < c2 then (
-				Printf.fprintf sout "%d: replacing [%d] = %s ( was %s)\n" !iters mindex 
+				Logs.debug(fun m -> m 
+					"%d: replacing [%d] = %s ( was %s)\n" !iters mindex 
 					(Logo.output_program_pstr data.pro) 
-					(Logo.output_program_pstr data2.pro);
+					(Logo.output_program_pstr data2.pro));
 				Vector.set db mindex data;
 				Tensor.copy_ (Tensor.narrow dbf ~dim:0 ~start:mindex ~length:1) ~src:img;
 				incr replace; 
-				flush sout
 			)
 		); 
 		if !iters mod 40 = 39 then 
@@ -1062,7 +1053,7 @@ let init_database channels device db (dbf : Tensor.t) =
 			Caml.Gc.major (); 
 		incr iters
 	) done; 
-	Printf.fprintf sout "%d done; %d sampled; %d replacements\n" !i !iters !replace
+	Logs.info(fun m -> m  "%d done; %d sampled; %d replacements\n" !i !iters !replace)
 	
 let save_database db = 
 	let fil = open_out "db_prog.txt" in
@@ -1071,25 +1062,25 @@ let save_database db =
 		let pstr = Logo.output_program_pstr d.pro in
 		Printf.fprintf fil "[%d] %s\n"  i pstr ) db ; 
 	close_out fil; 
-	Printf.printf "saved %d to db_prog.txt\n" image_count; 
+	Logs.app(fun m -> m  "saved %d to db_prog.txt\n" image_count); 
 	
+	(* verification ..*)
 	let fil = open_out "db_prog_v.txt" in
 	Printf.fprintf fil "%d\n" image_count; 
 	Vector.iteri (fun i d -> 
 		Printf.fprintf fil "\n[%d]\t" i ; 
-		Logo.output_program_h fil d.pro) db ; 
+		Logo.output_program_h d.pro fil) db ; 
 	close_out fil; 
-	Printf.printf "saved %d to db_prog_v.txt\n" image_count
+	Logs.debug(fun m -> m  "saved %d to db_prog_v.txt\n" image_count)
 	
-let load_database channels device db dbf = 
-	let sout, serr, _ic, lg = channels in
+let load_database device db dbf = 
 	let lines = read_lines "db_prog.txt" in
 	let a,progs = match lines with
 		| h::r -> h,r
 		| [] -> "0",[] in
 	let ai = int_of_string a in
 	if ai <> image_count then (
-		Printf.fprintf sout "image_count mismatch, %d != %d\n" ai image_count; 
+		Logs.err(fun m -> m "image_count mismatch, %d != %d\n" ai image_count); 
 		false
 	) else (
 		List.iter (fun s -> 
@@ -1101,10 +1092,10 @@ let load_database channels device db dbf =
 			let pid = int_of_string ids in
 			let pr = if pid = 0 || (List.length ps) < 1
 				then Some `Nop
-				else parse_logo_string lg serr (List.hd ps) in
+				else parse_logo_string (List.hd ps) in
 			(match pr with 
 			| Some pro -> 
-				let progenc = Logo.encode_program pro |> intlist_to_string in
+				let progenc = Logo.encode_program_str pro in
 				let (_,_,segs) = Logo.eval (Logo.start_state ()) pro in
 				let cost = segs_to_cost segs in
 				let img,_ = Logo.segs_to_array_and_cost segs image_res in
@@ -1112,15 +1103,14 @@ let load_database channels device db dbf =
 				Vector.push db data ; 
 				let imgf = bigarray_img2tensor data.img device in
 				Tensor.copy_ (Tensor.narrow dbf ~dim:0 ~start:pid ~length:1) ~src:imgf;
-			| _ -> Printf.fprintf sout 
-					"could not parse program %d %s\n" pid s )
+			| _ -> Logs.err(fun m -> m 
+					"could not parse program %d %s\n" pid s ))
 			) progs; 
 		true
 	)
 	
-let rec loop_random channels cnt db dba = 
+(*let rec loop_random cnt db dba = 
 	if cnt > (100 * 20000) then () else (
-	let sout, _serr, ic, lg = channels in
 	if !g_logEn then ( print_log lg "`" );
 	let lp = read_protobuf lg ic Logo_pb.decode_logo_request in
 	let dba2 = match lp with 
@@ -1160,19 +1150,19 @@ let rec loop_random channels cnt db dba =
 				if lp2.keep then (
 					let data2 = {data with pid=lp2.where } in
 					if lp2.where = Vector.length db then (
-						if !g_logEn then Printf.fprintf lg "db saving %d push\n" lp2.where; 
+						Logs.debug (fun m -> m "db saving %d push\n" lp2.where); 
 						Vector.push db data2
 					) else (
-						if !g_logEn then Printf.fprintf lg "db saving %d set\n" lp2.where; 
+						Logs.debug (fun m -> m "db saving %d set\n" lp2.where); 
 						Vector.set db lp2.where data2
 					)
 				); 
 				let dba3 = if lp2.render_simplest then (
-					Printf.fprintf lg "render_simplest: first 10 programs\n";
+					Logs.debug (fun m -> m "render_simplest: first 10 programs\n");
 					for i = 0 to 9 do (
 						let p = Vector.get db i in
-						Printf.fprintf lg "%d: %s\n" i
-								(Logo.output_program_pstr p.pro); 
+						Logs.debug (fun m -> m "%d: %s\n" i
+								(Logo.output_program_pstr p.pro)); 
 					) done; 
 					render_simplest db true 
 				) else dba in
@@ -1182,14 +1172,14 @@ let rec loop_random channels cnt db dba =
 		) )
 	| _ -> dba in
 	loop_random channels (cnt+1) db dba2
-	)
-
+	)*)
+	
 (*
 let () = 
 	Unix.clear_nonblock stdin; 
 	(*run_logo_file lg sout serr "semicircle.logo" ;*)
 	Random.self_init (); 
-	let lg = open_out "logo_log.txt" in
+	let lg = open_out "logo_Logs.txt" in
 	let sout = out_channel_of_descr stdout in
 	let serr = out_channel_of_descr stderr in 
 	run_logo_file lg sout serr "badvar.logo" ;
@@ -1201,7 +1191,7 @@ let () =
 let () = 
 	(* this for checking program encoding & decoding *)
 	Unix.clear_nonblock stdin; 
-	let lg = open_out "logo_log.txt" in
+	let lg = open_out "logo_Logs.txt" in
 	let serr = out_channel_of_descr stderr in
 	let sout = out_channel_of_descr stdout in 
 	let g = parse_logo_file lg serr "semicircle.logo" in
@@ -1229,7 +1219,7 @@ let () =
 	(* this tests change_ast *)
 	Unix.clear_nonblock stdin; (* this might not be needed *)
 	Random.self_init (); 
-	let lg = open_out "logo_log.txt" in
+	let lg = open_out "logo_Logs.txt" in
 	(*let ic = in_channel_of_descr stdin in*)
 	(*let sout = out_channel_of_descr stdout in*)
 	let serr = out_channel_of_descr stderr in 
@@ -1258,60 +1248,105 @@ let epochs = 10000
 let learning_rate = 1e-3
 
 let test_torch () =
-  Stdio.printf "cuda available: %b\n%!" (Cuda.is_available ());
-  Stdio.printf "cudnn available: %b\n%!" (Cuda.cudnn_is_available ());
-  let device = Torch.Device.cuda_if_available () in
-  let mnist = Mnist_helper.read_files () in
-  let { Dataset_helper.train_images; train_labels; _ } = mnist in
-  let vs = Var_store.create ~name:"nn" ~device () in
-  let linear1 =
-    Layer.linear vs hidden_nodes ~activation:Relu ~input_dim:Mnist_helper.image_dim
-  in
-  let linear2 = Layer.linear vs Mnist_helper.label_count ~input_dim:hidden_nodes in
-  let adam = Optimizer.adam vs ~learning_rate ~weight_decay:5e-5 in
-  let model xs =
-    Layer.forward linear1 xs
-    |> Layer.forward linear2 in
-  let img = train_images |> Torch.Tensor.to_device ~device in
-  let lab = train_labels |> Torch.Tensor.to_device ~device in
-  for index = 1 to epochs do
-    (* Compute the cross-entropy loss. *)
-    let loss =
-      Tensor.cross_entropy_for_logits (model img) ~targets:lab
-    in
-    Optimizer.backward_step adam ~loss;
-    if index mod 50 = 0
-    then (
-      (* Compute the validation error. *)
-      let test_accuracy =
-        Dataset_helper.batch_accuracy ~device mnist `test ~batch_size:1000 ~predict:model
-      in
-      Stdio.printf
-        "%d %f %.2f%%\n%!"
-        index
-        (Tensor.float_value loss)
-        (100. *. test_accuracy));
-    Caml.Gc.full_major ()
-  done
+	Stdio.printf "cuda available: %b\n%!" (Cuda.is_available ());
+	Stdio.printf "cudnn available: %b\n%!" (Cuda.cudnn_is_available ());
+	let device = Torch.Device.cuda_if_available () in
+	let mnist = Mnist_helper.read_files () in
+	let { Dataset_helper.train_images; train_labels; _ } = mnist in
+	let vs = Var_store.create ~name:"nn" ~device () in
+	let linear1 =
+		Layer.linear vs hidden_nodes ~activation:Relu ~input_dim:Mnist_helper.image_dim
+	in
+	let linear2 = Layer.linear vs Mnist_helper.label_count ~input_dim:hidden_nodes in
+	let adam = Optimizer.adam vs ~learning_rate ~weight_decay:5e-5 in
+	let model xs =
+		Layer.forward linear1 xs
+		|> Layer.forward linear2 in
+	let img = train_images |> Torch.Tensor.to_device ~device in
+	let lab = train_labels |> Torch.Tensor.to_device ~device in
+	for index = 1 to epochs do
+		(* Compute the cross-entropy loss. *)
+		let loss =
+			Tensor.cross_entropy_for_logits (model img) ~targets:lab
+		in
+		Optimizer.backward_step adam ~loss;
+		if index mod 50 = 0
+		then (
+			(* Compute the validation error. *)
+			let test_accuracy =
+			Dataset_helper.batch_accuracy ~device mnist `test ~batch_size:1000 ~predict:model
+			in
+			Stdio.printf
+			"%d %f %.2f%%\n%!"
+			index
+			(Tensor.float_value loss)
+			(100. *. test_accuracy));
+		Caml.Gc.full_major ()
+	done
+	
+let handle_message dba bd msg =
+	match msg with
+	| "update_batch" -> ( 
+		(* sent when python has a copy*)
+		let bd = update_bea dba bd in
+		bigfill_batchd dba bd; 
+		Logs.debug(fun m -> m "new batch"); 
+		bd,"ok"
+		)
+	| _ -> bd,"Unknown command"
+
+let rec handle_connection dba bd fdlist ic oc () =
+	(* init batch datastructures *)
+	Lwt_io.read_line_opt ic >>=
+	(fun msg ->
+		match msg with
+		| Some msg -> (
+			let bd,reply = handle_message dba bd msg in
+			Lwt_io.write_line oc reply 
+			>>= handle_connection dba bd fdlist ic oc )
+		| None -> (
+			List.iter (fun fd -> Unix.close fd) fdlist; 
+			Logs_lwt.info (fun m -> m "Connection closed")
+			>>= return) )
+	
+let accept_connection dba conn =
+	let fd, _ = conn in
+	let ic = Lwt_io.of_fd ~mode:Lwt_io.Input fd  in
+	let oc = Lwt_io.of_fd ~mode:Lwt_io.Output fd in
+	let bd,fdlist = init_batchd () in
+	let bd = update_bea dba bd in
+	bigfill_batchd dba bd ; 
+	Lwt.on_failure (handle_connection dba bd fdlist ic oc ()) 
+		(fun e -> Logs.err (fun m -> m "%s" (Printexc.to_string e) ));
+	Logs_lwt.info (fun m -> m "New connection") 
+	>>= return
+	
+let create_socket () =
+	let open Lwt_unix in
+	let sock = socket PF_INET SOCK_STREAM 0 in
+	let adr = ADDR_INET(listen_address, port) in
+	Lwt.async( fun () -> bind sock adr );
+	listen sock backlog;
+	sock
+
+let create_server dba sock =
+	let rec serve () =
+		Lwt_unix.accept sock >>= accept_connection dba >>= serve
+	in serve
 
 let () = 
-	Unix.clear_nonblock stdin; 
 	Random.self_init (); 
+	let () = Logs.set_reporter (Logs.format_reporter ()) in
+	let () = Logs.set_level (Some Logs.Debug) in
 
-	let lg = open_out "logo_log.txt" in
-	let ic = in_channel_of_descr stdin in
-	let sout = out_channel_of_descr stdout in
-	let serr = out_channel_of_descr stderr in 
-	let channels = (sout, serr, ic, lg) in
-	Printf.fprintf lg "hello\n";
-	
-	
-	let db = Vector.create ~dummy:nulpdata in
-	
-	Printf.printf "cuda available: %b\n%!" (Cuda.is_available ());
-	Printf.printf "cudnn available: %b\n%!" (Cuda.cudnn_is_available ());
+	Logs.app(fun m -> m "hello\n");
+	Logs.info(fun m -> m "cuda available: %b\n%!" 
+				(Cuda.is_available ()));
+	Logs.info(fun m -> m "cudnn available: %b\n%!"
+				(Cuda.cudnn_is_available ()));
 	let device = Torch.Device.cuda_if_available () in
 	(*let device = Torch.Device.Cpu in*) (* slower *)
+	let db = Vector.create ~dummy:nulpdata in
 	let dbf = Tensor.( 
 		( ones [image_count; image_res; image_res] ) * (f (-1.0))) 
 		|> Tensor.to_device ~device in
@@ -1332,36 +1367,37 @@ let () =
 	Printf.fprintf sout "100k dbf_dist w real images: %fs\n%!" (stop -. start); 
 	flush sout; *)
 	let g = if Sys.file_exists "db_prog.txt" 
-		then load_database channels device db dbf 
+		then load_database device db dbf 
 		else false in
 	if g then (
-		Printf.fprintf sout "Loaded %d programs from db_prog.txt\n" image_count; 
-		flush sout
+		Logs.app(fun m -> m "Loaded %d programs from db_prog.txt\n" image_count); 
 	) else (
+		Logs.app(fun m -> m "Generating %d programs" image_count);
 		let start = Unix.gettimeofday () in
-		init_database channels device db dbf;
+		init_database device db dbf;
 		let stop = Unix.gettimeofday () in
-		Printf.printf "Execution time: %fs\n%!" (stop -. start); 
+		Logs.app(fun m -> m "Execution time: %fs\n%!" (stop -. start)); 
 	
-		Printf.fprintf lg "render_simplest: first 10 programs\n";
+		Logs.info(fun m -> m "render_simplest: first 10 programs\n");
 		for i = 0 to 9 do (
 			let p = Vector.get db i in
-			Printf.fprintf lg "%d: %s\n" i
-					(Logo.output_program_pstr p.pro); 
+			Logs.info(fun m -> m "%d: %s\n" i
+					(Logo.output_program_pstr p.pro)); 
 		) done; 
 		save_database db ; 
 	); 
 	let dba = render_simplest db true in
 	
-	let bd,fdlist = init_batchd () in
+	(*let bd,fdlist = init_batchd () in
 	let bd = update_bea dba bd in
 	bigfill_batchd dba bd ; 
+	update_bea dba bd 
 	(* check on the python side! *)
+	List.iter (fun fd -> Unix.close fd) fdlist; *)
 	
-	List.iter (fun fd -> Unix.close fd) fdlist; 
-	close_out sout; 
-	close_out serr;
-	close_out lg
+	let sock = create_socket () in
+	let serve = create_server dba sock in
+	Lwt_main.run @@ serve ()
 
 (*
 let image_dist dbf img = 
@@ -1400,7 +1436,7 @@ let () =
 	Unix.clear_nonblock stdin; 
 	Random.self_init (); 
 
-	let lg = open_out "logo_log.txt" in
+	let lg = open_out "logo_Logs.txt" in
 	let ic = in_channel_of_descr stdin in
 	let sout = out_channel_of_descr stdout in
 	let serr = out_channel_of_descr stderr in 

@@ -173,7 +173,7 @@ let string_to_intlist e =
 	
 let output_program_p bf g = (* p is for parseable *)
 	let gl = encode_program g in (* compressed encoding *)
-	let s = decode_program gl in
+	let s = decode_program gl in (* to minimize duplication *)
 	Printf.bprintf bf "%s" s
 	
 let output_program_pstr g = 
@@ -183,39 +183,42 @@ let output_program_pstr g =
 
 let output_program_plg lg g = 
 	Printf.fprintf lg "%s" (output_program_pstr g;)
+	
+let encode_program_str g = 
+	encode_program g |> intlist_to_string
 
-let rec output_program_h lg g =
+let rec output_program_h g lg =
 	match g with
 	| `Var(i,w) -> Printf.fprintf lg "Var %d " i; pmark lg w
 	| `Save(i,a,w) -> Printf.fprintf lg "Save %d " i; pmark lg w; 
-			output_program_h lg a
+			output_program_h a lg
 	| `Move(a,b,w) -> Printf.fprintf lg "Move "; pmark lg w;
-			output_program_h lg a; 
+			output_program_h a lg; 
 			Printf.fprintf lg ", " ; 
-			output_program_h lg b
+			output_program_h b lg
 	| `Binop(a,s,_,b,w) -> Printf.fprintf lg "Binop "; pmark lg w;
-			output_program_h lg a; 
+			output_program_h a lg; 
 			Printf.fprintf lg " %s " s; 
-			output_program_h lg b
+			output_program_h b lg
 	| `Const(i,w) -> Printf.fprintf lg "Const %f " i; pmark lg w
 	| `Seq(l,w) -> (
 		Printf.fprintf lg "Seq "; pmark lg w; 
 		output_list_h lg l "; " )
 	| `Loop(i,a,b,w) -> Printf.fprintf lg "Loop [%d] " i; pmark lg w;
-			output_program_h lg a; 
+			output_program_h a lg; 
 			Printf.fprintf lg ", " ; 
-			output_program_h lg b
+			output_program_h b lg
 	| `Call(i, l,w) -> Printf.fprintf lg "Call %d " i; pmark lg w;
 		output_list_h lg l ", "
 	| `Def(i,a,w) -> Printf.fprintf lg "Def %d " i; pmark lg w;
-		output_program_h lg a
+		output_program_h a lg
 	| `Nop -> Printf.fprintf lg "Nop "
 	
 and output_list_h lg l sep =
 	Printf.fprintf lg "("; 
 	List.iteri ~f:(fun i v -> 
 		if i > 0 then Printf.fprintf lg "%s" sep ;
-		output_program_h lg v) l ; 
+		output_program_h v lg) l ; 
 	Printf.fprintf lg ")"
 	
 and output_list_p bf l sep =
@@ -239,11 +242,16 @@ let defs = Array.create ~len:10 `Nop
 
 type segment = float*float*float*float
 
-let output_segments lg seglist = 
+let output_segments bf seglist = 
 	List.iteri ~f:(fun i (x1,y1,x2,y2) -> 
-		Printf.fprintf lg 
+		Printf.bprintf bf 
 			"%d %f,%f %f,%f\n" 
 			i x1 y1 x2 y2) seglist
+			
+let output_segments_str seglist = 
+	let bf = Buffer.create 64 in
+	output_segments bf seglist; 
+	(Buffer.contents bf)
 
 let start_state () = 
 	{x=0.0; y=0.0; t=0.0; p=true; r=0;
