@@ -1,0 +1,5 @@
+(executable
+	(name net)
+	(modules net)
+	(libraries unix lwt lwt.unix logs logs.lwt)
+	)
