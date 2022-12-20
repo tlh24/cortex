@@ -790,7 +790,7 @@ let init_batchd () =
 	[fd_bpro; fd_bimg; fd_bedt; fd_posenc]
 	
 let rec new_batche dba = 
-	let ndba = min (Array.length dba) 1024 in (* FIXME 2048 *)
+	let ndba = min (Array.length dba) 1024 in (* FIXME *)
 	let nb = (Random.int (ndba-1)) + 1 in
 	(*let na = (Random.int (ndba-1)) + 1 in*)
 	let na = 0 in (* FIXME *)
@@ -807,7 +807,7 @@ let rec new_batche dba =
 		if !g_logEn then
 		Logs.debug(fun m -> m  
 			"trying [%d] [%d] for batch; dist %d" na nb dist);
-		if dist > 0 && dist < 16 then ( (* FIXME: dist < 7 *)
+		if dist > 0 && dist < 8 then ( (* FIXME: dist < 7 *)
 			(* "move a , b ;" is 5 insertions; need to allow *)
 			let _, edits = Levenshtein.distance a.progenc b.progenc true in
 			let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
@@ -1346,7 +1346,8 @@ let create_server dba sock =
 let () = 
 	Random.self_init (); 
 	let () = Logs.set_reporter (Logs.format_reporter ()) in
-	let () = Logs.set_level (Some Logs.Debug) in
+	let () = Logs.set_level (Some Logs.Info) in
+	(* App, Error, Warning, Info, Debug *)
 
 	Logs.app(fun m -> m "hello");
 	Logs.info(fun m -> m "cuda available: %b%!" 
