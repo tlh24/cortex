@@ -1,3 +1,4 @@
+import math
 import mmap
 import torch as th
 from torch import nn, optim
@@ -16,11 +17,11 @@ toklen = 30
 poslen = 6
 p_indim = toklen + 1 + poslen*2 
 e_indim = 5 + toklen + poslen*2
-p_ctx = 36
+p_ctx = 64
 
 patch_size = 5
 v_ctx = int((image_res / patch_size) ** 2 + 1)
-batch_size = 24
+batch_size = 128
 vision_width = 256
 prog_width = 128
 vision_heads = 8
@@ -29,7 +30,7 @@ prog_heads = 8
 prog_layers = 6
 embed_dim = 256
 
-train_iters = 10000
+train_iters = 100000
 learning_rate = 0.0005 # *starting* learning rate. scheduled.
 weight_decay = 5e-6
 

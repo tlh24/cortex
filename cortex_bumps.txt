@@ -3218,3 +3218,10 @@ So, ocaml is still faster, even when also generating the program + image pairs
 December 15 2022
 Seems like there is some corruption in bimg.  Hmm. 
 Igored the stride, whoops. 
+
+December 19 2022
+It's training to convergence with the new architectcure!  Yay!
+Observation: if you only ask the transformer to learn / remember small segments of space (for example, by limiting the total number of edits, or limiting the edit type to only be insert) then the model can learn the mapping very quickly, on the order of thousands of iterations for thousands of items to be memorized (albeit with a substantial batch size -- but still, this almost comes for free with GPUs!)
+So, I don't think the overall efficiency of transformers is per se extremely low, might be for carefully curated data near the 1/batch_size; or you need to visit every datapoint 20-100 times. 
+Not as good as humans, but not really that bad. 
+(Visiting the datapoint is not the same as gathering the datapoint, of course.  Also, the diff op is effectively a data augmentation, though probably a confusing one. )

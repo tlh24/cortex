@@ -61,12 +61,12 @@ type batchd =
 let pi = 3.1415926
 let image_count = 6*2048 
 let image_res = 30
-let batch_size = 24
+let batch_size = 128
 let toklen = 30
 let poslen = 6
 let p_indim = toklen + 1 + poslen*2 (* 31 + 12 = 43 *)
 let e_indim = 5 + toklen + poslen*2
-let p_ctx = 36
+let p_ctx = 64
 let g_logEn = ref true (* yes global but ... *)
 
 let listen_address = Unix.inet_addr_loopback
@@ -790,10 +790,10 @@ let init_batchd () =
 	[fd_bpro; fd_bimg; fd_bedt; fd_posenc]
 	
 let rec new_batche dba = 
-	let ndba = min (Array.length dba) 1024 in (* FIXME *)
+	let ndba = min (Array.length dba) (1024*8) in (* FIXME *)
 	let nb = (Random.int (ndba-1)) + 1 in
-	(*let na = (Random.int (ndba-1)) + 1 in*)
-	let na = 0 in (* FIXME *)
+	let na = (Random.int (ndba-1)) + 1 in
+	(*let na = 0 in (* FIXME *) *)
 	(*let na = if (Random.int 10) = 0 then 0 else (Random.int nb) in*)
 	(* small portion of the time na is the empty program *)
 	let a = dba.(na) in
@@ -913,13 +913,13 @@ let bigfill_batchd dba bd =
 	  (* - bpro - *)
 		let offs = Char.code '0' in
 		let l = String.length be.a_progenc in
-		if l > 16 then 
+		if l > ((p_ctx/2)-2) then 
 			Logs.err(fun m -> m  "too long:%s" be.a_progenc); 
 		String.iteri (fun i c -> 
 			let j = (Char.code c) - offs in
 			bd.bpro.{u,i,j} <- 1.0 ) be.a_progenc ; 
 		let lc = String.length be.c_progenc in
-		if lc > 16 then 
+		if lc > ((p_ctx/2)-2) then 
 			Logs.err(fun m -> m  "too long:%s" be.c_progenc); 
 		String.iteri (fun i c -> 
 			let j = (Char.code c) - offs in
