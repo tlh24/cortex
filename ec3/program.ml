@@ -792,8 +792,8 @@ let init_batchd () =
 let rec new_batche dba = 
 	let ndba = min (Array.length dba) 1024 in (* FIXME 2048 *)
 	let nb = (Random.int (ndba-1)) + 1 in
-	let na = (Random.int (ndba-1)) + 1 in
-	(*let na = 0 in (* FIXME *)*)
+	(*let na = (Random.int (ndba-1)) + 1 in*)
+	let na = 0 in (* FIXME *)
 	(*let na = if (Random.int 10) = 0 then 0 else (Random.int nb) in*)
 	(* small portion of the time na is the empty program *)
 	let a = dba.(na) in
@@ -842,7 +842,8 @@ let apply_edits be =
 	(* in-place modify the 'edited' array, too *)
 	let la = String.length be.a_progenc in
 	let lc = String.length be.c_progenc in
-	let typ,pp,_chr = ed in (* chr already used above *)
+	let typ,pp,chr = ed in (* chr already used above *)
+	Logs.debug (fun m -> m "apply_edits %s %d %c" typ pp chr );
 	(match typ with 
 	| "sub" -> (
 		let pp = if pp > lc-1 then lc-1 else pp in
@@ -871,12 +872,19 @@ let apply_edits be =
 	
 let update_bea dba bd = 
 	(* iterate over batchd struct, make new program pairs when edits are empty *)
+	Logs.debug (fun m -> m "entering update_bea");
+	(* need to run through twice, first to apply the edits, second to replace the finished elements. *)
 	let bea2 = Array.mapi (fun i be -> 
+		if List.length be.edits > 0 then (
+			bd.fresh.(i) <- false; 
+			apply_edits be 
+		) else be ) bd.bea in
+	let bea3 = Array.mapi (fun i be -> 
 		if List.length be.edits = 0 then (
 			bd.fresh.(i) <- true; 
 			new_batche dba 
-		) else apply_edits be ) bd.bea in
-	{bd with bea=bea2}
+		) else be ) bea2 in
+	{bd with bea=bea3}
 	
 (*let bigcopy_2to3 a b u = 
 	(* equivalent of a[u,:,:] = b *)
@@ -895,6 +903,7 @@ let bigfill_batchd dba bd =
 	(* convert bea to the 3 mmaped bigarrays *)
 	(* first clear them *)
 	(*Bigarray.Array3.fill bd.bimg 0.0 ;*)
+	Logs.debug (fun m -> m "entering bigfill_batchd"); 
 	Bigarray.Array3.fill bd.bpro 0.0 ;
 	Bigarray.Array2.fill bd.bedt 0.0 ; 
 	(* fill one-hots *)
