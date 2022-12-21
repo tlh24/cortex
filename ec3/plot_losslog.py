@@ -14,7 +14,7 @@ fig, ax = plt.subplots(plot_rows, plot_cols, figsize=figsize)
 initialized = False
 
 while True: 
-	with open("losslog.txt", 'r') as x:
+	with open("loss_log.txt", 'r') as x:
 		data = list(csv.reader(x, delimiter="\t"))
 
 	data = np.array(data)

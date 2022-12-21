@@ -498,6 +498,32 @@ Maybe need separate noise on the forward and reverse passes?
 ..
 At least I've improved the plotting. 
 
+April 3 2022
+
+Hey Luke, 
+
+hope things are going well ...  How are the projects / how is google brain?  Any brilliant new ideas?  hah... I’m at the CSHL NAISys conference this week, will let you know what I learn.  
+
+As mentioned, been attempting to get a tech demo together.  Would like that to happen before the VC liquidity starts to ... dry out?  Solidify?  Inflate away?  Hoping to make a deck in the next ~ 2 months.  The position at Loyal is temporary, anyway.   Where do you want to be in this -- want to be in from the beginning, or later assuming that money is raised?  What might it take to have you leave the near infinite resources of goog?  Open to suggestions ... we probably should do a zoom to figure these things out.  Wanted to (re-) broach the subject though. 
+
+This past week spoke with a friend, Michael Mager, who is the CEO of Precision Neuro.  I’m a consultant and on the SAB for them, and Michael has been helpful in thinking about Springtail.  Very obviously yet very importantly he keeps emphasizing that we need to find a business use case.  The market can be small, preferably is under-served, and is without an excess of incumbents.  I like your idea of an automatic sysadmin bot, no idea if there are companies in that space... or really how hard it might be to make it.  Likewise for “NeRF the world” idea (though preferably it would be in a nanite representation.. ;-) Are there good underserved markets for inverse graphics?  My naive default is “we’re going to make models so powerful that it will be useful for a great many things” might not make money fly out of VC’s pockets, alas.  Good for academia, though. 
+
+Also been wondering: we’re both researchers.  (among many other things).  How do you scale research?  Distribute it organize it, encourage it if not manage it?  It’s a very slippery subject that leaves me wondering if i should be joining Goog brain instead!  
+
+Now, more technically: I’ve been trying to demonstrate a disentangling, factorizing network in a very small toy example (1 layer, 8 different overlapping symbols).  It is unsurprisingly hard to do with just feedback signals and local plasticity.  I think the problem is equivalent to finding an address space (as in computer addressing) over the input space, where here address bits are taken from nonlinear (quadratic and cubic) functions at synapses, e.g. nonlinear dendrites, consistent with biology.  Presently it works with annealing (decreasing the noise temperature), but that just suggests to me that the solution doesn’t have reliable convergence properties.  There is probably something going on with synapses at inhibitory interneurons, as well as credit-assignment via dendrtic spikes; or it’s likely that sensory-motor interaction is necessary to determine the hidden factors of variation.  The only thing I can think of is to keep grinding and experimenting.  
+
+To reiterate a bit, I know we’ve talked about this -- the long-term vision is very much a mirroring and automation of exactly what we do above when we bootstrap and experiment: try a bunch of things out, learn both what works and doesn’t (as in RL) but more importantly learn input-output mappings and factors of invariance / equivariance / noise variance.  Use that to compress, explain, and make the world memory-invertible; then do means-ends reasoning, A* search, reprojection of goals etc to make new progress.  Of course, our evaluator is meta-circular, so the process is applied to the process itself to allow exit from repetitive search patterns.  (Ahem solve this and you solve consciousness; suspect that it requires a deliberate removal of the memory address-memory content dichotomy.  But these are muddy thoughts i had more clearly on a hike a month and a half ago...)
+
+As usual, the more structure I add, the slower everything runs!  Really need to switch over to JAX, maybe I’ll do that this week based on the meta-learning experiments we’ve done earlier.  Would love to do some sort of code sprint on this.  Also more than happy to help out with your ideas; maybe the rewrite in jax can be good practice for reciprocation.  
+
+Maybe catch up next week after the conference?  
+
+Cheers, 
+Tim
+
+PS. LiAn designed a logo!  see springtail.ai  and novaly.ai (hedging bets here in case people have an aversion to springtails.  Novaly =~ Noe Valley :-))
+
+
 April 13 2022
 
 Back from CSHL NAISys -- mostly finished intake of references from all the talks.  Trying desperately to synthesize all the data presented; quite a wide variety of studies to build upon (and plenty that might be pure distractors..). 
@@ -3225,3 +3251,28 @@ Observation: if you only ask the transformer to learn / remember small segments 
 So, I don't think the overall efficiency of transformers is per se extremely low, might be for carefully curated data near the 1/batch_size; or you need to visit every datapoint 20-100 times. 
 Not as good as humans, but not really that bad. 
 (Visiting the datapoint is not the same as gathering the datapoint, of course.  Also, the diff op is effectively a data augmentation, though probably a confusing one. )
+
+December 20 2022
+It converges! See:  
+screenshots/20221220_ViT-prt-diffsize8_dbsize8k_convergence.png
+This was with a database of 8*1024 (of 12 * 1024), program A and program B selected randomly from therein, with edit distance < 8 and > 0, num segments <= 4 and program length <= 16 for both A and B.  
+Other parameters: 
+	let image_count = 6*2048 
+	let image_res = 30
+	let batch_size = 128
+	let toklen = 30
+	let poslen = 6
+	let p_indim = toklen + 1 + poslen*2 (* 31 + 12 = 43 *)
+	let e_indim = 5 + toklen + poslen*2
+	let p_ctx = 64
+
+	JUst turned on torch DataParallel -- the lights in the room flicker a little bit, but training throughput went from 2400 samples/sec on the 3090 to ~ 4100 samp/sec. 
+	This with a batch size of 3*384 (384 per GPU). 
+	The log loss is decreasing both faster and smoother; seems that a large batch is indeed useful!  
+		Re flickering lights, apparently if I run DistributedDataParallel, we can use more CPU and make the load more uniform.  Problem is that there is but one interface to ocaml mmap files. 
+		(Ocaml itself can support multiple connections; just need different named mmap files, which should be easy; don't quite feel like implementing that now). 
+		As always, having more GPUs would probably help here. 
+		(Seems like the price of 4090's and 3090's is approximately equivalent to their compute capability.  Seems like I should wait until after the holiday). 
+
+		
+		

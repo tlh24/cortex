@@ -61,13 +61,12 @@ type batchd =
 let pi = 3.1415926
 let image_count = 6*2048 
 let image_res = 30
-let batch_size = 128
+let batch_size = 256*3
 let toklen = 30
 let poslen = 6
 let p_indim = toklen + 1 + poslen*2 (* 31 + 12 = 43 *)
 let e_indim = 5 + toklen + poslen*2
 let p_ctx = 64
-let g_logEn = ref true (* yes global but ... *)
 
 let listen_address = Unix.inet_addr_loopback
 let port = 4340
@@ -88,17 +87,6 @@ let print_position lexbuf =
 	Printf.bprintf bf "%s:%d:%d" pos.pos_fname
 		pos.pos_lnum (pos.pos_cnum - pos.pos_bol + 1); 
 	(Buffer.contents bf)
-    
-(*let print_log lg str = 
-	if !g_logEn then (
-		Printf.fprintf lg "%s" str; 
-		flush lg;
-	) *)
-	
-(*let print_prog p = 
-	let bf = Buffer.create 30 in
-	Logo.output_program_pstr bf p; 
-	Printf.printf "%s\n" (Buffer.contents bf)*)
 
 let parse_with_error  lexbuf =
 	let prog = try Some (Parser.parse_prog Lexer.read lexbuf) with
@@ -111,7 +99,6 @@ let parse_with_error  lexbuf =
 			(print_position lexbuf));
 		None in
 	prog
-    
 
 let bigarray_to_bytes arr = 
 	(* convert a bigarray to a list of bytes *)
@@ -120,12 +107,12 @@ let bigarray_to_bytes arr =
 	Bytes.init len 
 		(fun i -> Bigarray.Array1.get arr i |> Char.chr)
 	
-let read_protobuf lg ic pfunc = 
+let read_protobuf ic pfunc = 
 	(* polymorphic! so cool *)
 	let buf = Bytes.create 256 in
 	let len = input ic buf 0 256 in
-	if !g_logEn && len > 0 then (
-		Printf.fprintf lg "read_protobuf: got %d bytes from stdin" len ); 
+	if len > 0 then (
+		Logs.info (fun m -> m "read_protobuf: got %d bytes from stdin" len )); 
 	if len > 0 then (
 		let lp = try 
 			Some ( pfunc
@@ -676,7 +663,7 @@ let render_simplest db dosort =
 	close_out lg; 
 	dba (* return the sorted array *)
 	
-let make_batch lg dba nbatch = 
+(*let make_batch lg dba nbatch = 
 	(* make a batch of pre, post, edits *)
 	(* image is saved in python, no need to duplicate *)
 	let ndba = min (Array.length dba) 1024 in (* FIXME 2048 *)
@@ -734,7 +721,7 @@ let make_batch lg dba nbatch =
 		)
 	) done;
 	flush lg; 
-	!batch
+	!batch*)
 	
 (* because we include position encodings, need to be float32 *)
 let mmap_bigarray2 fname rows cols = 
@@ -757,6 +744,11 @@ let mmap_bigarray3 fname batches rows cols =
 	will have to close the fd later *)
 	fd,a )
 	
+let reset_bea () = 
+	let bea = Array.init batch_size (fun _i -> nulbatche) in
+	let fresh = Array.init batch_size (fun _i -> true) in
+	bea,fresh
+	
 let init_batchd () =
 	let fd_bpro,bpro = mmap_bigarray3 "bpro.mmap" 
 			batch_size p_ctx p_indim in
@@ -767,8 +759,7 @@ let init_batchd () =
 			batch_size e_indim in
 	let fd_posenc,posenc = mmap_bigarray2 "posenc.mmap"
 			p_ctx (poslen*2) in
-	let bea = Array.init batch_size (fun _i -> nulbatche) in
-	let fresh = Array.init batch_size (fun _i -> true) in
+	let bea,fresh = reset_bea () in
 	(* fill out the posenc matrix *)
 	let scl = 2.0 *. pi /. (foi p_ctx) in
 	for i = 0 to (p_ctx-1) do (
@@ -802,9 +793,10 @@ let rec new_batche dba =
 	let b_ns = List.length b.segs in
 	let a_np = String.length a.progenc in
 	let b_np = String.length b.progenc in
-	if a_ns <= 4 && b_ns <= 4 && a_np < 16 && b_np < 16 then (
+	let lim = (p_ctx/2)-4 in 
+	(* check this .. really should be -2 as in bigfill_batchd *)
+	if a_ns <= 4 && b_ns <= 4 && a_np < lim && b_np < lim then (
 		let dist,_ = Levenshtein.distance a.progenc b.progenc false in
-		if !g_logEn then
 		Logs.debug(fun m -> m  
 			"trying [%d] [%d] for batch; dist %d" na nb dist);
 		if dist > 0 && dist < 8 then ( (* FIXME: dist < 7 *)
@@ -912,35 +904,39 @@ let bigfill_batchd dba bd =
 		let b = dba.(be.b_pid) in
 	  (* - bpro - *)
 		let offs = Char.code '0' in
+		let llim = (p_ctx/2)-2 in
 		let l = String.length be.a_progenc in
-		if l > ((p_ctx/2)-2) then 
-			Logs.err(fun m -> m  "too long:%s" be.a_progenc); 
+		if l > llim then 
+			Logs.err(fun m -> m  "too long(%d):%s" l be.a_progenc);
 		String.iteri (fun i c -> 
 			let j = (Char.code c) - offs in
-			bd.bpro.{u,i,j} <- 1.0 ) be.a_progenc ; 
+			if i < llim then bd.bpro.{u,i,j} <- 1.0 ) be.a_progenc ; 
 		let lc = String.length be.c_progenc in
-		if lc > ((p_ctx/2)-2) then 
-			Logs.err(fun m -> m  "too long:%s" be.c_progenc); 
+		if lc > llim then 
+			Logs.err(fun m -> m  "too long(%d):%s" lc be.c_progenc);
 		String.iteri (fun i c -> 
 			let j = (Char.code c) - offs in
-			bd.bpro.{u,i+l,j} <- 1.0; 
-			(* inidicate this is c, to be edited *)
-			bd.bpro.{u,i+l,toklen-1} <- 1.0 ) be.c_progenc ;
+			if (i+l) < 2*llim then (
+				bd.bpro.{u,i+l,j} <- 1.0; 
+				(* inidicate this is c, to be edited *)
+				bd.bpro.{u,i+l,toklen-1} <- 1.0 ) ) be.c_progenc ;
 		(* copy over the edited tags (set in apply_edits) *)
 		for i = 0 to p_ctx-1 do (
 			bd.bpro.{u,i,toklen} <- be.edited.(i)
 		) done; 
 		(* position encoding *)
+		let l = if l > llim then llim else l in 
+		let lc = if lc > llim then llim else lc in
 		for i = 0 to l-1 do (
 			for j = 0 to poslen*2-1 do (
 				bd.bpro.{u,i,toklen+1+j} <- bd.posenc.{i,j}
 			) done
-		) done; 
+		) done;
 		for i = 0 to lc-1 do (
 			for j = 0 to poslen*2-1 do (
 				bd.bpro.{u,i+l,toklen+1+j} <- bd.posenc.{i,j}
 			) done
-		) done; 
+		) done ;
 	  (* - bimg - *)
 		if bd.fresh.(u) then (
 			(* could do this with blit, but need int -> float conv *)
@@ -957,9 +953,13 @@ let bigfill_batchd dba bd =
 			bd.fresh.(u) <- false
 		); 
 	  (* - bedt - *)
-		if (List.length be.edits) < 1 then 
-			Logs.err(fun m -> m "zero-length edit list, should not happen!"); 
-		let (typ,pp,c) = List.hd be.edits in
+		let (typ,pp,c) = if (List.length be.edits) > 0 
+			then List.hd be.edits
+			else ("fin",0,'0') in
+		(* during hallucination, the edit list is be drained dry: 
+		we apply the edits (thereby emptying the 1-element list),
+		update the program encodings, 
+		and ask the model to generate a new edit. *)
 		(match typ with
 		| "sub" -> bd.bedt.{u,0} <- 1.0
 		| "del" -> bd.bedt.{u,1} <- 1.0
@@ -1073,14 +1073,14 @@ let save_database db =
 	close_out fil; 
 	Logs.app(fun m -> m  "saved %d to db_prog.txt" image_count); 
 	
-	(* verification ..*)
-	let fil = open_out "db_prog_v.txt" in
+	(* verification .. human readable*)
+	let fil = open_out "db_human_log.txt" in
 	Printf.fprintf fil "%d\n" image_count; 
 	Vector.iteri (fun i d -> 
 		Printf.fprintf fil "\n[%d]\t" i ; 
 		Logo.output_program_h d.pro fil) db ; 
 	close_out fil; 
-	Logs.debug(fun m -> m  "saved %d to db_prog_v.txt" image_count)
+	Logs.debug(fun m -> m  "saved %d to db_human_log.txt" image_count)
 	
 let load_database device db dbf = 
 	let lines = read_lines "db_prog.txt" in
@@ -1294,13 +1294,79 @@ let test_torch () =
 	done
 	
 let handle_message dba bd msg =
-	match msg with
-	| "update_batch" -> ( 
+	let l = String.length msg in
+	let i = try String.index_from msg 0 ':' 
+		with _ -> l in
+	let cmd = String.sub msg 0 i in
+	let data = if i >= l-1 then "" 
+		else String.sub msg (i+1) (l-i-1) in
+	match cmd with
+	| "update_batch" -> (
 		(* sent when python has a copy*)
 		let bd = update_bea dba bd in
 		bigfill_batchd dba bd; 
 		Logs.debug(fun m -> m "new batch"); 
 		bd,"ok"
+		)
+	| "reset_batch" -> (
+		let bea,fresh = reset_bea () in (* clear it *)
+		let bd = {bd with bea;fresh} in
+		let bd = update_bea dba bd in (* fill new entries *)
+		bigfill_batchd dba bd; 
+		bd,"batch has been reset."
+		)
+	| "edit_types" -> (
+		(* these are ascii-encoded *)
+		let typl = String.fold_left (fun a b -> 
+			let typ = match b with
+				| '0' -> "sub"
+				| '1' -> "del"
+				| '2' -> "ins"
+				| _   -> "fin" in
+				typ :: a) [] data in
+		let typa = Array.of_list typl in
+		let bea = Array.mapi (fun i be -> 
+			let typ = typa.(i) in
+			{be with edits=[(typ,0,'0')]} ) bd.bea in
+		{bd with bea},"got edit types."
+		)
+	| "edit_pos" -> (
+		let offs = Char.code '0' in
+		let posl = String.fold_left (fun a b -> 
+			let p = (Char.code b) - offs in
+			p :: a) [] data in
+		let posa = Array.of_list posl in
+		let bea = Array.mapi (fun i be -> 
+			let pos = posa.(i) in
+			let typ,_,chr = List.hd be.edits in
+			{be with edits=[(typ,pos,chr)]} ) bd.bea in
+		{bd with bea},"got edit pos."
+		)
+	| "edit_chars" -> (
+		let chrl = String.fold_left 
+			(fun a b -> b :: a) [] data in
+		let chra = Array.of_list chrl in
+		let bea = Array.mapi (fun i be -> 
+			let chr = chra.(i) in
+			let typ,pos,_ = List.hd be.edits in
+			{be with edits=[(typ,pos,chr)]} ) bd.bea in
+		{bd with bea},"got edit chars."
+		)
+	| "apply_edits" -> (
+		let bea = Array.mapi (fun i be -> 
+			bd.fresh.(i) <- false; 
+			apply_edits be ) bd.bea in
+		let bd = {bd with bea} in
+		bigfill_batchd dba bd; 
+		(*Logs.info (fun m -> m "apply_edits");*) 
+		bd,"applied the edits."
+		)
+	| "print_progenc" -> (
+		Logs.info (fun m -> m "c_progenc[] "); (* FIXME debug *)
+		Array.iteri (fun i be -> 
+			Logs.info (fun m -> m "[%d]: %s" i be.c_progenc)
+			) bd.bea; 
+		bd,"printed."
 		)
 	| _ -> bd,"Unknown command"
 
@@ -1311,6 +1377,7 @@ let rec handle_connection dba bd fdlist ic oc () =
 		match msg with
 		| Some msg -> (
 			let bd,reply = handle_message dba bd msg in
+			(*Logs.info (fun m -> m "%s" reply);*) 
 			Lwt_io.write_line oc reply 
 			>>= handle_connection dba bd fdlist ic oc )
 		| None -> (
@@ -1326,7 +1393,10 @@ let accept_connection dba conn =
 	let bd = update_bea dba bd in
 	bigfill_batchd dba bd ; 
 	Lwt.on_failure (handle_connection dba bd fdlist ic oc ()) 
-		(fun e -> Logs.err (fun m -> m "%s" (Printexc.to_string e) ));
+		(fun e -> 
+			Logs.err (fun m -> m "%s" (Printexc.to_string e) );
+			Printexc.print_backtrace stdout; 
+			flush stdout);
 	Logs_lwt.info (fun m -> m "New connection") 
 	>>= return
 	

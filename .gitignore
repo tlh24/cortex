@@ -1,2 +1,8 @@
-ec3/_build/
-
+*.mmap
+images*
+*_build
+__pycache__
+*_log.txt
+ec3/logod_pb2.py
+ec3/data/
+results/

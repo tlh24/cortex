@@ -131,6 +131,8 @@ let apply_edits s1 edits =
 		(*Printf.printf "ss %s; %s %d %c\n" ss s p c;*) 
 		match s with
 		| "sub" -> (
+				let p = if p >= len then len-1 else p in
+				let p = if p < 0 then 0 else p in
 			let a = if p > 0 then String.sub ss 0 p else "" in
 			let b = if p < len-1 then
 					String.sub ss (p+1) (len-p-1) else "" in
@@ -139,12 +141,16 @@ let apply_edits s1 edits =
 			a ^ cc ^ b )
 		| "del" -> (
 			(*Printf.printf "del p %d\n" p;*)
+				let p = if p >= len then len-1 else p in
+				let p = if p < 0 then 0 else p in
 			let a = if p > 0 then String.sub ss 0 p else "" in
 			let b = if p < len-1 then
 					String.sub ss (p+1) (len-p-1) else "" in
 			a ^ b )
 		| "ins" -> ( (* insert before p; can be at end of string*)
 			(*Printf.printf "ins p %d\n" p;*)
+				let p = if p > len then len else p in
+				let p = if p < 0 then 0 else p in
 			let a = if p > 0 then String.sub ss 0 p else "" in
 			let b = if p < len then String.sub ss p (len-p) else "" in
 			(*Printf.printf "ins a %s\n" a;

@@ -1,0 +1,9 @@
+// task 11 half-circle
+(d1 : ( // arguments: 0: fraction (1=whole,2=half etc) 1: size
+	v4 = 9*2; 
+	v2 = v4 / v0 ; 
+	loop 3, v2, ( // 3 is loopvar (unused)
+		move ((ul / v4) * v1), (ua / v4))) ;
+move 0, ua/(9*4); 
+c1 2, 8; 
+c1 2, 5 )

@@ -10,9 +10,8 @@ import time
 import clip_model
 import pdb
 
-batch_size = 24
+batch_size = 256*3
 image_res = 30
-batch_size = 24
 toklen = 30
 poslen = 6
 p_indim = toklen + 1 + poslen*2 
@@ -21,7 +20,6 @@ p_ctx = 64
 
 patch_size = 5
 v_ctx = int((image_res / patch_size) ** 2 + 1)
-batch_size = 128
 vision_width = 256
 prog_width = 128
 vision_heads = 8
@@ -62,7 +60,7 @@ posenc = read_mmap(fd_posenc, [p_ctx, poslen*2])
 torch_device = 0
 print("torch cuda devices", th.cuda.device_count())
 print("torch device", th.cuda.get_device_name(torch_device))
-th.cuda.set_device(torch_device)
+# th.cuda.set_device(torch_device)
 th.set_default_tensor_type('torch.cuda.FloatTensor')
 
 def build_attention_mask(v_ctx, p_ctx):
@@ -117,9 +115,10 @@ class ecTransformer(nn.Module):
 		vxpx = th.cat((vx, px), dim = 1)
 		q[3] = th.std(vxpx)
 		# x = vxpx * mask
-		x = self.prt(vxpx) # bs, v_ctx * p_ctx, prog_width
+		x = self.prt(vxpx) # bs, v_ctx + p_ctx, prog_width
 		q[4] = th.std(x)
-		x = th.reshape(x, (batch_size,-1))
+		x = th.reshape(x, (-1,(v_ctx + p_ctx)*prog_width))
+		# batch size will vary with dataparallel
 		x = self.prt_to_edit(x)
 		q[5] = th.std(x)
 		# x = self.ln_post(x) # scale the inputs to softmax
@@ -138,6 +137,8 @@ model = ecTransformer(image_resolution = image_res,
 							 p_ctx = p_ctx, 
 							 p_indim = p_indim, 
 							 e_indim = e_indim)
+
+model = nn.DataParallel(model)
 
 # lossfunc = nn.CrossEntropyLoss(label_smoothing = 0.08, reduction='none')
 lossfunc = nn.MSELoss(reduction='mean')
@@ -165,10 +166,12 @@ def decode_edit(y):
 	typ = th.argmax(y[:,0:4], 1)
 	typ = typ.cpu() # type should be th.Long
 	bs = y.shape[0]
+	ityp = []
 	styp = []
 	cl = []
 	posl = [] # keep native - faster.
 	for j in range(bs): 
+		ityp.append(typ[j])
 		if typ[j] == 0: 
 			styp.append('sub')
 		if typ[j] == 1: 
@@ -187,19 +190,82 @@ def decode_edit(y):
 		cos = th.nn.CosineSimilarity(dim=1)
 		pos = cos(posenc[:,:], z)
 		posl.append(th.argmax(pos).item())
-	return (styp, cl, posl) 
+	return (ityp,styp, cl, posl) 
 
 	
 def compare_edit(batch_e, y): 
-	styp, c, pos = decode_edit(batch_e)
+	ityp, styp, c, pos = decode_edit(batch_e)
 	print("batch_e: ", styp[0]," ",c[0]," ",pos[0])
-	styp, c, pos = decode_edit(y)
+	ityp, styp, c, pos = decode_edit(y)
 	print("model_y: ", styp[0]," ",c[0]," ",pos[0])
+	
+	
+def hallucinate (): 
+	# get a new batch, decode & apply edits. 
+	sock.sendall(b"reset_batch:\n")
+	data = sock.recv(100)
+	
+	done = th.zeros(batch_size)
+	
+	for i in range(12): 
+		# range depends on the design spec -- e.g. max 8 edits.
+		bpro = read_mmap(fd_bpro, [batch_size, p_ctx, p_indim])
+		bimg = read_mmap(fd_bimg, [batch_size, 3, image_res, image_res])
+		bedt = read_mmap(fd_bedt, [batch_size, e_indim])
+	
+		y,q = model(u, bimg.cuda(), bpro.cuda())
+		
+		ityp,styp,cl,posl = decode_edit(y.cpu())
+		# apply edits in ocaml, to avoid code duplication. 
+		# keep the messages small, < 4k. 
+		b = bytearray(b"edit_types:")
+		for i in range(batch_size): 
+			ti = ityp[i]
+			if done[i] < 1: 
+				b.append(ti + ord('0'))
+			else: 
+				b.append(3 + ord('0')) # 'fin'
+			if ti == 3: 
+				done[i] = 2
+		b.append(ord('\n'))
+		sock.sendall(b)
+		data = sock.recv(100)
+		# print(f"edit_types received {data!r}")
+		
+		b = bytearray(b"edit_pos:")
+		for pos in posl: 
+			# same idea, pos irrelevant if 'fin'.
+			b.append(pos + ord('0'))
+		b.append(ord('\n'))
+		sock.sendall(b)
+		data = sock.recv(100)
+		# print(f"edit_pos received {data!r}")
+		
+		b = bytearray(b"edit_chars:")
+		for c in cl: 
+			# doesn't matter if we inject c when the op is 'fin'
+			b.append(ord(c))
+		b.append(ord('\n'))
+		sock.sendall(b)
+		data = sock.recv(100)
+		# print(f"edit_chars received {data!r}")
+		
+		sock.sendall(b"apply_edits:\n")
+		data = sock.recv(100)
+		# print(f"apply_edits received {data!r}")
+		# this must also update the mmaped files.
+		
+	sock.sendall(b"print_progenc:\n")
+	data = sock.recv(100)
+	print("done with hallucination.")
+	sock.sendall(b"reset_batch:\n")
+	data = sock.recv(100)
 
 
 slowloss = 1.0
-losslog = open("losslog.txt", "w")
+losslog = open("loss_log.txt", "w")
 lr = learning_rate
+tic = time.time()
 
 for u in range(train_iters): 
 	# need to set the default tensor type to CPU
@@ -213,8 +279,6 @@ for u in range(train_iters):
 	
 	# now that we have a copy, can ask ocaml to update async
 	sock.sendall(b"update_batch\n")
-	data = sock.recv(1024)
-	# print(f"Received {data!r}")
 	
 	model.zero_grad()
 	y,q = model(u, bimg.cuda(), bpro.cuda())
@@ -224,9 +288,16 @@ for u in range(train_iters):
 	th.nn.utils.clip_grad_norm_(model.parameters(), 0.05)
 	optimizer.step()
 	
+	# do this later (async) to imporve gpu utilization
+	data = sock.recv(100)
+	# print(f"Received {data!r}")
+	
 	slowloss = 0.99*slowloss + 0.01 * lossflat.detach()
-	if u % 17 == 0 :
-		print(f'{u} {lr} loss: {lossflat}; slowloss {slowloss}')
+	if u % 7 == 0 :
+		toc = time.time()
+		rate = int((batch_size * 7) / (toc - tic))
+		tic = toc
+		print(f'{u} {lr:.6f} loss: {lossflat:.5f}; slowloss {slowloss:.5f}; {rate} samp/sec')
 		compare_edit(bedt, y.cpu())
 		# print(i, lossflat, loss[0], y_mask[0])
 		# print(x[0])
@@ -249,7 +320,9 @@ for u in range(train_iters):
 		lr = lr * math.exp((11000-u) / 50000)
 	for g in optimizer.param_groups:
 		g['lr'] = lr
-	
+		
+	if u % 99 == 0: 
+		hallucinate()
 
 
 fd_bpro.close()

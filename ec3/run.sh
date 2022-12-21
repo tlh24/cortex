@@ -1,4 +1,5 @@
 #!/usr/bin/bash
+mkdir -p /tmp/png
 _build/default/program.exe
 # cat logo_log.txt
 # ristretto test.png
