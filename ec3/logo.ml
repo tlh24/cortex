@@ -1,4 +1,4 @@
-open Core
+open Core (* need to remove this!! *)
 open Base.Poly
 open Vgwrapper
 
@@ -170,6 +170,8 @@ let string_to_intlist e =
 	String.fold ~f:(fun a c -> 
 		let i = (Char.to_int c) - offs in
 		i :: a) ~init:[] e
+	|> List.rev 
+	(* I don't know why -- maybe need to get away from Core *)
 	
 let output_program_p bf g = (* p is for parseable *)
 	let gl = encode_program g in (* compressed encoding *)
@@ -327,6 +329,7 @@ let rec eval (st0:state) (pr:prog) =
 		if indx >= 0 && indx < 10 then (
 			let (sta, resa, _) = eval st niter in
 			let n = iof (snd resa) in
+			let n = if n <= 0 then 1 else n in (* not sure how it gets there.. *)
 			let cntlist = List.init n ~f:(fun i -> i) in
 			(*Printf.printf "loop of %d using v%d (%d)\n" n indx (st.r);*) 
 			(*Out_channel.flush stdout;*)
