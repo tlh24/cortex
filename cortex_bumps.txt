@@ -3275,4 +3275,4 @@ Other parameters:
 		(Seems like the price of 4090's and 3090's is approximately equivalent to their compute capability.  Seems like I should wait until after the holiday). 
 
 Todo: add in a # of replacements counter to the logs & hence plot.
-		
+Todo: batch size is a command line argument for both ocaml and python

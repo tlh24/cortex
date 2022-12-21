@@ -67,6 +67,7 @@ let poslen = 6
 let p_indim = toklen + 1 + poslen*2 (* 31 + 12 = 43 *)
 let e_indim = 5 + toklen + poslen*2
 let p_ctx = 64
+let nreplace = ref 0 (* number of repalcements durng hallucinations *)
 
 let listen_address = Unix.inet_addr_loopback
 let port = 4340
