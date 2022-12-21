@@ -321,7 +321,7 @@ for u in range(train_iters):
 	for g in optimizer.param_groups:
 		g['lr'] = lr
 		
-	if u % 99 == 0: 
+	if u % 99 == 0 and u > 800: 
 		hallucinate()
 
 
