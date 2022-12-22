@@ -1105,7 +1105,7 @@ let try_add_program state bi progenc =
 			let dist,mindex = dbf_dist dbf img in
 			(* idea: if it's similar to a currently stored program, but has been hallucinated by the network, and is not too much more costly than what's there, 
 			then replace the entry! *)
-			if dist < 2. then (
+			if dist < 1.2 then (
 				let data2 = dba.(mindex) in
 				let c1 = progenc_cost data.progenc in
 				let c2 = progenc_cost data2.progenc in
