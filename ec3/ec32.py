@@ -8,6 +8,7 @@ from ctypes import *
 import socket
 import time
 import clip_model
+import argparse
 import pdb
 
 batch_size = 256*3
@@ -31,6 +32,14 @@ embed_dim = 256
 train_iters = 100000
 learning_rate = 0.0005 # *starting* learning rate. scheduled.
 weight_decay = 5e-6
+nreplace = 0
+
+
+parser = argparse.ArgumentParser(description='Transformer-based program synthesizer')
+parser.add_argument("-b", "--batch_size", help="Set the batch size", type=int)
+args = parser.parse_args()
+batch_size = args.batch_size
+print(f"batch_size:{batch_size}")
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.connect(('127.0.0.1', 4340))
@@ -103,7 +112,7 @@ class ecTransformer(nn.Module):
 	
 	def forward(self, u, batch_a, batch_p): 
 		# encode the image (we should only need to do this once??)
-		q = th.zeros(6)
+		q = th.zeros(6) # ! this will be parallelized !
 		vx = self.vit(batch_a) # x is size [bs, v_ctx, 256] 
 		q[0] = th.std(vx)
 		vx = self.vit_to_prt(vx)
@@ -290,7 +299,10 @@ for u in range(train_iters):
 	
 	# do this later (async) to imporve gpu utilization
 	data = sock.recv(100)
-	# print(f"Received {data!r}")
+	try:
+		nreplace = int(data[3:].decode("utf-8"))
+	except: 
+		print("didn't get nreplace")
 	
 	slowloss = 0.99*slowloss + 0.01 * lossflat.detach()
 	if u % 7 == 0 :
@@ -303,9 +315,13 @@ for u in range(train_iters):
 		# print(x[0])
 		# print(y[0])
 		# print(x[0] - y[0])
+	ngpu = th.cuda.device_count()
+	q = th.reshape(q, (ngpu,-1))
+	q = th.mean(q, 0)
 	losslog.write(f"{u}\t{slowloss}")
 	for i in range(q.shape[0]): 
 		losslog.write(f"\t{q[i].cpu().item()}")
+	losslog.write(f"\t{nreplace+0.001}")
 	losslog.write("\n")
 	losslog.flush()
 	

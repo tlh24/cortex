@@ -61,7 +61,7 @@ type batchd =
 let pi = 3.1415926
 let image_count = 6*2048 
 let image_res = 30
-let batch_size = 256*3
+let batch_size = ref (256*3)
 let toklen = 30
 let poslen = 6
 let p_indim = toklen + 1 + poslen*2 (* 31 + 12 = 43 *)
@@ -580,7 +580,7 @@ let render_simplest db dosort =
 		if la = lb then compare na nb else compare la lb ) dba; 
 		(* in-place sorting *)
 	let res = 48 in
-	let lg = open_out "/tmp/png/Logs.txt" in
+	let lg = open_out "/tmp/png/db_init.txt" in
 	for id = 0 to min (4*1024-1) (dbal-1) do (
 		let data = dba.(id) in
 		let (_,_,segs) = Logo.eval (Logo.start_state ()) data.pro in
@@ -614,18 +614,18 @@ let mmap_bigarray3 fname batches rows cols =
 	fd,a )
 	
 let reset_bea () = 
-	let bea = Array.init batch_size (fun _i -> nulbatche) in
-	let fresh = Array.init batch_size (fun _i -> true) in
+	let bea = Array.init !batch_size (fun _i -> nulbatche) in
+	let fresh = Array.init !batch_size (fun _i -> true) in
 	bea,fresh
 	
 let init_batchd () =
 	let fd_bpro,bpro = mmap_bigarray3 "bpro.mmap" 
-			batch_size p_ctx p_indim in
+			!batch_size p_ctx p_indim in
 	let fd_bimg,bimg = mmap_bigarray3 "bimg.mmap" 
-			(batch_size*3) image_res image_res in
+			(!batch_size*3) image_res image_res in
 			(* note needs a reshape on python side!! *)
 	let fd_bedt,bedt = mmap_bigarray2 "bedt.mmap" 
-			batch_size e_indim in
+			!batch_size e_indim in
 	let fd_posenc,posenc = mmap_bigarray2 "posenc.mmap"
 			p_ctx (poslen*2) in
 	let bea,fresh = reset_bea () in
@@ -1090,7 +1090,7 @@ let progenc2progstr progenc =
 	Logo.decode_program 
 	
 let try_add_program state bi progenc = 
-	let device,dba,dbf = state in
+	let device,dba,dbf,fid = state in
 	let progstr = progenc2progstr progenc in
 	let g = parse_logo_string progstr in
 	if bi mod 41 = 40 then Caml.Gc.major (); 
@@ -1111,9 +1111,17 @@ let try_add_program state bi progenc =
 				let c2 = progenc_cost data2.progenc in
 				if c1 < c2 then (
 					let progstr2 = progenc2progstr data2.progenc in
-					Logs.info (fun m -> m "b:%d replacing equivalents [%d] %s with %s" bi mindex progstr2 progstr);
+					Logs.info (fun m -> m "#%d b:%d replacing equivalents [%d] %s with %s" !nreplace bi mindex progstr2 progstr);
 					dba.(mindex) <- data; 
 					Tensor.copy_ (Tensor.narrow dbf ~dim:0 ~start:mindex ~length:1) ~src:img; 
+					Printf.fprintf fid "(%d) [%d] %s --> %s\n"
+						!nreplace mindex progstr2 progstr; 
+					flush fid; 
+					Logo.segs_to_png data2.segs 64
+					 (Printf.sprintf "/tmp/png/%05d_old.png" !nreplace);
+					Logo.segs_to_png data.segs 64
+					 (Printf.sprintf "/tmp/png/%05d_new.png" !nreplace);
+					incr nreplace
 					(* those two operations are in-place, so subsequent batches should contain the new program :-) *)
 				)
 			) )
@@ -1121,7 +1129,7 @@ let try_add_program state bi progenc =
 		| _ -> ()
 	
 let handle_message state bd msg =
-	let _device,dba,_dbf = state in
+	let _device,dba,_dbf,_fid = state in
 	let l = String.length msg in
 	let i = try String.index_from msg 0 ':' 
 		with _ -> l in
@@ -1134,7 +1142,7 @@ let handle_message state bd msg =
 		let bd = update_bea dba bd in
 		bigfill_batchd dba bd; 
 		Logs.debug(fun m -> m "new batch"); 
-		bd,"ok"
+		bd,(Printf.sprintf "ok %d" !nreplace)
 		)
 	| "reset_batch" -> (
 		let bea,fresh = reset_bea () in (* clear it *)
@@ -1213,18 +1221,22 @@ let rec handle_connection state bd fdlist ic oc () =
 			>>= return) )
 	
 let accept_connection state conn =
-	let _device,dba,_dbf = state in
+	let device,dba,dbf = state in
 	let fd, _ = conn in
 	let ic = Lwt_io.of_fd ~mode:Lwt_io.Input fd  in
 	let oc = Lwt_io.of_fd ~mode:Lwt_io.Output fd in
+	let fid = open_out "/tmp/png/replacements_log.txt" in
+	let state2 = device,dba,dbf,fid in
 	let bd,fdlist = init_batchd () in
 	let bd = update_bea dba bd in
 	bigfill_batchd dba bd ; 
-	Lwt.on_failure (handle_connection state bd fdlist ic oc ()) 
+	Lwt.on_failure (handle_connection state2 bd fdlist ic oc ()) 
 		(fun e -> 
 			Logs.err (fun m -> m "%s" (Printexc.to_string e) );
 			Printexc.print_backtrace stdout; 
-			flush stdout);
+			flush stdout; 
+			List.iter (fun fd -> Unix.close fd) fdlist;
+			close_out fid);
 	Logs_lwt.info (fun m -> m "New connection") 
 	>>= return
 	
@@ -1241,13 +1253,23 @@ let create_server state sock =
 		Lwt_unix.accept sock >>= accept_connection state >>= serve
 	in serve
 
+let usage_msg = "program.exe -b <batch_size>"
+let input_files = ref []
+let output_file = ref ""
+let anon_fun filename =
+  input_files := filename :: !input_files
+let speclist =
+  [("-b", Arg.Set_int batch_size, "Training batch size");
+   ("-o", Arg.Set_string output_file, "Set output file name")]
+
 let () = 
+	Arg.parse speclist anon_fun usage_msg;
 	Random.self_init (); 
 	let () = Logs.set_reporter (Logs.format_reporter ()) in
 	let () = Logs.set_level (Some Logs.Info) in
 	(* App, Error, Warning, Info, Debug *)
 
-	Logs.app(fun m -> m "hello");
+	Logs.info(fun m -> m "batch_size:%d" !batch_size);
 	Logs.info(fun m -> m "cuda available: %b%!" 
 				(Cuda.is_available ()));
 	Logs.info(fun m -> m "cudnn available: %b%!"
@@ -1279,19 +1301,12 @@ let () =
 		) done; 
 		save_database db ; 
 	); 
-	let dba = render_simplest db true in
-	
-	(*let bd,fdlist = init_batchd () in
-	let bd = update_bea dba bd in
-	bigfill_batchd dba bd ; 
-	update_bea dba bd 
-	(* check on the python side! *)
-	List.iter (fun fd -> Unix.close fd) fdlist; *)
+	let dba = render_simplest db false in (* don't sort -- criteria is different! *)
 	
 	let sock = create_socket () in
 	let state = device,dba,dbf in
 	let serve = create_server state sock in
-	Lwt_main.run @@ serve ()
+	Lwt_main.run @@ serve () 
 
 (*
 let image_dist dbf img = 

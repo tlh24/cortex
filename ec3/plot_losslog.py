@@ -26,13 +26,16 @@ while True:
 	ax[0,0].set_title('log loss')
 
 	labels = ["vit","vit_to_prt","encoder","vxpx","prt","prt_to_edit"]
-	for i in range(6): 
-		lab = labels[i]
+	for i in range(7): 
 		r = (i+1) // 4
 		c = (i+1) % 4
 		ax[r,c].cla()
 		ax[r,c].plot(data[:,0], data[:,i+2], 'b')
-		ax[r,c].set_title(f'st.dev {lab} output')
+		if i < 6: 
+			lab = labels[i]
+			ax[r,c].set_title(f'st.dev {lab} output')
+		else: 
+			ax[r,c].set_title(f'number of replacements')
 
 	fig.tight_layout()
 	fig.canvas.draw()
