@@ -3309,4 +3309,18 @@ OK, the equivalents code is up and running just spiffy, thank you very much -- b
 Really need library growth (too), as has been noted as the key contribution here: 
 https://news.ycombinator.com/item?id=30190954
 
-Todo: figure out why te model gets stuck introducing long strings of the same charachter -- even when this never occurs in the training data! 
+Todo: figure out why the model gets stuck introducing long strings of the same charachter -- even when this never occurs in the training data!
+
+December 23 2022
+Got the model running & installed (relatively) swiftly on Lambda cloud.
+on one A100, runs at ~2700 samples / sec.
+CUDA is enabled on both the python and ocaml side :-)
+(still slower than my desktop)
+Laptop is running at about 1500 samples /sec @ 80W, throttled -- not bad, really.
+On 8x A100-SXM server, get ~8800 samples/sec with somewhat imperfect resource utilization @ bs=8192 -- pretty fast, but also somewhat expensive. (Note that ocaml is not saturating, even at these huge batch sizes, at least for training and not hallucination..)
+(~1 batch/sec;
+c.f. desktop, 4400samp/sec @ bs=768 -> 5.7 batches/sec
+c.f. laptop, 1500samp/sec @ bs=256 -> 5.8 batches/sec
+The install script needs a little bit of hand-holding to work; in particular have to tell opam to not edit .bashrc
+Would almost certainly be faster if i re-engineered the system to have multiplle python threads & async update, rather than regular DataParallel.
+OK, anyway, good experiments, now i know!

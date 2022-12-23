@@ -32,7 +32,7 @@ prog_layers = 6
 embed_dim = 256
 
 train_iters = 100000
-learning_rate = 0.0016 # maximum learning rate. scheduled.
+learning_rate = 0.00125 # maximum learning rate. scheduled.
 # learning rate of 0.002 is unstable.  Should figure out why. 
 weight_decay = 5e-6
 nreplace = 0
