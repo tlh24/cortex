@@ -10,7 +10,7 @@ opam update
 opam switch create myswitch ocaml-variants.4.14.0+options ocaml-option-flambda
 eval $(opam env --switch=myswitch)
 opam update
-opam install core core_unix vg cairo2 pbrt vector ocaml-protoc
+opam install core core_unix vg cairo2 pbrt vector ocaml-protoc lwt logs pcre
 
 # for accessing remotely: 
 # sshfs -o allow_other,default_permissions ubuntu@104.171.203.63:/home/ubuntu/cortex/ /home/tlh24/remote/

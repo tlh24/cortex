@@ -150,13 +150,14 @@ model = ecTransformer(image_resolution = image_res,
 							 p_indim = p_indim, 
 							 e_indim = e_indim)
 
-# try: 
-loaded_dict = torch.load("ec32.ptx")
-prefix = 'module.'
-n_clip = len(prefix)
-adapted_dict = {k[n_clip:]: v for k, v in loaded_dict.items()
-                if k.startswith(prefix)}
-model.load_state_dict(adapted_dict)
+from os.path import exists
+if exists("ec32.ptx"):
+	loaded_dict = torch.load("ec32.ptx")
+	prefix = 'module.'
+	n_clip = len(prefix)
+	adapted_dict = {k[n_clip:]: v for k, v in loaded_dict.items()
+						if k.startswith(prefix)}
+	model.load_state_dict(adapted_dict)
 # except: 
 # 	print("could not load model parameters from ec32.ptx")
 
