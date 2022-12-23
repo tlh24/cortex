@@ -3309,4 +3309,4 @@ OK, the equivalents code is up and running just spiffy, thank you very much -- b
 Really need library growth (too), as has been noted as the key contribution here: 
 https://news.ycombinator.com/item?id=30190954
 
-Todo: figure out why te model gets stuck introducing long strings of the same charachter -- even when this never occurs in the training data! 
+Todo: figure out why the model gets stuck introducing long strings of the same charachter -- even when this never occurs in the training data! 

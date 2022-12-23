@@ -2,7 +2,7 @@
 mkdir -p /tmp/png
 # use the second 2080 Ti (tends to be the least loaded)
 export OCAMLPARAM='_,rounds=4,O3=1,inline=100,inline-max-unroll=5'
-# export CUDA_VISIBLE_DEVICES=2
+export CUDA_VISIBLE_DEVICES=2
 while getopts b: flag
 do
 	case "${flag}" in
