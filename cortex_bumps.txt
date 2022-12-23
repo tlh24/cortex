@@ -3266,7 +3266,7 @@ Other parameters:
 	let e_indim = 5 + toklen + poslen*2
 	let p_ctx = 64
 
-	JUst turned on torch DataParallel -- the lights in the room flicker a little bit, but training throughput went from 2400 samples/sec on the 3090 to ~ 4100 samp/sec. 
+	Just turned on torch DataParallel -- the lights in the room flicker a little bit, but training throughput went from 2400 samples/sec on the 3090 to ~ 4100 samp/sec. 
 	This with a batch size of 3*384 (384 per GPU). 
 	The log loss is decreasing both faster and smoother; seems that a large batch is indeed useful!  
 		Re flickering lights, apparently if I run DistributedDataParallel, we can use more CPU and make the load more uniform.  Problem is that there is but one interface to ocaml mmap files. 
@@ -3277,5 +3277,36 @@ Other parameters:
 Todo: add in a # of replacements counter to the logs & hence plot.
 Todo: batch size is a command line argument for both ocaml and python
 
-Deceber 21 2022
+December 21 2022
 batch_size command line argument for both ocaml and python:check. 
+number of replacements counter: check
+
+December 22 2022
+Tried out automatic mixed precision: the log loss flatlines around -3 & the std deviation of the activations seem quite quantized. 
+Mgiht need to change the model a bit? 
+Seems to run quickly -- on the 2x 2080Tis, getting 4700-4800 samples/sec throughput! 
+(using all 3 GPUs, get 5500 samp/sec)
+This with a batch size of 512 (same as 768 with 3 gpus)
+This also saves about 300W of power.. 
+
+OK, AMP doesn't work well.  Never gets to the very small errors, and doesn't seem too good at editing programs, either. 
+Will stick with floats for now! 
+
+Changed the batch generation code such that half the time, it generates an edit (fix the program, within a certain distance), and the other time the network has to genearte the program de novo. 
+Seems to be converging just fine, I guess?  
+Have to see about the edits. 
+
+Next up: add in a database of equivalent programs; the list head is the shortest. 
+(Issue: because matching is within an aperture, periodicalyl will need to go through all the stored programs to make sure that they are still sorted into the correct bin..)
+
+Regarding equivalency -- I think that we should add the equivalent list **after** filling out the full database, e.g. don't necessarily need to regen the full db... 
+Checking and sorting the equivalents slows down original gen by quite a bit. 
+And the equivalents are already quite saturated; can prune a bit
+	Yeah, maybe that;s the right way, cap rather than truncate! 
+	(So it's a random selection of equivalents..)
+
+OK, the equivalents code is up and running just spiffy, thank you very much -- but still, i feel that this is one part in the whole; could train up a transformer (the transformer?) to simplify the program; but is this going to e.g. solve the problem?  
+Really need library growth (too), as has been noted as the key contribution here: 
+https://news.ycombinator.com/item?id=30190954
+
+Todo: figure out why te model gets stuck introducing long strings of the same charachter -- even when this never occurs in the training data! 

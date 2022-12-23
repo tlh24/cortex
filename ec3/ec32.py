@@ -2,6 +2,7 @@ import math
 import mmap
 import torch as th
 from torch import nn, optim
+import torch.cuda.amp
 import matplotlib.pyplot as plt
 import copy
 from ctypes import *
@@ -10,6 +11,7 @@ import time
 import clip_model
 import argparse
 import pdb
+
 
 batch_size = 256*3
 image_res = 30
@@ -30,7 +32,8 @@ prog_layers = 6
 embed_dim = 256
 
 train_iters = 100000
-learning_rate = 0.0005 # *starting* learning rate. scheduled.
+learning_rate = 0.0016 # maximum learning rate. scheduled.
+# learning rate of 0.002 is unstable.  Should figure out why. 
 weight_decay = 5e-6
 nreplace = 0
 
@@ -147,6 +150,16 @@ model = ecTransformer(image_resolution = image_res,
 							 p_indim = p_indim, 
 							 e_indim = e_indim)
 
+# try: 
+loaded_dict = torch.load("ec32.ptx")
+prefix = 'module.'
+n_clip = len(prefix)
+adapted_dict = {k[n_clip:]: v for k, v in loaded_dict.items()
+                if k.startswith(prefix)}
+model.load_state_dict(adapted_dict)
+# except: 
+# 	print("could not load model parameters from ec32.ptx")
+
 model = nn.DataParallel(model)
 
 # lossfunc = nn.CrossEntropyLoss(label_smoothing = 0.08, reduction='none')
@@ -216,12 +229,13 @@ def hallucinate ():
 	
 	done = th.zeros(batch_size)
 	
-	for i in range(12): 
+	for i in range(16): 
 		# range depends on the design spec -- e.g. max 8 edits.
 		bpro = read_mmap(fd_bpro, [batch_size, p_ctx, p_indim])
 		bimg = read_mmap(fd_bimg, [batch_size, 3, image_res, image_res])
 		bedt = read_mmap(fd_bedt, [batch_size, e_indim])
 	
+		# with th.autocast(device_type='cuda', dtype=torch.float16):
 		y,q = model(u, bimg.cuda(), bpro.cuda())
 		
 		ityp,styp,cl,posl = decode_edit(y.cpu())
@@ -262,7 +276,7 @@ def hallucinate ():
 		sock.sendall(b"apply_edits:\n")
 		data = sock.recv(100)
 		# print(f"apply_edits received {data!r}")
-		# this must also update the mmaped files.
+		# synchronous; must also update the mmaped files.
 		
 	sock.sendall(b"print_progenc:\n")
 	data = sock.recv(100)
@@ -270,7 +284,7 @@ def hallucinate ():
 	sock.sendall(b"reset_batch:\n")
 	data = sock.recv(100)
 
-
+scaler = torch.cuda.amp.GradScaler()
 slowloss = 1.0
 losslog = open("loss_log.txt", "w")
 lr = learning_rate
@@ -289,6 +303,7 @@ for u in range(train_iters):
 	# now that we have a copy, can ask ocaml to update async
 	sock.sendall(b"update_batch\n")
 	
+	# with th.autocast(device_type='cuda', dtype=torch.float16):
 	model.zero_grad()
 	y,q = model(u, bimg.cuda(), bpro.cuda())
 	loss = lossfunc(y, bedt.cuda())
@@ -296,6 +311,11 @@ for u in range(train_iters):
 	lossflat.backward()
 	th.nn.utils.clip_grad_norm_(model.parameters(), 0.05)
 	optimizer.step()
+		
+	# scaler.scale(lossflat).backward()
+	# th.nn.utils.clip_grad_norm_(model.parameters(), 0.05)
+	# scaler.step(optimizer)
+	# scaler.update()
 	
 	# do this later (async) to imporve gpu utilization
 	data = sock.recv(100)
@@ -327,18 +347,31 @@ for u in range(train_iters):
 	
 	# change the learning rate. 
 	lr = learning_rate
-	# ramp up between 1000 and 11000
-	if u > 1000:
-		lr = lr * (1 + ((u-1000) / 5000))
-	lr = min(lr, 0.001) # this seems to be the outright maximum
-	# decay from 11k to end
-	if u > 11000: 
-		lr = lr * math.exp((11000-u) / 50000)
+	# # ramp up between 1000 and 11000
+	# if u > 1000:
+	# 	lr = lr * (1 + ((u-1000) / 5000))
+	# lr = min(lr, 0.001) # this seems to be the outright maximum
+	# # decay from 11k to end
+	# if u > 11000: 
+	# 	lr = lr * math.exp((11000-u) / 50000)
 	for g in optimizer.param_groups:
 		g['lr'] = lr
 		
-	if u % 99 == 0 and u > 800: 
+	if u % 99 == 98 and u > 800: 
 		hallucinate()
+		if u > 4000: 
+			hallucinate()
+		if u > 6000: 
+			hallucinate()
+		if u > 8000: 
+			hallucinate()
+			
+	for i in range(1000): 
+		hallucinate()
+				
+	if u % 1000 == 999 : 
+		torch.save(model.state_dict(), "ec32.ptx")
+		print("saved ec32.ptx")
 
 
 fd_bpro.close()

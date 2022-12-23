@@ -7,13 +7,24 @@ open Logo
 open Torch
 open Lwt (* I have my resevations *)
 
+type pequiv = 
+	{ epro : Logo.prog
+	; eprogenc : string
+	; eimg : (int, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
+	; escost : float
+	; epcost : int
+	; esegs : Logo.segment list
+	}
+
 type pdata = 
 	{ pid : int
 	; pro  : Logo.prog
 	; progenc : string
 	; img  : (int, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
-	; cost : float
+	; scost : float (* segment cost *)
+	; pcost : int (* program cost *)
 	; segs : Logo.segment list
+	; equiv : pequiv list
 	}
 	
 let nulpdata = 
@@ -21,8 +32,19 @@ let nulpdata =
 	; pro  = `Nop 
 	; progenc = ""
 	; img  = Bigarray.Array1.create Bigarray.int8_unsigned Bigarray.c_layout 1
-	; cost = -1.0 
+	; scost = -1.0
+	; pcost = -1
 	; segs = [] 
+	; equiv = []
+	}
+	
+let nulpequiv = 
+	{ epro = `Nop
+	; eprogenc = ""
+	; eimg = Bigarray.Array1.create Bigarray.int8_unsigned Bigarray.c_layout 1
+	; escost = -1.0
+	; epcost = -1
+	; esegs = []
 	}
 
 type batche = 
@@ -143,7 +165,7 @@ let run_prog prog id res =
 		Logs.debug(fun m -> m "%s" (Logo.output_program_pstr prog)); 
 		Logs.debug(fun m -> m "%s" (Logo.output_segments_str segs)); 
 		Logo.segs_to_png segs res "test.png"; 
-		let arr,cost = Logo.segs_to_array_and_cost segs res in
+		let arr,scost = Logo.segs_to_array_and_cost segs res in
 		let stride = (Bigarray.Array1.dim arr) / res in
 		let bf = Buffer.create 30 in
 		Logo.output_program_p bf prog; 
@@ -156,7 +178,7 @@ let run_prog prog id res =
 			height = res; 
 			segs = List.map (fun (x0,y0,x1,y1) -> 
 				Logo_types.({x0=x0; y0=y0; x1=x1; y1=y1;})) segs; 
-			cost = cost; 
+			cost = scost; 
 			prog = progstr; 
 			progenc = progenc;
 		}) in
@@ -536,17 +558,23 @@ let segs_to_cost segs =
 		(fun c s -> c +. (seglen s)) 0.0 segs in
 	cost
 	
+let progenc_cost s = 
+	String.fold_left (fun a b -> a + (Char.code b)) 0 s
+	
 let program_to_pdata pro id res = 
 	let progenc = Logo.encode_program_str pro in
 	let (_,_,segs) = Logo.eval (Logo.start_state ()) pro in
-	let cost = segs_to_cost segs in
+	let scost = segs_to_cost segs in
+	let pcost = progenc_cost progenc in
 	let lx,hx,ly,hy = segs_bbx segs in
 	let dx = hx-.lx in
 	let dy = hy-.ly in
 	let maxd = max dx dy in
-	if maxd >= 2. && maxd <= 9. && cost >= 4. && cost <= 64. && List.length segs < 8 && String.length progenc < 24 then (
+	if maxd >= 2. && maxd <= 9. && scost >= 4. && scost <= 64. && List.length segs < 8 && String.length progenc < 24 then (
 		let img, _ = Logo.segs_to_array_and_cost segs res in
-		Some {pid=id; pro; progenc; img; cost; segs}
+		let equiv = [] in
+		Some {pid=id; pro; progenc; img; 
+				scost; pcost; segs; equiv}
 	) else None
 
 let rec generate_random_logo id res =
@@ -564,21 +592,17 @@ let generate_empty_logo id res =
 	let progenc = Logo.encode_program_str pro in
 	Logs.debug(fun m -> m  "empty program encoding: \"%s\"" progenc);
 	let segs = [] in
-	let cost = 0.0 in
+	let scost = 0.0 in
+	let pcost = 0 in
 	let img, _ = Logo.segs_to_array_and_cost segs res in
-	{pid=id; pro; progenc; img; cost; segs}
+	let equiv = [] in
+	{pid=id; pro; progenc; img; 
+	scost; pcost; segs; equiv}
 
-let render_simplest db dosort =
+let render_simplest db =
 	(* render the shortest 4*1024 programs in the database.*)
 	let dba = Vector.to_array db in
 	let dbal = Array.length dba in
-	if dosort then Array.sort (fun a b ->
-		let la = List.length a.segs in
-		let lb = List.length b.segs in
-		let na = count_ast a.pro in
-		let nb = count_ast b.pro in
-		if la = lb then compare na nb else compare la lb ) dba; 
-		(* in-place sorting *)
 	let res = 48 in
 	let lg = open_out "/tmp/png/db_init.txt" in
 	for id = 0 to min (4*1024-1) (dbal-1) do (
@@ -589,8 +613,7 @@ let render_simplest db dosort =
 		Logo.output_program_p bf data.pro;
 		fprintf lg "%d %s\n" id (Buffer.contents bf);
 	) done;
-	close_out lg; 
-	dba (* return the sorted array *)
+	close_out lg; dba
 	
 (* because we include position encodings, need to be float32 *)
 let mmap_bigarray2 fname rows cols = 
@@ -649,11 +672,18 @@ let init_batchd () =
 	{bpro; bimg; bedt; posenc; bea; fresh}, 
 	[fd_bpro; fd_bimg; fd_bedt; fd_posenc]
 	
-let rec new_batche dba = 
-	let ndba = min (Array.length dba) (1024*8) in (* FIXME *)
+let rec new_batche ?(mode=2) dba = 
+	let ndba = (Array.length dba) in 
+	(* mode holds the state -- first pass it decides if this wil lbe an edit or a denovo generation *)
+	let doedit,mode = match mode with
+		| 0 -> true,mode (* edit mode *)
+		| 1 -> false,mode (* generate mode *)
+		| _ -> ( let d = (Random.int 10) < 7 in 
+			d,(if d then 0 else 1) ) in
+			(* note: generate mode last longer, hence probabilities need to be adjusted *)
 	let nb = (Random.int (ndba-1)) + 1 in
-	let na = (Random.int (ndba-1)) + 1 in
-	(*let na = 0 in (* FIXME *) *)
+	let na = if doedit then (Random.int (ndba-1)) + 1 else 0 in
+	let distthresh = if doedit then 5 else 15 in
 	(*let na = if (Random.int 10) = 0 then 0 else (Random.int nb) in*)
 	(* small portion of the time na is the empty program *)
 	let a = dba.(na) in
@@ -668,7 +698,7 @@ let rec new_batche dba =
 		let dist,_ = Levenshtein.distance a.progenc b.progenc false in
 		Logs.debug(fun m -> m  
 			"trying [%d] [%d] for batch; dist %d" na nb dist);
-		if dist > 0 && dist < 8 then ( (* FIXME: dist < 7 *)
+		if dist > 0 && dist < distthresh then (
 			(* "move a , b ;" is 5 insertions; need to allow *)
 			let _, edits = Levenshtein.distance a.progenc b.progenc true in
 			let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
@@ -692,8 +722,8 @@ let rec new_batche dba =
 				b_progenc = b.progenc; 
 				c_progenc = a.progenc; 
 				edits; edited }
-		) else new_batche dba
-	) else new_batche dba
+		) else new_batche ~mode dba
+	) else new_batche ~mode dba
 
 let apply_edits be = 
 	(* apply after (of course) sending to python. *)
@@ -867,10 +897,6 @@ let bigarray_img2tensor_2 img device =
 	) done;
 	o |> Tensor.to_device ~device
 	
-	
-let progenc_cost s = 
-	String.fold_left (fun a b -> a + (Char.code b)) 0 s
-	
 let dbf_dist dbf img = 
 	let d = Tensor.( (dbf - img) ) in
 	let d = Tensor.einsum ~equation:"ijk, ijk -> i" [d;d] ~path:None in
@@ -879,12 +905,26 @@ let dbf_dist dbf img =
 	let dist = Tensor.get d mindex |> Tensor.float_value in
 	dist,mindex
 	
+let pdata_to_edata p = 
+	{ epro = p.pro
+	; eprogenc = p.progenc
+	; eimg = p.img
+	; escost = p.scost
+	; epcost = p.pcost
+	; esegs = p.segs }
+	
+let truncate_list n l = 
+	let n = min n (List.length l) in
+	let a = Array.of_list l in
+	Array.sub a 0 n |> Array.to_list
+	
 let init_database device db (dbf : Tensor.t) = 
 	(* generate the initial program, image pairs *)
 	Logs.info(fun m -> m  "init_database %d" image_count); 
 	let i = ref 0 in
 	let iters = ref 0 in
 	let replace = ref 0 in
+	let equivalents = ref 0 in
 	while !i < image_count do (
 		let data = if !i = 0 then
 			generate_empty_logo !i image_res else
@@ -901,16 +941,45 @@ let init_database device db (dbf : Tensor.t) =
 		) else (
 			(* see if there's a replacement *)
 			let data2 = Vector.get db mindex in
-			let c1 = progenc_cost data.progenc in
-			let c2 = progenc_cost data2.progenc in
+			let c1 = data.pcost in (* progenc_cost  *)
+			let c2 = data2.pcost in
 			if c1 < c2 then (
 				Logs.debug(fun m -> m 
-					"%d: replacing [%d] = %s ( was %s)" !iters mindex 
+					"%d: replacing [%d][%d] = %s ( was %s)" 
+					!iters mindex (List.length data2.equiv)
 					(Logo.output_program_pstr data.pro) 
 					(Logo.output_program_pstr data2.pro));
+				let data = if dist < 0.6 then (
+					let ed = pdata_to_edata data2 in
+					{data with equiv = (ed :: data2.equiv)} 
+					) else data in
 				Vector.set db mindex data;
 				Tensor.copy_ (Tensor.narrow dbf ~dim:0 ~start:mindex ~length:1) ~src:img;
-				incr replace; 
+				incr replace
+			) else (
+				(* they are equivalent; see if it's already there *)
+				(* if the list is short, add it; otherwise only add to list if it's better (above)*) 
+				if dist < 0.6 then (
+					if List.length data2.equiv < 32 then (
+						let pres = List.exists (fun a -> a.eprogenc = data.progenc) data2.equiv in
+						if not pres then ( 
+						(* ok, add it to the list *)
+						(*Logs.debug(fun m -> m 
+							"%d: equivalent [%d][%d] = %s (best %s;)" 
+							!iters mindex (List.length data2.equiv) 
+							(Logo.output_program_pstr data.pro) 
+							(Logo.output_program_pstr data2.pro));*)
+						
+							let ed = pdata_to_edata data in
+							let eqlist = ed :: data2.equiv (*|> 
+								List.sort (fun a b -> compare a.epcost b.epcost)*) in 
+							let data2 = {data2 with equiv = eqlist} in
+							Vector.set db mindex data2; 
+							(* do not change the image *)
+							incr equivalents
+						)
+					) 
+				)
 			)
 		); 
 		if !iters mod 40 = 39 then 
@@ -918,27 +987,56 @@ let init_database device db (dbf : Tensor.t) =
 			Caml.Gc.major (); 
 		incr iters
 	) done; 
-	Logs.info(fun m -> m  "%d done; %d sampled; %d replacements" !i !iters !replace)
+	(* need to sort everything -- primary keys and equivalent lists *)
+	let dba = Vector.to_array db in
+	Array.sort (fun a b -> compare a.pcost b.pcost) dba; 
+	(* remove duplicate equivalents *)
+	let rec removeDup ls =
+		if List.length ls > 1 then (
+			let b = List.hd ls in
+			let c = List.tl ls in
+			if List.exists (fun d -> d.eprogenc = b.eprogenc) c
+			then removeDup c
+			else b :: (removeDup c)
+		) else ls
+	in
+	(* sort the equivalents *)
+	Array.iteri (fun i data -> 
+		let dedup = removeDup data.equiv in
+		let sl = List.sort (fun a b -> compare a.epcost b.epcost)
+			dedup in
+		(* remove head duplicates *)
+		let sl = List.filter (fun a -> a.eprogenc <> data.progenc) sl in
+		dba.(i) <- {data with equiv=sl} ) dba; 
+	Logs.info(fun m -> m  "%d done; %d sampled; %d replacements; %d equivalents" !i !iters !replace !equivalents); 
+	dba
 	
-let save_database db = 
+let save_database dba = 
 	let fil = open_out "db_prog.txt" in
 	Printf.fprintf fil "%d\n" image_count; 
-	Vector.iteri (fun i d -> 
+	Array.iteri (fun i d -> 
 		let pstr = Logo.output_program_pstr d.pro in
-		Printf.fprintf fil "[%d] %s\n"  i pstr ) db ; 
+		Printf.fprintf fil "[%d] %s "  i pstr; 
+		List.iter (fun ep -> 
+			let ps = Logo.output_program_pstr ep.epro in
+			Printf.fprintf fil "| %s " ps) d.equiv; 
+		Printf.fprintf fil "\n") dba ; 
 	close_out fil; 
 	Logs.app(fun m -> m  "saved %d to db_prog.txt" image_count); 
 	
 	(* verification .. human readable*)
 	let fil = open_out "db_human_log.txt" in
 	Printf.fprintf fil "%d\n" image_count; 
-	Vector.iteri (fun i d -> 
+	Array.iteri (fun i d -> 
 		Printf.fprintf fil "\n[%d]\t" i ; 
-		Logo.output_program_h d.pro fil) db ; 
+		Logo.output_program_h d.pro fil) dba ; 
 	close_out fil; 
 	Logs.debug(fun m -> m  "saved %d to db_human_log.txt" image_count)
 	
+	(* save the equivalents too? *)
+	
 let load_database device db dbf = 
+	let equivalent = ref 0 in
 	let lines = read_lines "db_prog.txt" in
 	let a,progs = match lines with
 		| h::r -> h,r
@@ -955,22 +1053,42 @@ let load_database device db dbf =
 				| h::[] -> h,"",[]
 				| [] -> "0","0",[] in
 			let pid = int_of_string ids in
-			let pr = if pid = 0 || (List.length ps) < 1
-				then Some `Nop
-				else parse_logo_string (List.hd ps) in
+			let pr,prl = if pid = 0 || (List.length ps) < 1
+				then Some `Nop, []
+				else (
+					let a = String.split_on_char '|' (List.hd ps) in
+					parse_logo_string (List.hd a), (List.tl a) ) in
 			(match pr with 
 			| Some pro -> 
 				let progenc = Logo.encode_program_str pro in
 				let (_,_,segs) = Logo.eval (Logo.start_state ()) pro in
-				let cost = segs_to_cost segs in
+				let scost = segs_to_cost segs in
+				let pcost = progenc_cost progenc in
 				let img,_ = Logo.segs_to_array_and_cost segs image_res in
-				let data = {pid; pro; progenc; img; cost; segs} in
+				let equiv = List.map (fun s -> 
+					let g = parse_logo_string s in
+					match g with 
+					| Some epro -> (
+						let eprogenc = Logo.encode_program_str epro in
+						let (_,_,esegs) = Logo.eval (Logo.start_state ()) epro in
+						let escost = segs_to_cost esegs in
+						let epcost = progenc_cost eprogenc in
+						let eimg,_ = Logo.segs_to_array_and_cost esegs image_res in
+						incr equivalent; 
+						{epro; eprogenc; eimg; escost; epcost; esegs}
+						)
+					| _ -> ( 
+						Logs.err(fun m -> m  "could not parse program %d %s" pid s); 
+						nulpequiv ) ) prl in
+				let data = {pid; pro; progenc; img; 
+								scost; pcost; segs; equiv} in
 				Vector.push db data ; 
 				let imgf = bigarray_img2tensor data.img device in
 				Tensor.copy_ (Tensor.narrow dbf ~dim:0 ~start:pid ~length:1) ~src:imgf;
 			| _ -> Logs.err(fun m -> m 
 					"could not parse program %d %s" pid s ))
 			) progs; 
+		Printf.printf "Loaded %d equivalents\n" !equivalent; 
 		true
 	)
 	
@@ -1105,13 +1223,15 @@ let try_add_program state bi progenc =
 			let dist,mindex = dbf_dist dbf img in
 			(* idea: if it's similar to a currently stored program, but has been hallucinated by the network, and is not too much more costly than what's there, 
 			then replace the entry! *)
-			if dist < 1.2 then (
+			if dist < 0.6 then (
 				let data2 = dba.(mindex) in
-				let c1 = progenc_cost data.progenc in
-				let c2 = progenc_cost data2.progenc in
+				let c1 = data.pcost in
+				let c2 = data2.pcost in
 				if c1 < c2 then (
 					let progstr2 = progenc2progstr data2.progenc in
 					Logs.info (fun m -> m "#%d b:%d replacing equivalents [%d] %s with %s" !nreplace bi mindex progstr2 progstr);
+					let ed = pdata_to_edata data2 in
+					let data = {data with equiv = (ed :: data2.equiv)} in
 					dba.(mindex) <- data; 
 					Tensor.copy_ (Tensor.narrow dbf ~dim:0 ~start:mindex ~length:1) ~src:img; 
 					Printf.fprintf fid "(%d) [%d] %s --> %s\n"
@@ -1236,7 +1356,10 @@ let accept_connection state conn =
 			Printexc.print_backtrace stdout; 
 			flush stdout; 
 			List.iter (fun fd -> Unix.close fd) fdlist;
-			close_out fid);
+			close_out fid;
+			(* save the database *)
+			save_database dba
+			);
 	Logs_lwt.info (fun m -> m "New connection") 
 	>>= return
 	
@@ -1281,27 +1404,34 @@ let () =
 		( ones [image_count; image_res; image_res] ) * (f (-1.0))) 
 		|> Tensor.to_device ~device in
 	
-	let g = if Sys.file_exists "db_prog.txt" 
-		then load_database device db dbf 
-		else false in
-	if g then (
+	let g = if Sys.file_exists "db_prog.txt" then ( 
+			if load_database device db dbf; 
+			 then Some (render_simplest db) 
+			 else None
+			(* don't sort -- criteria is different! *)
+		) else None in
+	let dba = match g with
+	| Some(gg) -> (
 		Logs.app(fun m -> m "Loaded %d programs from db_prog.txt" image_count); 
-	) else (
+		gg )
+	| None -> (
 		Logs.app(fun m -> m "Generating %d programs" image_count);
+		let () = Logs.set_level (Some Logs.Debug) in
 		let start = Unix.gettimeofday () in
-		init_database device db dbf;
+		let dba = init_database device db dbf in
 		let stop = Unix.gettimeofday () in
 		Logs.app(fun m -> m "Execution time: %fs\n%!" (stop -. start)); 
 	
 		Logs.info(fun m -> m "render_simplest: first 10 programs");
 		for i = 0 to 9 do (
 			let p = Vector.get db i in
-			Logs.info(fun m -> m "%d: %s\n" i
+			Logs.info(fun m -> m "%d: %s" i
 					(Logo.output_program_pstr p.pro)); 
 		) done; 
-		save_database db ; 
-	); 
-	let dba = render_simplest db false in (* don't sort -- criteria is different! *)
+		save_database dba ; 
+		dba
+		) in 
+	
 	
 	let sock = create_socket () in
 	let state = device,dba,dbf in
