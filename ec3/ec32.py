@@ -365,9 +365,6 @@ for u in range(train_iters):
 			hallucinate()
 		if u > 8000: 
 			hallucinate()
-			
-	for i in range(1000): 
-		hallucinate()
 				
 	if u % 1000 == 999 : 
 		torch.save(model.state_dict(), "ec32.ptx")
