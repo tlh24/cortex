@@ -4,13 +4,26 @@ sudo apt-get install ocaml
 # upgrade opam
 bash -c "sh <(curl -fsSL https://raw.githubusercontent.com/ocaml/opam/master/shell/install.sh)"
 # add a flambda build, with the latest ocaml compiler
-sudo apt-get install make gcc unzip bubblewrap
+sudo apt-get install make -y gcc unzip bubblewrap
 opam init
-opam update
+opam update --confirm-level=unsafe-yes
 opam switch create myswitch ocaml-variants.4.14.0+options ocaml-option-flambda
 eval $(opam env --switch=myswitch)
-opam update
-opam install core core_unix vg cairo2 pbrt vector ocaml-protoc
+opam update --confirm-level=unsafe-yes
+
+# need to install libtorch
+wget https://download.pytorch.org/libtorch/cu116/libtorch-cxx11-abi-shared-with-deps-1.13.1%2Bcu116.zip
+mv libtorch-cxx11-abi-shared-with-deps-1.13.1+cu116.zip ~
+unzip ~/libtorch-cxx11-abi-shared-with-deps-1.13.1+cu116.zip 
+mv libtorch ~
+export LIBTORCH=/home/ubuntu/libtorch
+
+opam install --confirm-level=unsafe-yes core core_unix vg cairo2 pbrt vector ocaml-protoc lwt logs pcre torch
+eval $(opam env --switch=myswitch)
+dune build
+
+git config --global user.email "sideskate@gmail.com"
+git config --global user.name "Tim Hanson"
 
 # for accessing remotely: 
 # sshfs -o allow_other,default_permissions ubuntu@104.171.203.63:/home/ubuntu/cortex/ /home/tlh24/remote/

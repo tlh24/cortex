@@ -32,7 +32,7 @@ prog_layers = 6
 embed_dim = 256
 
 train_iters = 100000
-learning_rate = 0.0016 # maximum learning rate. scheduled.
+learning_rate = 0.00125 # maximum learning rate. scheduled.
 # learning rate of 0.002 is unstable.  Should figure out why. 
 weight_decay = 5e-6
 nreplace = 0
@@ -150,13 +150,14 @@ model = ecTransformer(image_resolution = image_res,
 							 p_indim = p_indim, 
 							 e_indim = e_indim)
 
-# try: 
-loaded_dict = torch.load("ec32.ptx")
-prefix = 'module.'
-n_clip = len(prefix)
-adapted_dict = {k[n_clip:]: v for k, v in loaded_dict.items()
-                if k.startswith(prefix)}
-model.load_state_dict(adapted_dict)
+from os.path import exists
+if exists("ec32.ptx"):
+	loaded_dict = torch.load("ec32.ptx")
+	prefix = 'module.'
+	n_clip = len(prefix)
+	adapted_dict = {k[n_clip:]: v for k, v in loaded_dict.items()
+						if k.startswith(prefix)}
+	model.load_state_dict(adapted_dict)
 # except: 
 # 	print("could not load model parameters from ec32.ptx")
 
