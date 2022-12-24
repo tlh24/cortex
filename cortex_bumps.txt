@@ -3321,7 +3321,19 @@ On 8x A100-SXM server, get ~8800 samples/sec with somewhat imperfect resource ut
 (~1 batch/sec;
 c.f. desktop, 4400samp/sec @ bs=768 -> 5.7 batches/sec
 c.f. laptop, 1500samp/sec @ bs=256 -> 5.8 batches/sec
+c.f. desktop, 3090 only, 2650samp/sec, @ bs=512 -> 5.2 batches/sec
+c.f. desktop, 2080s only, 3550 samp/sec @ bs=512 -> 6.8 batches/sec
+c.f. desktop, one 2080, 2000 samp/sec @ bs=512
 The install script needs a little bit of hand-holding to work; in particular have to tell opam to not edit .bashrc
-Would almost certainly be faster if i re-engineered the system to have multiplle python threads & async update, rather than regular DataParallel.
+Would almost certainly be faster if i re-engineered the system to have multiple python threads & async update, rather than regular DataParallel.
 OK, anyway, good experiments, now i know!
->>>>>>> 3c2ad2322c2c9a624ba68a6369ad514b8c21ce57
+
+To extrapolate a bit: a 4090 is maybe 1.7x faster in training than a 3090. 
+My 3090 is slowed down by being on thunderbolt 3.  Should be ~2.2x the speed of a 2080Ti according to 
+https://www.exxactcorp.com/blog/Benchmarks/rtx-3090-benchmarks-for-deep-learning-nvidia-rtx-3090-vs-2080-ti-vs-titan-rtx-vs-rtx-6000-8000
+
+Hence, on a fast computer with a fast PCIe bus, total performance should be ~ 1.7 x 2.2 = 3.7x faster. 
+2x 2080Ti = 3550 -> 13200 samp/sec for some appropriate batch size. 
+Well, not transformative but still pretty good - and quite a bit faster than virtualized 8x A100! 
+
+
