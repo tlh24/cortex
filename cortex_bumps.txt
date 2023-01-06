@@ -3336,4 +3336,60 @@ Hence, on a fast computer with a fast PCIe bus, total performance should be ~ 1.
 2x 2080Ti = 3550 -> 13200 samp/sec for some appropriate batch size. 
 Well, not transformative but still pretty good - and quite a bit faster than virtualized 8x A100! 
 
+January 4 2023
 
+Tested whether driving a monitor affects torch speed.  
+It does not seem to affect it at all; see below. 
+
+# with the monitor at 4k120: 
+# GPU # 0 (3090) at 26-40C: 12.4598 (34% faster / 2080 is 53% slower)
+# GPU # 1 (2080) at 60-70C: 19.0269
+# GPU # 2 (2080) at 48-65C: 19.5551 (2.5-2.7% slower)
+
+# with the monitor at 4k24: 
+# GPU # 1 (2080) 65-72c:  19.0552 (slightly slower, within margin of error)
+# with the monitor at 2k30: 
+# 18.979, 18.9932
+# back to 4k120: 
+# 19.0269, 19.1146
+# 0.4% slower.  Probably meaningless!
+# Conclusion: no sense in adding another GPU to the system.  Seems that driving a monitor does not consume many resources; variance between cards is greater. 
+
+Seems relevant: 
+https://www.mosaicml.com/blog/introducing-pubmed-gpt
+(their cloud is in public beta)
+and also: 
+https://github.com/HazyResearch/flash-attention
+(though don't need it yet ... many more low-level tasks remain before engaging in such optimization!)
+
+January 5 2023
+Notes: NeuroAI blog post: https://xcorr.net/2023/01/01/2022-in-review-neuroai-comes-of-age/ 
+and : https://xcorr.net/2012/04/05/topography-conquers-all/
+
+It would seem the next steps are: 
+1 -- Extended context, extended actions. 
+Add in extended episodes, where the program can try multiple times to attain the target. 
+	This requires extended attention, 
+	which means we need to add in the logic of Transformer-XL or some other long-range attention mechanism (??)
+It’s not that much different than the current approach, where the transformer outputs edits -- here the transformer would output commands like ‘debug’, ‘print’, ‘call’, then run the program, observe the results, and potentially make new edits based on the whole episode of programming. 
+Afterward, we train on instances drawn from a database of the most successful program interactions (including “printouts” or “debug traces”, so that the transformer bootstraps useful behavior & clones it & hopefully generalizes to new situations.  
+	Note that the only feedback to the fact that adding debug symbols was useful is that of context: given a confusing situation, performing debug action in the past got you closer to the goal.
+	There is no explicit reinforcement learning, other than truncation selection memory! 
+Critical here is to replay episodes, to some finite degree, that the transformer is unable to complete on the first pass; 
+	This requires more feedback logic, of course. 
+	And the aforementioned longer context.  (= short-term memory)
+
+2 --  We need to add library generation here. Options: 
+	* Version space algebras / algorithms
+		? will it work with declarative languages? 
+	* Equivalence graph analysis
+		? this may or may not work through delcarative / partly functional languages
+	* A separate transformer network
+		Where I’m leaning now.  
+		Seems perfectly general. 
+		But very likely will be less performant and data-efficient than bespoke refactoring algorithms. 
+		
+3 -- What about A-star & other search mechanisms?
+
+Decision: should look at the EGG library more to understand it better. 
+Internet seems to agree that the library generation is one of the key innovations of DreamCoder. 
