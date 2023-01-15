@@ -72,8 +72,9 @@ posenc = read_mmap(fd_posenc, [p_ctx, poslen*2])
 torch_device = 0
 print("torch cuda devices", th.cuda.device_count())
 print("torch device", th.cuda.get_device_name(torch_device))
-# th.cuda.set_device(torch_device)
+th.cuda.set_device(torch_device)
 th.set_default_tensor_type('torch.cuda.FloatTensor')
+torch.set_float32_matmul_precision('high')
 
 def build_attention_mask(v_ctx, p_ctx):
 	# allow the model to attend to everything when predicting an edit
@@ -290,6 +291,19 @@ slowloss = 1.0
 losslog = open("loss_log.txt", "w")
 lr = learning_rate
 tic = time.time()
+print("training...")
+
+# compiling this does not seem to work... 
+def train(mod, bimg, bpro, bedt): 
+	model.zero_grad()
+	y,q = model(u, bimg.cuda(), bpro.cuda())
+	loss = lossfunc(y, bedt.cuda())
+	lossflat = th.sum(loss)
+	lossflat.backward()
+	th.nn.utils.clip_grad_norm_(model.parameters(), 0.05)
+	optimizer.step()
+	
+train_opt = th.compile(train, mode="reduce-overhead")
 
 for u in range(train_iters): 
 	# need to set the default tensor type to CPU
@@ -305,6 +319,7 @@ for u in range(train_iters):
 	sock.sendall(b"update_batch\n")
 	
 	# with th.autocast(device_type='cuda', dtype=torch.float16):
+	# train(model, bimg.cuda(), bpro.cuda(), bedt.cuda())
 	model.zero_grad()
 	y,q = model(u, bimg.cuda(), bpro.cuda())
 	loss = lossfunc(y, bedt.cuda())
@@ -318,7 +333,7 @@ for u in range(train_iters):
 	# scaler.step(optimizer)
 	# scaler.update()
 	
-	# do this later (async) to imporve gpu utilization
+	# do this later (async) to improve gpu utilization
 	data = sock.recv(100)
 	try:
 		nreplace = int(data[3:].decode("utf-8"))

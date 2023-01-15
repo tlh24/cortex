@@ -34,5 +34,4 @@
 ; to install these libraries, run:
 ; opam install core core_unix vg cairo2 pbrt vector
 ; opam switch create myswitch ocaml-variants.4.14.0+options ocaml-option-flambda
-
 ; export OCAMLPARAM='_,rounds=4,O3=1,inline=100,inline-max-unroll=5'

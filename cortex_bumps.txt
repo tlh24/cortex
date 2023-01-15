@@ -3435,4 +3435,97 @@ Importantly, want some of these rewrites to replace existing library functions, 
 For this, I think you need some sort of invariance-permitting BLAST matching algorithm, that can operate on actual dataflow observed in the programming language emulator.  
 	Seems maybe inefficient. 
 	(Might need a computer with a lot lot more ram ?!)
+	
+Hedon from run: Obviously, need extended batches of interaction ... w maybe frozen weights? 
+
+January 14 2023
+Well, I've spent a while fiddling with CUDA versions, waiting for multi-gigabyte run files to download, installing and re-linking different versions, and have to say... I can't get either DistributedDataParallel or DataParallel working.  
+
+My comments are here: https://discuss.pytorch.org/t/ddp-training-on-rtx-4090-ada-cu118/168366
+
+Roughly, https://github.com/The-AI-Summer/pytorch-ddp
+DP runs, but gives NaN loss. 
+DDP works, but is slower (with lower GPU utilization) than training on 1 GPU.  
+Bumping up the batch size to 512 increases the GPU utilization, but does not increase the fidelity of the network.  After 4 epochs, loss is higher on the test set of 10k images vs. training on 1 GPU.  
+This is with export NCCL_P2P_DISABLE=1. 
+without that flag, everything stalls / but is killable.  
+
+Getting to ec32: it runs just fine on either one of the GPUs. But I've never gotten it to work on both.  
+Think I need to wait until the stable version of pytorch supports CUDA 12.0 & more testing has been done on RTX 4090s. 
+(e.g. two 2080ti and 1 3090 seemed to work just spiffy.. perhaps because these have been tested a lot more?)
+
+Finally, torch.compile doesn't work because the required shader model is either not supported by nvcc (sm_89), or b/c torch is not linked against cuda 12, it doesn't communicate properly.. 
+	Again, waiting this one out is probably the best.  
+	
+Now, training on one 4090 gets us ~ 4480 samples / sec, (batch size = 512) or 4600 samples / sec (batch size = 256) which is better than done before -- and about half the performance of 8x A100 SXM using DP on Lambda Cloud!  hah.  
+And it uses < 300W.. and moves along nice and quick @ bs = 256! 
+	Helping this is that the fans remain constantly spinning, so when hallucinating, it keeps the GPU cool, 46C at 2.8GHz! 
+
+OK, now let's move on to some real work.  
+As I was falling asleep last night, it all seemed so simple (as it does, when you mind is free and loose..)
+You start with complicated, entangled stimulus 
+	(as in: the real world).  
+Then you move to a more simplified, discrete representation
+	here: a series of lines
+Then you need to organize those line segments, which can be done with a sorting algorithm. 
+	A sorting algorithm that's supported via an attention mechanism. 
+	Or by computed-addressing active dendrites etc. 
+Once sorted, then you use them as a key approximate-analogy memory to search over past experiences that generated those lines
+	This is iterative, and involves a degree of trial and error. 
+		Those trials get added to the database. 
+Now you have a slightly more simplified, discrete representation of the stimulus & then need to do another iterative, interactive pass to figure out how to compress that further. 
+	In this case: loops or calls or something.  
+Eventually, you get pretty good at inverting stimulus, and now want to factorize (compress) not just the stimulus, but the list of solutions generated. 
+	This is an equivalent problem, though to some degree it's more complicated: the list of solutions can be very long, and so the interactive loop might be slow. 
+None-the-less, the interaction is the same: peer through the long list of stimulus, and look for commonalities which can be used to factorize the list.  
+Try it out interactively, and verify -- 
+	in this case, you want exact or nearly exact replacements.  
+E-graphs are great here, as it's easy to search them for equivalent factorizations -- but, I think, you can get something similar by looking in less-compressed space aka behavioral space and matching on that.  
+
+Using transformers to serve as bidirectional memory (or rather, inverse memory) works pretty well here, as they *do* have a degree of algorithmic ability: they can do sorting / organization (as mention above).  
+Yet, I remain itchy: can we not do something much more sample-efficient with direct algorithms, like fuzzy dictionaries and ScaNN for matching?  
+It will also have to support algorithmic organization.. 
+	To be more explicit, an important part of compression is moving from a space with significant invariances / equivariances (such as the order of line segments) 
+	Into a space where they are cannonicalized based on say stroke or continuity -- or, more importantly, what can actually be produced by slightly-more-compressed data representation (curved line segments). 
+A transformer *should* be ok at this, but there might be something more direct -- perhaps some of the algorithms like Smith-Waterman for assembling DNA? 
+	That is, you can look at the problem of sequencing segments as a problem of de-permutation (~= assembling DNA segments)
+	Another way of looking at it is you're binning the stimuli into causes, where causes can spread laterally, too (eg edges, continuous segments.  
+		This gets closer to what the brain might well be doing.. 
+		Not gradient descent at all!! 
+		But certanily conditional computation / addressing. 
+Such algorithms (or neural structures) will more explicitly represent an inverse map, and hence hopefully be more sample-efficient. 
+	but you might need more of them, for multiple hierarchical states. 
+	& to make them euivalent to the multi-level computation of a many layer transformer. 
+Anyway, keep that on the backburner!! 
+	Fertile area, but let's stick to transformers for the time being, sample efficiency be damned.  
+		And crap like ;333333333333333;EG@F=FB4>E4=G< lolsob. 
+			(Really need to figure out this failure mode!)
+
+Also on the backburner: rather than using torch DDP or DP, both which don't work (yet), should augment both the ocaml server and the python client to simply run two versions of the same network in parallel, and have them both add to the database of equivalents etc.. in the meantime, meta employees can fix compatability with multiple RTX 4090s.  
+
+Other things to generally think about: 
+*  Debugging.  
+	If everything is perfectly observable at every level, it's not needed. 
+	But that's asking a lot & is not what humans do! 
+	How do you build in debugging?  Something about the failure mode of inversion / need more information for the inversion code?? 
+* Many levels of hierarchy. 
+	Should we have one model (transformer) for working with different contexts, or different models for different contexts? 
+* Library generation. 
+	I'm thinking now that this needs to be via a "hard" algorithm, not a "soft" neural net.  
+	Think we need to get the current model working on MNIST first, outputing series of 'move' commands, based on longer interaction episodes.  
+	
+So, tasks: 
+1. Longer interactions via larger sequence attention.  
+	(Transformer XL and or Memorizing Transformers)
+	This entails some cleverness re episode interaction. 
+	Also requires that 'hallucinate' is effectively called every time. 
+		Which might be slow. 
+		And how do we get rid of the stuttering?? Uff. It's clearly a feedback loop of some sort; maybe need to propagate some negative gradients on it.. ? 
+	Yeah, prolonged sessions / repeated actions need to be sorted and contingent on actually solving the problem. 
+	Getting rid of the stutter might require training loss on them, too.  Positive reinforcement on what you should do, some negative reinforcement on what you should not. 
+		Hmm. Would be good to have someone to bounce ideas off of. 
+2. Try to solve MNIST digits
+	Always MNIST. 
+3. If that's good and reliable, then start working on library generation for the solutions generated. 
+	Remember: make the entropic steps as small as possible, so inversion is easy! 
 
