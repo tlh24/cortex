@@ -40,8 +40,8 @@ class MultiheadAttention(nn.Module): # this is only self-attention.
 		self.width = width
 		self.heads = heads
 		self.c_qkv = nn.Linear(width, width * 3) # note! * 3
-		self.c_proj = nn.Linear(width, width)
 		self.attention = QKVMultiheadAttention(heads, n_ctx)
+		self.c_proj = nn.Linear(width, width)
 
 	def forward(self, x):
 		x = self.c_qkv(x)

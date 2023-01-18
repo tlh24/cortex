@@ -3516,7 +3516,7 @@ Other things to generally think about:
 	
 So, tasks: 
 1. Longer interactions via larger sequence attention.  
-	(Transformer XL and or Memorizing Transformers)
+	(Transformer XL + Memorizing Transformers)
 	This entails some cleverness re episode interaction. 
 	Also requires that 'hallucinate' is effectively called every time. 
 		Which might be slow. 
@@ -3528,4 +3528,19 @@ So, tasks:
 	Always MNIST. 
 3. If that's good and reliable, then start working on library generation for the solutions generated. 
 	Remember: make the entropic steps as small as possible, so inversion is easy! 
+	This means selecting the right sets of intermediate represenations. 
+	ERNIE trains a transformer to do a sorting task as pre-training; can hypothetically do (something like) this to compress away the null space. 
+	
+January 18 2023
+
+Comppiled pytorch from source, linked against CUDA 12.0 -- still has the same bugs in torch.compile and DP / DDP.  
+Learned today that many models are limited by memory bandwidth -- which behooves me to ultimately get both 4090s working in parallel, e.g. DDP. 
+Maybe I should file a bug. or wait. 
+
+Also compiled faiss from source; this looks like a very useful library!  Fast k-nearest-neighbors, with good example code via memorizing-transformers-pytorch.  
+This alone should be sufficient to have the extended interaction. 
+
+Spent some other time this evening looking at accelerated Smith-Waterman algorithms for alignment, e.g. for factorizing the library of examples: 
+the target sequence would be the hypothetical library function, 
+and the "genome" would be all the programs (and their traces, intermediate representations) that are to be refactored.  
 

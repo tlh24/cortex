@@ -12,6 +12,8 @@ import clip_model
 import argparse
 import pdb
 
+import torch._dynamo as dynamo
+dynamo.config.verbose=True
 
 batch_size = 256*3
 image_res = 30
@@ -158,11 +160,11 @@ if exists("ec32.ptx"):
 	n_clip = len(prefix)
 	adapted_dict = {k[n_clip:]: v for k, v in loaded_dict.items()
 						if k.startswith(prefix)}
-	model.load_state_dict(adapted_dict)
+	model.load_state_dict(loaded_dict)
 # except: 
 # 	print("could not load model parameters from ec32.ptx")
 
-model = nn.DataParallel(model)
+# model = nn.DataParallel(model)
 
 # lossfunc = nn.CrossEntropyLoss(label_smoothing = 0.08, reduction='none')
 lossfunc = nn.MSELoss(reduction='mean')
@@ -319,14 +321,14 @@ for u in range(train_iters):
 	sock.sendall(b"update_batch\n")
 	
 	# with th.autocast(device_type='cuda', dtype=torch.float16):
-	# train(model, bimg.cuda(), bpro.cuda(), bedt.cuda())
-	model.zero_grad()
-	y,q = model(u, bimg.cuda(), bpro.cuda())
-	loss = lossfunc(y, bedt.cuda())
-	lossflat = th.sum(loss)
-	lossflat.backward()
-	th.nn.utils.clip_grad_norm_(model.parameters(), 0.05)
-	optimizer.step()
+	train_opt(model, bimg.cuda(), bpro.cuda(), bedt.cuda())
+	# model.zero_grad()
+	# y,q = model(u, bimg.cuda(), bpro.cuda())
+	# loss = lossfunc(y, bedt.cuda())
+	# lossflat = th.sum(loss)
+	# lossflat.backward()
+	# th.nn.utils.clip_grad_norm_(model.parameters(), 0.05)
+	# optimizer.step()
 		
 	# scaler.scale(lossflat).backward()
 	# th.nn.utils.clip_grad_norm_(model.parameters(), 0.05)
