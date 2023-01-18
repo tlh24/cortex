@@ -3531,9 +3531,9 @@ So, tasks:
 	This means selecting the right sets of intermediate represenations. 
 	ERNIE trains a transformer to do a sorting task as pre-training; can hypothetically do (something like) this to compress away the null space. 
 	
-January 18 2023
+January 17 2023
 
-Comppiled pytorch from source, linked against CUDA 12.0 -- still has the same bugs in torch.compile and DP / DDP.  
+Compiled pytorch from source, linked against CUDA 12.0 -- still has the same bugs in torch.compile and DP / DDP.  
 Learned today that many models are limited by memory bandwidth -- which behooves me to ultimately get both 4090s working in parallel, e.g. DDP. 
 Maybe I should file a bug. or wait. 
 
@@ -3544,3 +3544,43 @@ Spent some other time this evening looking at accelerated Smith-Waterman algorit
 the target sequence would be the hypothetical library function, 
 and the "genome" would be all the programs (and their traces, intermediate representations) that are to be refactored.  
 
+January 18 2023
+
+Fixed the CUDA install on the laptop -- had a dangling 11.0 version hanging around, which was causing faiss to hang when jit compiling ptx code.  meh, took too long to correct.  But getting used to finagling cuda installations. 
+
+Anyway, longer context: want to solve problems the way humans do, by repeated interactions & the ability to break chains of actions into their components.  
+So, when we're converting a MNIST digit to code, first we produce some segments, then re-arrange the segments into curves, then convert the curves into loops or function calls, then adjust the parameters of the loops/calls to better fit the data... 
+
+Key thing: always train on what actually happened = ground truth from simulator.  
+Break episode up into small steps, if they improved some metric (e.g. implicit reinforcement learning). 
+Small steps = sequence of edits then <fin> to indicate "run the simulator". 
+	In the case that the program does not compile ... do nothing, same as current 'hallucinate'. 
+	
+Currently the system is trained to reproduce edits which result from taking diffs of arbitrary programs. 
+- Some of these of course are impossible to invert and or the programs are poorly made / possibly chaotic; should gradually weed these out of the database (alternately: try harder). 
+- Other edits go from nothing to something, e.g. 'A' is the empty program.
+Instead of B being the output of a hidden program, it can be a MNIST digit. 
+The transformer needs to emit some segments to try to reproduce it.. if successful (e.g. improved MSE match), then add to the database & train accordingly.  
+	- Might need to make the database even larger? 
+	- These entries can't be diffed, of course, because the generating program is unknown! 
+	- They *can* be continued, though: context is then first round: 
+		image A (empty) 
+		image B (MNIST digit)
+		program A (empty) --> 
+			emit edits
+		--> program C & image C & trace C (?!)
+		
+Ok, what to do with this extended context?? 
+Clearly, we can somehow encode it all in a memorizing transformer -- and in the present, can fit much into length 512 context
+** but: how to bootstrap? **
+One mechanism: if the model comes up with an improvement ... then add it to the database, and later train on the full context (above) to produce the edits.  
+	Hope: by training on small / simple examples, the transformer will "get the gist" of what to do in various situations. 
+	Further: *probably* want to add noise to the system .. not really sure how (in the image?) to force the agent to explore properly.
+		I guess this shouldn't be too hard. 
+		Adding a feedback loop to explore -- something like "hammer" could be done with forms of memory other than a transformer, of course. 
+Realistically: given the cache of programs, need to divide them into smaller bite-sizes so that the trasformer doesn't get confused when exposed to longer contexts.  That is, need to have a way of breaking the diffs up into minimum peices/edits, but applying them in longer contexts. 
+Also might be right to do a bit of fuzzing on e.g. integer values? 
+	Desirable to filter the database based on utility + understandability (see chaotic code above). 
+
+Later: add in greater context through program-traces. 
+Needed: some way of tagging the keys in the long-term memory so we know if it's from image or code or trace etc... hmm. 
