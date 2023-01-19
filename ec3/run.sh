@@ -1,7 +1,7 @@
 #!/usr/bin/bash
 mkdir -p /tmp/png
-# use the second 2080 Ti (tends to be the least loaded)
 export OCAMLPARAM='_,rounds=4,O3=1,inline=100,inline-max-unroll=5'
+# use the first 4090 (Second one for python)
 export CUDA_VISIBLE_DEVICES=0
 while getopts b: flag
 do
