@@ -1399,6 +1399,10 @@ let () =
 				(Cuda.cudnn_is_available ()));
 	let device = Torch.Device.cuda_if_available () in
 	(*let device = Torch.Device.Cpu in*) (* slower *)
+	let mnist = Mnist_helper.read_files ~prefix:"../otorch-test/data" () in
+	let { Dataset_helper.train_images; _ } = mnist in
+	Printf.printf Torch.shape train_images
+
 	let db = Vector.create ~dummy:nulpdata in
 	let dbf = Tensor.( 
 		( ones [image_count; image_res; image_res] ) * (f (-1.0))) 
