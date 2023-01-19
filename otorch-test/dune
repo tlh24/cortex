@@ -1,5 +1,5 @@
-(executable
-	(name otorch)
-	(modules otorch)
-	(libraries torch)
+(executables
+	(names otorch nn conv)
+	(modules otorch nn conv)
+	(libraries torch base)
 	)

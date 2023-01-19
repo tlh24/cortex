@@ -3426,7 +3426,7 @@ I'm really not sure about version space - equivalence graph hybrid used in Dream
 
 I do think keeping around a large library of equivalents makes sense, and perhaps keeping these in a datastructure smarter than a series of strings *makes sense* 
 E-graphs do this, in that it stores many permutations of equivalent representations, and you have the freedom at any level of the hierarchy to select 1 of N.  This, i think, is where the exponential compression comes in. 
-	But does not abrogate the need to ultimately which series of rewrites are best. 
+	But does not abrogate the need to ultimately decide which series of rewrites are best. 
 	In the context of the transformer, I guess again (for the time being), store a population of equivalents. 
 In the context of making a library, we still have the task of mapping equivalent results from experience. 
 Probably want something other than a transformer to generate the library and then refactor the programs in the database. 
@@ -3450,7 +3450,7 @@ Bumping up the batch size to 512 increases the GPU utilization, but does not inc
 This is with export NCCL_P2P_DISABLE=1. 
 without that flag, everything stalls / but is killable.  
 
-Getting to ec32: it runs just fine on either one of the GPUs. But I've never gotten it to work on both.  
+Regarding ec32: it runs just fine on either one of the GPUs. But I've never gotten it to work on both.  
 Think I need to wait until the stable version of pytorch supports CUDA 12.0 & more testing has been done on RTX 4090s. 
 (e.g. two 2080ti and 1 3090 seemed to work just spiffy.. perhaps because these have been tested a lot more?)
 
@@ -3473,46 +3473,56 @@ Then you need to organize those line segments, which can be done with a sorting 
 Once sorted, then you use them as a key approximate-analogy memory to search over past experiences that generated those lines
 	This is iterative, and involves a degree of trial and error. 
 		Those trials get added to the database. 
-Now you have a slightly more simplified, discrete representation of the stimulus & then need to do another iterative, interactive pass to figure out how to compress that further. 
+Now you have a slightly more simplified, discrete representation of the stimulus & need to do another iterative, interactive pass to figure out how to compress it further. 
 	In this case: loops or calls or something.  
 Eventually, you get pretty good at inverting stimulus, and now want to factorize (compress) not just the stimulus, but the list of solutions generated. 
 	This is an equivalent problem, though to some degree it's more complicated: the list of solutions can be very long, and so the interactive loop might be slow. 
 None-the-less, the interaction is the same: peer through the long list of stimulus, and look for commonalities which can be used to factorize the list.  
+	E.g. use the approximate-analogy memory to search over past experiences that generated these traces;
+		Sum/average these over the large population of programs
+			Might need backtracking though. 
 Try it out interactively, and verify -- 
 	in this case, you want exact or nearly exact replacements.  
 E-graphs are great here, as it's easy to search them for equivalent factorizations -- but, I think, you can get something similar by looking in less-compressed space aka behavioral space and matching on that.  
+	Or, by having a algorithm (or transformer) (or database) that can compress & remove invariances. 
 
-Using transformers to serve as bidirectional memory (or rather, inverse memory) works pretty well here, as they *do* have a degree of algorithmic ability: they can do sorting / organization (as mention above).  
-Yet, I remain itchy: can we not do something much more sample-efficient with direct algorithms, like fuzzy dictionaries and ScaNN for matching?  
+Using transformers to serve as bidirectional memory (or rather, inverse memory) works pretty well here, as they *do* have a degree of algorithmic ability: they can do sorting / organization (as mentioned above).  
+Yet, I remain itchy: can we not do something much more sample-efficient with direct algorithms, like fuzzy dictionaries and ScaNN/faiss for matching?  
 It will also have to support algorithmic organization.. 
 	To be more explicit, an important part of compression is moving from a space with significant invariances / equivariances (such as the order of line segments) 
-	Into a space where they are cannonicalized based on say stroke or continuity -- or, more importantly, what can actually be produced by slightly-more-compressed data representation (curved line segments). 
+	Into a space where they are cannonicalized based on say stroke or continuity 
+		-- or, more importantly, what can actually be produced by slightly-more-compressed data representation (curved line segments). 
 A transformer *should* be ok at this, but there might be something more direct -- perhaps some of the algorithms like Smith-Waterman for assembling DNA? 
 	That is, you can look at the problem of sequencing segments as a problem of de-permutation (~= assembling DNA segments)
-	Another way of looking at it is you're binning the stimuli into causes, where causes can spread laterally, too (eg edges, continuous segments.  
+		Which is not Smith-Waterman: instead, you use cintig extension, with search for extensions speed up by keeping all the short reads in a prefix tree (or ‘trie’)
+		See https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2045152/  
+			Written in Perl! 
+	Another way of looking at it is you're binning the stimuli into causes, where causes can spread laterally, too (eg edges, continuous segments.) 
 		This gets closer to what the brain might well be doing.. 
 		Not gradient descent at all!! 
-		But certanily conditional computation / addressing. 
+		But certainly conditional computation / addressing. 
 Such algorithms (or neural structures) will more explicitly represent an inverse map, and hence hopefully be more sample-efficient. 
 	but you might need more of them, for multiple hierarchical states. 
-	& to make them euivalent to the multi-level computation of a many layer transformer. 
-Anyway, keep that on the backburner!! 
+	& to make them equivalent to the multi-level computation of a many layer transformer. 
+Anyway, keep that on the back-burner!! 
 	Fertile area, but let's stick to transformers for the time being, sample efficiency be damned.  
 		And crap like ;333333333333333;EG@F=FB4>E4=G< lolsob. 
 			(Really need to figure out this failure mode!)
 
-Also on the backburner: rather than using torch DDP or DP, both which don't work (yet), should augment both the ocaml server and the python client to simply run two versions of the same network in parallel, and have them both add to the database of equivalents etc.. in the meantime, meta employees can fix compatability with multiple RTX 4090s.  
+Also on the back-burner: rather than using torch DDP or DP, both which don't work (yet), should augment both the ocaml server and the python client to simply run two versions of the same network in parallel, and have them both add to the database of equivalents etc.. in the meantime, meta employees can fix compatability with multiple RTX 4090s.  
 
 Other things to generally think about: 
 *  Debugging.  
 	If everything is perfectly observable at every level, it's not needed. 
 	But that's asking a lot & is not what humans do! 
 	How do you build in debugging?  Something about the failure mode of inversion / need more information for the inversion code?? 
+		A “frustration” module?
 * Many levels of hierarchy. 
 	Should we have one model (transformer) for working with different contexts, or different models for different contexts? 
 * Library generation. 
 	I'm thinking now that this needs to be via a "hard" algorithm, not a "soft" neural net.  
-	Think we need to get the current model working on MNIST first, outputing series of 'move' commands, based on longer interaction episodes.  
+		Though our squishy brains seem to work fine.. 
+	Think we need to get the current model working on MNIST first, outputting series of 'move' commands, based on longer interaction episodes.  
 	
 So, tasks: 
 1. Longer interactions via larger sequence attention.  
@@ -3546,7 +3556,7 @@ and the "genome" would be all the programs (and their traces, intermediate repre
 
 January 18 2023
 
-Fixed the CUDA install on the laptop -- had a dangling 11.0 version hanging around, which was causing faiss to hang when jit compiling ptx code.  meh, took too long to correct.  But getting used to finagling cuda installations. 
+Fixed the CUDA install on the laptop -- had a 11.0 version hanging around, which was causing faiss to hang when jit compiling ptx code.  meh, took too long to correct.  But getting used to finagling cuda installations. 
 
 Anyway, longer context: want to solve problems the way humans do, by repeated interactions & the ability to break chains of actions into their components.  
 So, when we're converting a MNIST digit to code, first we produce some segments, then re-arrange the segments into curves, then convert the curves into loops or function calls, then adjust the parameters of the loops/calls to better fit the data... 
