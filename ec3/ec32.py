@@ -74,7 +74,7 @@ print("torch cuda devices", th.cuda.device_count())
 print("torch device", th.cuda.get_device_name(torch_device))
 th.cuda.set_device(torch_device)
 th.set_default_tensor_type('torch.cuda.FloatTensor')
-torch.set_float32_matmul_precision('high')
+# torch.set_float32_matmul_precision('high') # desktop.
 
 def build_attention_mask(v_ctx, p_ctx):
 	# allow the model to attend to everything when predicting an edit
@@ -303,7 +303,7 @@ def train(mod, bimg, bpro, bedt):
 	th.nn.utils.clip_grad_norm_(model.parameters(), 0.05)
 	optimizer.step()
 	
-train_opt = th.compile(train, mode="reduce-overhead")
+# train_opt = th.compile(train, mode="reduce-overhead")
 
 for u in range(train_iters): 
 	# need to set the default tensor type to CPU
