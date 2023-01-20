@@ -164,7 +164,7 @@ if exists("ec32.ptx"):
 # except: 
 # 	print("could not load model parameters from ec32.ptx")
 
-# model = nn.DataParallel(model)
+model = nn.DataParallel(model)
 
 # lossfunc = nn.CrossEntropyLoss(label_smoothing = 0.08, reduction='none')
 lossfunc = nn.MSELoss(reduction='mean')
@@ -305,7 +305,7 @@ def train(mod, bimg, bpro, bedt):
 	th.nn.utils.clip_grad_norm_(model.parameters(), 0.05)
 	optimizer.step()
 	
-# train_opt = th.compile(train, mode="reduce-overhead")
+train_opt = th.compile(train, mode="reduce-overhead")
 
 for u in range(train_iters): 
 	# need to set the default tensor type to CPU
@@ -321,14 +321,14 @@ for u in range(train_iters):
 	sock.sendall(b"update_batch\n")
 	
 	# with th.autocast(device_type='cuda', dtype=torch.float16):
-	train_opt(model, bimg.cuda(), bpro.cuda(), bedt.cuda())
-	# model.zero_grad()
-	# y,q = model(u, bimg.cuda(), bpro.cuda())
-	# loss = lossfunc(y, bedt.cuda())
-	# lossflat = th.sum(loss)
-	# lossflat.backward()
-	# th.nn.utils.clip_grad_norm_(model.parameters(), 0.05)
-	# optimizer.step()
+	#train_opt(model, bimg.cuda(), bpro.cuda(), bedt.cuda())
+	model.zero_grad()
+	y,q = model(u, bimg.cuda(), bpro.cuda())
+	loss = lossfunc(y, bedt.cuda())
+	lossflat = th.sum(loss)
+	lossflat.backward()
+	th.nn.utils.clip_grad_norm_(model.parameters(), 0.05)
+	optimizer.step()
 		
 	# scaler.scale(lossflat).backward()
 	# th.nn.utils.clip_grad_norm_(model.parameters(), 0.05)

@@ -32,8 +32,8 @@ let nulpdata =
 	; pro  = `Nop 
 	; progenc = ""
 	; img  = Bigarray.Array1.create Bigarray.int8_unsigned Bigarray.c_layout 1
-	; scost = -1.0
-	; pcost = -1
+	; scost = -1.0 (* sequence cost *)
+	; pcost = -1 (* program cost *)
 	; segs = [] 
 	; equiv = []
 	}
@@ -48,13 +48,16 @@ let nulpequiv =
 	}
 
 type batche = 
-	{ a_pid : int 
+	{ superv : bool (* are we supervised or generative? *)
+	; a_pid : int 
 	; b_pid : int
-	; a_progenc : string (* these are redundant, but useful *)
-	; b_progenc : string
-	; c_progenc : string
-	; edits : (string*int*char) list
-	; edited : float array
+	; a_progenc : string (* from *)
+	; b_progenc : string (* to *)
+	; c_progenc : string (* reconstructed from edit list *)
+	; d_progenc : string (* assembled from model edits *)
+	; edits : (string*int*char) list (* supervised *)
+	; dedits : (string*int*char) list (* model edits *)
+	; edited : float array (* route edits/dedits based on superv *)
 	}
 	
 let nulbatche = 
@@ -63,7 +66,9 @@ let nulbatche =
 	; a_progenc = ""
 	; b_progenc = ""
 	; c_progenc = ""
+	; d_progenc = ""
 	; edits = []
+	; dedits = []
 	; edited = [| 0.0 |]
 	}
 	
@@ -702,7 +707,7 @@ let rec new_batche ?(mode=2) dba =
 			(* "move a , b ;" is 5 insertions; need to allow *)
 			let _, edits = Levenshtein.distance a.progenc b.progenc true in
 			let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
-			(* verify ..*)
+			(* verify .. a bit of overhead *)
 			let re = Levenshtein.apply_edits a.progenc edits in
 			if re <> b.progenc then (
 				Logs.err(fun m -> m  
@@ -721,44 +726,57 @@ let rec new_batche ?(mode=2) dba =
 				a_progenc = a.progenc; 
 				b_progenc = b.progenc; 
 				c_progenc = a.progenc; 
-				edits; edited }
+				d_progenc = ""; 
+				edits; dedits=[]; edited; }
 		) else new_batche ~mode dba
 	) else new_batche ~mode dba
 
-let apply_edits be = 
-	(* apply after (of course) sending to python. *)
-	(* edit length must be > 0 *)
-	let ed = List.hd be.edits in
-	let c = Levenshtein.apply_edits be.c_progenc [ed] in
-	(* in-place modify the 'edited' array, too *)
-	let la = String.length be.a_progenc in
-	let lc = String.length be.c_progenc in
-	let typ,pp,chr = ed in (* chr already used above *)
-	Logs.debug (fun m -> m "apply_edits %s %d %c" typ pp chr );
+	
+let update_edited edited ed = 
+	(* update the 'edited' array, which indicates what has changed in the program string *)
+	let typ,pp,_chr = ed in 
+	(* in-place array modification *)
 	(match typ with 
 	| "sub" -> (
 		let pp = if pp > lc-1 then lc-1 else pp in
 		let pp = if pp < 0 then 0 else pp in
-		be.edited.(la+pp) <- 0.6 )
+		edited.(la+pp) <- 0.5 )
 	| "del" -> (
 		(* lc is already one less at this point -- c has been edited *)
-		let pp = if pp >= lc-1 then lc-1 else pp in
+		let pp = if pp > lc-1 then lc-1 else pp in
 		let pp = if pp < 0 then 0 else pp in
 		(* shift left *)
 		for i = la+pp to p_ctx-2 do (
-			be.edited.(i) <- be.edited.(i+1)
+			edited.(i) <- edited.(i+1)
 		) done; 
 		be.edited.(la+pp) <- ( -1.0 ) )
 	| "ins" -> (
 		let pp = if pp > lc then lc else pp in
 		let pp = if pp < 0 then 0 else pp in
 		(* shift right one *)
-		for i = p_ctx-2 downto la+pp+1 do (
-			be.edited.(i) <- be.edited.(i+1)
+		for i = p_ctx-2 downto la+pp do (
+			edited.(i+1) <- edited.(i)
 		) done; 
-		be.edited.(la+pp) <- 1.0 )
-	| _ -> () ); 
-	{be with c_progenc=c; edits=(List.tl be.edits) }
+		edited.(la+pp) <- 1.0 )
+	| _ -> () ) 
+	
+let apply_edits be = 
+	(* apply after (of course) sending to python. *)
+	(* edit length must be > 0 *)
+	(* modl switches to hallucinate mode -- 
+	apply the edits from the model to d *)
+	let ed = List.hd be.edits in
+	let c = Levenshtein.apply_edits be.c_progenc [ed] in
+	let d,dedits = if List.length be.dedits > 0 then (
+		let ded = List.hd be.dedits in
+		let d = Levenshtein.apply_edits be.d_progenc [ded] in
+		update_edited be.dedited ded; 
+		d,(List.tl dedits)
+	) else "",[] in
+	if be.superv || List.length be.dedits = 0 
+	then update_edited be.edited ed
+	else update_edited be.edited ded ; (* TODO!! *)
+	{ be with c_progenc=c; d_progenc=d; edits=(List.tl be.edits); dedits }
 	
 	
 let update_bea dba bd = 
@@ -1248,22 +1266,41 @@ let try_add_program state bi progenc =
 			| _ -> () )
 		| _ -> ()
 	
-let handle_message state bd msg =
-	let _device,dba,_dbf,_fid = state in
-	let l = String.length msg in
-	let i = try String.index_from msg 0 ':' 
-		with _ -> l in
-	let cmd = String.sub msg 0 i in
-	let data = if i >= l-1 then "" 
-		else String.sub msg (i+1) (l-i-1) in
+let handle_message state bd:batchd msg =
+	let _device,dba,_dbf,mnist,_fid = state in
+	let msgl = String.split_on_char ':' msg in
+	let cmd = if List.length msgl = 1 then msg 
+		else List.hd msgl in
 	match cmd with
 	| "update_batch" -> (
-		(* sent when python has a copy*)
+		(* sent when python has a working copy of data *)
 		let bd = update_bea dba bd in
 		bigfill_batchd dba bd; 
 		Logs.debug(fun m -> m "new batch"); 
-		bd,(Printf.sprintf "ok %d" !nreplace)
-		)
+		(* if there are model-produced edits, apply them *)
+		if List.length msgl = 4 then (
+			let typdat::posdat::chrdat = List.tl msgl in
+			let typl = String.fold_left (fun a b -> 
+				let typ = match b with
+					| '0' -> "sub"
+					| '1' -> "del"
+					| '2' -> "ins"
+					| _   -> "fin" in
+					typ :: a) [] typdat in
+			let offs = Char.code '0' in (* FIXME scale to large programs *)
+			let posl = String.fold_left (fun a b -> 
+				let p = (Char.code b) - offs in
+				p :: a) [] posdat in
+			let chrl = String.fold_left (fun a b -> b :: a) [] chrdat in
+			let typa = Array.of_list typl in
+			let posa = Array.of_list posl in
+			let chra = Array.of_list chrl in
+			let bea = Array.mapi (fun i be -> 
+				{be with dedits=[typa.(i),posa.(i),chra.(i)]} ) bd.bea in
+			{bd with bea},"ok, applied edits."
+		) else (
+			bd,(Printf.sprintf "ok %d" !nreplace)
+		) )
 	| "reset_batch" -> (
 		let bea,fresh = reset_bea () in (* clear it *)
 		let bd = {bd with bea;fresh} in
@@ -1321,7 +1358,7 @@ let handle_message state bd msg =
 		Logs.info (fun m -> m "c_progenc[] "); (* FIXME debug *)
 		Array.iteri (fun i be -> 
 			try_add_program state i be.c_progenc ) bd.bea; 
-		bd,"printed."
+		bd,"printed and tested." 
 		)
 	| _ -> bd,"Unknown command"
 
@@ -1341,12 +1378,12 @@ let rec handle_connection state bd fdlist ic oc () =
 			>>= return) )
 	
 let accept_connection state conn =
-	let device,dba,dbf = state in
+	let device,dba,dbf,mnist = state in
 	let fd, _ = conn in
 	let ic = Lwt_io.of_fd ~mode:Lwt_io.Input fd  in
 	let oc = Lwt_io.of_fd ~mode:Lwt_io.Output fd in
 	let fid = open_out "/tmp/png/replacements_log.txt" in
-	let state2 = device,dba,dbf,fid in
+	let state2 = device,dba,dbf,mnist,fid in
 	let bd,fdlist = init_batchd () in
 	let bd = update_bea dba bd in
 	bigfill_batchd dba bd ; 
@@ -1400,6 +1437,15 @@ let () =
 	let device = Torch.Device.cuda_if_available () in
 	(*let device = Torch.Device.Cpu in*) (* slower *)
 	let mnist = Mnist_helper.read_files ~prefix:"../otorch-test/data" () in
+	let mimg = Tensor.reshape mnist.train_images 
+		~shape:[60000; 28; 28] in
+	(* need to pad to 30 x 30 *)
+	let minst = Tensor.zeros [60000; 30; 30] in
+	Tensor.copy_ (
+		Tensor.narrow mnist_img ~dim:1 ~start:1 ~length:28 |> 
+		Tensor.narrow ~dim:2 ~start:1 ~length:28) ~src:mimg ;
+		(* keep on CPU? *)
+	
 	let { Dataset_helper.train_images; _ } = mnist in
 	Printf.printf Torch.shape train_images
 
@@ -1438,7 +1484,7 @@ let () =
 	
 	
 	let sock = create_socket () in
-	let state = device,dba,dbf in
+	let state = device,dba,dbf,mnist in
 	let serve = create_server state sock in
 	Lwt_main.run @@ serve () 
 

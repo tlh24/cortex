@@ -3447,7 +3447,7 @@ Roughly, https://github.com/The-AI-Summer/pytorch-ddp
 DP runs, but gives NaN loss. 
 DDP works, but is slower (with lower GPU utilization) than training on 1 GPU.  
 Bumping up the batch size to 512 increases the GPU utilization, but does not increase the fidelity of the network.  After 4 epochs, loss is higher on the test set of 10k images vs. training on 1 GPU.  
-This is with export NCCL_P2P_DISABLE=1. 
+This is with `export NCCL_P2P_DISABLE=1`
 without that flag, everything stalls / but is killable.  
 
 Regarding ec32: it runs just fine on either one of the GPUs. But I've never gotten it to work on both.  
@@ -3556,7 +3556,10 @@ and the "genome" would be all the programs (and their traces, intermediate repre
 
 January 18 2023
 
-Fixed the CUDA install on the laptop -- had a 11.0 version hanging around, which was causing faiss to hang when jit compiling ptx code.  meh, took too long to correct.  But getting used to finagling cuda installations. 
+Fixed the CUDA install on the laptop -- had a 11.0 version hanging around, which was causing faiss to hang when jit compiling ptx code.  
+meh, took too long to correct.  
+But getting used to finagling cuda installations. 
+	Could this be the same problem that's occurring on the desktop with DP / DDP?? 
 
 Anyway, longer context: want to solve problems the way humans do, by repeated interactions & the ability to break chains of actions into their components.  
 So, when we're converting a MNIST digit to code, first we produce some segments, then re-arrange the segments into curves, then convert the curves into loops or function calls, then adjust the parameters of the loops/calls to better fit the data... 
