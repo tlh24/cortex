@@ -824,7 +824,7 @@ let decode_edit bd =
 		let eloc = loc.%.{i} in
 		(etyp,echr,eloc) ) in
 	edit_arr
-	(* TODO .. continue here *)
+	(* TODO .. continue here!  *)
 	
 let update_bea dba bd = 
 	(* iterate over batchd struct, make new program pairs when edits are empty *)

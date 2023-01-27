@@ -3719,3 +3719,14 @@ January 26 2023
 
 I just realized something obvious: by keeping around equivalents, we can train the transformer to make lateral (e.g. nullspace) moves!  
 The equivalent programs can also be part of the graph of programs! 
+
+January 27 2023
+
+Hmm meetings ... socalization .. eats up time.  Eating eats up time too :S
+Work for today: 
+integrate with bidi mmap files & test, start line 827. 
+check that the model is outputting correct code
+add in mutex to 'db'
+(later) longer episodes, finally! 
+
+
