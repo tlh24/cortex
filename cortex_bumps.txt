@@ -3597,3 +3597,125 @@ Also might be right to do a bit of fuzzing on e.g. integer values?
 
 Later: add in greater context through program-traces. 
 Needed: some way of tagging the keys in the long-term memory so we know if it's from image or code or trace etc... hmm. 
+
+January 23 2023
+
+Note: this was a good read
+https://komoroske.com/slime-mold/
+	Organizations are like slime-molds: they can solve complex problems, but develop organizational headwinds to keep them from moving quickly.  
+	These organizational headwinds arise from basic mathematical scaling. 
+	Suggests some tips / ideas for keeping them (e.g. google) moving along.
+
+Problem: in supervised mode, you'll be propagating gradients back.  
+In open-ended generation mode, there is no supervised signal, so no gradients to propagate backwards! 
+Makes me think that we need to have two processes running, not interleaved as now -- one supervised, for training the model, another unsupervised, for generating solutions to problems & sorting / storing them.  
+Not exactly sure why I didn't think of this earlier; brain was too fatigued / distracted?  Well, anyway, I'm only human... 
+
+Plan: 
+-- One thread / GPU constantly training, on exact edits: the program and the image that it produces (delta), not the image that cued it. 
+	No change from present. 
+-- Other thread / GPU constantly hallucinating, on a mix of both open-ended problems (MNIST) and problems with a known solution.  
+	The resulting programs are re-introduced into the database if: 
+	-- The program generates a image/problem not in the database. 
+	-- If the imnage/problem is in the database, the program has less or equal cost than those already there. 
+		Want to keep around a database of program equivalents, for training a compressor. 
+		Want also to cannonicalize program representation: if it is A, but the transformer reconstructs it as B, and B is a valid similar-length program, then put B at the head of the list. 
+			Will need a generation-counter for each equivalent? 
+	
+So, one task is to split the ocaml program into two threads 
+& the python into two instances -- with different mmap files 
+	(mmap will be faster than decoding -> encoding into characters -> decoding the characters again)
+& figure out how to synchronize model weights across python instances. 
+(easy way: just periodically reload the file by restarting the script & save the weights periodically, as we do now.)
+
+This does not solve the extended-interaction problem, though. 
+Seems like we need a means of outputting variable-length edits: sometimes just add a 'move' command, sometimes add a for loop, sometimes a function call.. 
+How to know when to stop editing and try running the program? PBE, program being edited? 
+One answer, heavy, is to try running the PBE at every edit step.  Kinda unrealistic; doesn't scale as the programs get larger. 
+Another is to just assume that the structure of the training data -- diffs used in supervised training can be required to be short and end in <fin>, so the model learns to make bite-sized edits. 
+	That seems OK. 
+	
+But now there is a graph route-finding problem: given a starting point (say.. the null program), and some longer generated program, need to find programs that are working intermediates. 
+Probably can use a smart datastructure for this, like prefix or infix trees? 
+	Or e-graphs? 
+Then, when generating training data for the transformer, can recreate the whole path *including intermediate output*. 
+
+The alternative that I've been thinking about, is to use the hallucinate network with half-finished programs, including the greater context, see what it comes up with (garbage? The weights from memformer very-long-context will be large & affect output (probably) so you might never get sane output. 
+Idk.  
+The point of the transformer is to constrain program editing to things that are likely; when pushing the 'frontier of knowledge' so to speak, needs to be conditioned, like evolution, on things that have worked in the past. 
+	Thus, the transformer can be thought of as a compositional copy-paster. 
+	The compositionality is conditional on a memory of image / program context. 
+Maybe weight-decay will take care of keeping context from unduly corrupting output, so that the edits are sane? 
+
+January 24 2023 
+"All professional athletes say it should feel 1/3 horrible, 1/3 ok and 1/3 great or you’re not setting high enough goals."
+	
+A general outline of how I’m thinking about the problem:
+Programming is the process of iteratively converting a specification into executable code, e.g. a tree-structured list of actions & declarations that manipulate a state-machine to produce outputs\footnote{There may be wisdom in relaxing this constraint; see neuro-symbolic computing.}.  Programs can (to a degree) be considered a ‘minimum description length” of the specification: when combined with the internal mechanisms of the state machine, they reproduce the specification with a minimal of data + free parameters.  Human internal or verbal models ‘probably’ approach a MDL.  A programmatic MDL is causal: the program causes the output; in a weak sense causes in the real world relate to causes in the program.  (This sense can be strengthened via the scientific method.) 
+
+Humans perform programming tasks iteratively, learning causes and effects as they go, and using this to further explore & attain goals.  This is the essence of memory-based inversion, or UDRL: causes -> effects are put into a database, and are used to train a neural network which learns to map effects back to causes.  When a new goal is presented, it is assumed to be the composition of a cascade of effects; by querying the database / model, these are inverted into a series of causes.  In the case here of a program, these causes are edits to the “program being edited”.  
+
+UDRL or memory-based inversion only gets so far, though: experience and experimentation must be guided and purposeful; the space of possible programs is too large for random exploration.   
+There are at many ways that humans encourage a degree of purposefulness in experimentation: 
+
+1.  Reward.  Reward is a scalar-valued signal that orders states & actions with a ‘preference’.  Animals are excel at this.  \footnote{This is of course the domain of reinforcement learning (RL), which is typically considered via the formalism of a Markov Decision Process (MDP), in which states only depend on the previous state and the previous action; no further history is allowed.  This is limiting but useful.}  Programming definitely needs an element of this: you do not repeat actions that fail, crash, or produce chaotic outputs; you do repeat actions that lead to goals or ‘useful progress’.  
+	1.1 Useful progress is difficult to codify.  A pragmatic stand-in is to compress outputs (effects) via a VAE, and measure the distance to goal in this compressed space: keep around and select actions that move you toward a goal. 
+	1.2 Programs which solve goals can be reinforced implicitly by representing them more highly in the training data, e.g. how often given edits or program intermediates were used in the solution process.  This can be accomplished simply by using truncation selection of memories (‘replay buffer’ in RL parlance); a later option is to propagate credit backwards in time, ala Q-learning or TD-learning.  I do not think this is necessary at this point; implicit should be sufficient. 
+2.  Aesthetics.  Very slippery term; seems to depend in humans on essences of symmetry (visual, musical), novelty, and simplicity, and often similarity to etiologically relevant stimuli, like the natural world.  Symmetry and simplicity can be approximated by putting a parsimony term in the program selection, and one could argue that we have it as a evolution-given heuristic for seeking the MDL of stimuli; novelty is implicit in keeping around only new/different effects.   
+	2.1 Yet adding a real preference to any model for say rotational symmetry or fractal symmetry is hard and would require manual hacks.  
+	2.2 Adding aesthetics beyond toy models could be very hard or very unnecessary; could be that interaction of multiple levels of hierarchy in edit production causes aesthetics to emerge.  
+	2.3 Leave as a problem for later. 
+3. Multiple levels of representation.  Pixels convert to lines; lines convert to serial commands; commands convert to loops, function calls, variable manipulations; functions are composed into classes and libraries.  The way that we are able to ‘make sense of’ or decompose the real world is through hierarchies (obviously).  This is a very strong prior to restrict the solution space, but these restrictions make search harder; neural networks circumvent the problem by fixing the hierarchy & making optimization a process of navigating saddle-points rather than local minima (c.f. programs are usually surrounded by mostly non-functional programs). 
+	3.1 Multiple hierarchical levels make the cause-effect inversion easier.  Break the problem into multiple steps.  We do this by having the agent interact multiple times with the programming environment, and by supplying intermediate representations.  
+	3.1.1 Intermediate representations are hard-coded for now, though.  
+	3.2 Requires careful thought about the mechanism of representation, and how NN training occurs: presently, assemble longer interactions from paths through the edit-graph of programs.  This implies a planning module, which provides a bias toward ‘reward’ above, 1.  
+4.  Debugging.  Humans use this to make the internal state(s) of the computer and program visible, which allows them to infer how to change the program to move closer to a specification.  
+	4.1 Debugging is complicated to induce and train, as it’s a second-level action: it yields information on what subsequent action to choose.  In humans, it can be triggered by means-ends cognition, e.g. knowing what to instrument or look at depends on a search over the program tree / data flow, which can trigger it’s own search for information about how the program works...
+	4.2 This + (1) suggests using some sort of planning or explicit search algorithm; with UDRL, search is implicit: you search over effects to select causes.  ‘Just’ using a transformer might not work so well here; instead, you’d want to implement a heuristic search algorithm, like A-star, wherein possible edits are enumerated, tried, and recursed.  
+	4.3 Debugging plugs well into such a system, as it can be an explored action, which can inform subsequent actions in the search tree.. 
+	4.3.1 And, of course, very very open ended debugging problems are fundamentally hard!  Which is why humans explicitly use behavioral cloning and indicator / suggestions, both via the internet, to figure out what to change & how.   We would have a really hard time figuring out how to use a new programming language without examples.  Templates matter greatly.  Also the meaning of names in the language matter, as they come with built-in action-association (something that a bootstrapping model will have to learn.)
+	4.3.2 Might be that you don’t need debugging if the transformer has full trace visibility.  But this becomes onerous for realistically large programs. 
+	4.4 At some point, though, they system needs to fall back on brute-force search / enumeration so as to not get stuck in perpetual loops.  Here we amortize this search through both a database and a neural network. 
+	4.4.1 But, I think the lesson is: even if you only have brute-force search and a database, it must be able to solve the problem, albeit in possibly unbounded time; the NN is mostly a fast and and smart way of organizing this data and otherwise constraining the search to limit the space.  (See also DreamCoder footnote below)
+	4.4.2 The dumb way (done now) is to just sample repeatedly, without local memory of what’s been done. 
+	4.4.2.1 Seems you need many different levels / forms of memory, like a CPU. 
+	4.5 DreamCoder has a stateful search mechanism via lambda calculus expression enumeration (enumeration is slightly harder with a DSL). 
+	4.6 Likewise, MuZero and EfficientZero leverage Monte-Carlo Tree Search to do a bit of planning on small-ish action sequences.  Both these are stateful search. 
+5. Libraries!  These are ways of dramatically reducing the search space.  
+	5.1 In the DreamCoder paper, hidden in a footnote: “The difficulty of search during waking is roughly proportional to breadth^depth , where depth is the total size of a program and breadth is the number of library functions with high probability at each decision point in the search tree spanning the space of all programs. Library learning decreases depth at the expense of breadth, while training a neural recognition model effectively decreases breadth by decreasing the number of bits of entropy consumed by each decision (function call) made when constructing a program solving a task.”
+	5.2 DreamCoder also uses a clever E-graph+version space data structure for handling the program refactors:  “This results in substantial efficiency gains: A version space with 10e6 nodes, calculated in minutes, can represent the 10e14 refactorings in Fig. 3 that would otherwise take centuries to explicitly enumerate and search.”
+	5.2.1  Humans, of course, don’t have such a datastructure in their minds, and yet are well capable of refactoring code and creating libraries.  I think that this is a different form of compression; rather than compressing images to code, this takes populations of code, and compresses it by finding commonalities by looking at code or data flow.  
+	5.3  It almost might be possible to refactor it (approximately) by doing a full code and data expansion, then gzipping it (or some other LZW compression), and looking what the symbols are.  Those symbols are likely library elements, and can be replaced in the program population. Conceivable also to use a neural network for this compression, ala the PAQ compressors. 
+	5.3.1 This is a very superficial form of library generation; yet it is in some sense isomorphic to the first task and so possibly can be solved in the same way: but now the programs operate on programs themselves. 
+	5.4 Another alternative is to operate on the code and dataflow via DNA aligners: look for replicated snippets.  Prefix tree representations may be used for this. 
+	5.5 And of course research presses ever forward: https://arxiv.org/abs/2211.16605
+6. Reprojection / recasting the problem / inventing new intermediate representations.  This is deeply interesting, and new intermediate representations are a cornerstone of creative programming, but all are well beyond the scope of current work (for now). 
+7. Related is analogical thinking, which people like Hofstadter think to be the root of cognition.  Analogy fortunately is easy to emulate or approximate via vectoral spaces, hence again may be emergent in the neural network.
+8. See also https://en.wikipedia.org/wiki/Problem_solving
+
+Action plan: 
+1 -- Bifurcate Ocaml-Python interface to allow for Training and Dreaming models.  Two sets of mmaped files.  2-3 days.  Maybe shift the decode to Ocaml.  Test thoroughly. 
+2 -- For the dreamer module, add in not just imagined task, but also MNIST digits as targets -- eg. actual simple inverse graphics.  2-3 days.
+3 -- Expand the Ocaml code to use Vector storage of program-image pairs; keep synced with torch; add in some sort of priority queue (reinforcement, above)
+4 -- Add in VAE encoding to the Vector storage for ranking programs. 
+5 -- Convert the VAE to a graph, where the edges are edits.  Use these to generate longer interactions with the programming environment, for transformer training.  
+6 -- Examine how and where this is failing (?!?)
+7 -- Now that we have a large population of programs, start factoring them into a library via https://arxiv.org/abs/2211.16605 
+8 -- Switch to a memorizing transformer for more context, more intermediate representations.  
+
+All this will realistically take me 1.5 - 2 months & only get us partway to the natural-language video game programming demo: we’ll still be inverting images, not videos.  I do think, if small-toy inverse graphics works, scaling  *should* be a matter of compute and infrastructure.  Here I think we want to hire other people; but there are bound to be sharp edges.  Regarding this, writing this forces consideration that the level of research required is higher than anticipated; the lego pieces are all there, but unlike Precision Neuro, where there have been POC ECoG arrays for a long time & so all steps can be enumerated for industrialization, certain elements, namely (5) debugging and (6) reprojection above are unsolved.  This project is also unlike the sewing machine (which became Neuralink, as you know) in that there you can envision all the steps needed to get to target, but maybe not all the details; here some steps like (5) and (6) have the more scary / thrilling essence.  
+
+That does not invalidate the approach, though: the payoff is extremely large, the time is now, competition is heating up, and many other companies were founded on as much a dream as a demonstrated product (like OpenAI; who knew that you could get such amazing emergence out of basically one paper?  (And indeed they bounced around a fair bit, gaining experience as they went.)).  So, we have to do it & have to figure out how to pay for it & locate the right people to work with.  
+
+The absolute critical thing is, as we have spoken about, process: you move to a goal, gaining information along the way, first manually adding information to the model but later *automating the process of information addition itself*.  Which, lo, is exactly what the model is doing!  Springtail is an AI company, but focused on bootstrapping and feedback; feedback which is omnipresent in biology and particularly the brain.   Unlike other information process companies, though, here the plan is that as high a feedback loop (in the abstraction sense) is closed by the machine, not humans.  \footnote{Aside: cognition itself involves a high degree of re-entrancy which is might be possible via neurobio-inspired model I’ve been noodling with, but again as mentioned best to cut teeth now on hard data.}
+
+
+January 25 2023
+
+Above text has moved here: 
+https://docs.google.com/document/d/1W-sXMd7ZFqlrYDxZhUFfQutCUIjg6OxZXaQGfzHU7cM
+
+January 26 2023
+
+I just realized something obvious: by keeping around equivalents, we can train the transformer to make lateral (e.g. nullspace) moves!  
+The equivalent programs can also be part of the graph of programs! 

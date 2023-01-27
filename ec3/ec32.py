@@ -209,7 +209,6 @@ def decode_edit(y):
 		c = th.argmax(y[j,4:4+toklen]).cpu()
 		c = chr(c + ord('0'))
 		cl.append(c)
-		pos = y[j,5+toklen:]
 		z = y[j,5+toklen:]
 		z = th.unsqueeze(z,0)
 		z = z.expand(p_ctx, -1)

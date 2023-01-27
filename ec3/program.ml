@@ -1,4 +1,4 @@
-(*open Core :-X core doesnt yet support byte output, necessary for protobufs*)
+(*open Core :-X core doesnt yet support byte output, necessary for protobufs*) (* but we don't use protobufs anymore *)
 open Lexer
 open Lexing
 open Printf
@@ -52,12 +52,10 @@ type batche =
 	; a_pid : int 
 	; b_pid : int
 	; a_progenc : string (* from *)
-	; b_progenc : string (* to *)
-	; c_progenc : string (* reconstructed from edit list *)
-	; d_progenc : string (* assembled from model edits *)
+	; b_progenc : string (* to -- blank, if superv *)
+	; c_progenc : string (* program being edited *)
 	; edits : (string*int*char) list (* supervised *)
-	; dedits : (string*int*char) list (* model edits *)
-	; edited : float array (* route edits/dedits based on superv *)
+	; edited : float array
 	}
 	
 let nulbatche = 
@@ -66,9 +64,7 @@ let nulbatche =
 	; a_progenc = ""
 	; b_progenc = ""
 	; c_progenc = ""
-	; d_progenc = ""
 	; edits = []
-	; dedits = []
 	; edited = [| 0.0 |]
 	}
 	
@@ -77,10 +73,13 @@ type batchd =
 				Bigarray.Array3.t (* btch , p_ctx , p_indim *)
 	; bimg : (float, Bigarray.float32_elt, Bigarray.c_layout) 
 				Bigarray.Array3.t (* btch*3, image_res, image_res *)
-	; bedt : (float, Bigarray.float32_elt, Bigarray.c_layout) 
+	; bedts : (float, Bigarray.float32_elt, Bigarray.c_layout) 
+				Bigarray.Array2.t (* btch , e_indim *)
+	; bedth : (float, Bigarray.float32_elt, Bigarray.c_layout) 
 				Bigarray.Array2.t (* btch , e_indim *)
 	; posenc : (float, Bigarray.float32_elt, Bigarray.c_layout) 
 				Bigarray.Array2.t (* p_ctx , poslen*2 *)
+	; posencn : Tensor.t
 	; bea : batche array
 	; fresh : bool array
 	}
@@ -94,7 +93,7 @@ let poslen = 6
 let p_indim = toklen + 1 + poslen*2 (* 31 + 12 = 43 *)
 let e_indim = 5 + toklen + poslen*2
 let p_ctx = 64
-let nreplace = ref 0 (* number of repalcements durng hallucinations *)
+let nreplace = ref 0 (* number of repalcements during hallucinations *)
 
 let listen_address = Unix.inet_addr_loopback
 let port = 4340
@@ -606,19 +605,18 @@ let generate_empty_logo id res =
 
 let render_simplest db =
 	(* render the shortest 4*1024 programs in the database.*)
-	let dba = Vector.to_array db in
-	let dbal = Array.length dba in
+	let dbl = Vector.length db in
 	let res = 48 in
 	let lg = open_out "/tmp/png/db_init.txt" in
-	for id = 0 to min (4*1024-1) (dbal-1) do (
-		let data = dba.(id) in
+	for id = 0 to min (4*1024-1) (dbl-1) do (
+		let data = Vector.get db id in
 		let (_,_,segs) = Logo.eval (Logo.start_state ()) data.pro in
 		Logo.segs_to_png segs res (Printf.sprintf "/tmp/png/test%d.png" id);
 		let bf = Buffer.create 30 in
 		Logo.output_program_p bf data.pro;
 		fprintf lg "%d %s\n" id (Buffer.contents bf);
 	) done;
-	close_out lg; dba
+	close_out lg
 	
 (* because we include position encodings, need to be float32 *)
 let mmap_bigarray2 fname rows cols = 
@@ -646,15 +644,21 @@ let reset_bea () =
 	let fresh = Array.init !batch_size (fun _i -> true) in
 	bea,fresh
 	
-let init_batchd () =
-	let fd_bpro,bpro = mmap_bigarray3 "bpro.mmap" 
+let init_batchd filnum () =
+	let mkfname s = 
+		Printf.sprintf "%s_%d.mmap" s filnum in
+	let fd_bpro,bpro = mmap_bigarray3 (mkfnam "bpro") 
 			!batch_size p_ctx p_indim in
-	let fd_bimg,bimg = mmap_bigarray3 "bimg.mmap" 
+	let fd_bimg,bimg = mmap_bigarray3 (mkfnam "bimg") 
 			(!batch_size*3) image_res image_res in
-			(* note needs a reshape on python side!! *)
-	let fd_bedt,bedt = mmap_bigarray2 "bedt.mmap" 
+			(* note: needs a reshape on python side!! *)
+	(* supervised batch of edits: ocaml to python *)
+	let fd_bedts,bedts = mmap_bigarray2 (mkfnam "bedts") 
 			!batch_size e_indim in
-	let fd_posenc,posenc = mmap_bigarray2 "posenc.mmap"
+	(* hallucinated batch of edits: python to ocaml *)
+	let fd_bedth,bedth = mmap_bigarray2 (mkfnam "bedth") 
+			!batch_size e_indim in
+	let fd_posenc,posenc = mmap_bigarray2 (mkfnam "posenc")
 			p_ctx (poslen*2) in
 	let bea,fresh = reset_bea () in
 	(* fill out the posenc matrix *)
@@ -670,12 +674,14 @@ let init_batchd () =
 			posenc.{i, j*2+1} <- cos(scl *. fi *. fj)
 		) done
 	) done ;
+	let posencn = tensor_of_bigarray posenc |> normalize_tensor in
 	Bigarray.Array3.fill bpro 0.0 ;
 	Bigarray.Array3.fill bimg 0.0 ;
-	Bigarray.Array2.fill bedt 0.0 ; 
+	Bigarray.Array2.fill bedts 0.0 ;
+	Bigarray.Array2.fill bedth 0.0 ; 
 	(* return batchd struct & list of files to close later *)
-	{bpro; bimg; bedt; posenc; bea; fresh}, 
-	[fd_bpro; fd_bimg; fd_bedt; fd_posenc]
+	{bpro; bimg; bedts; bedth; posenc; posencn; bea; fresh}, 
+	[fd_bpro; fd_bimg; fd_bedts; fd_bedth; fd_posenc]
 	
 let rec new_batche ?(mode=2) dba = 
 	let ndba = (Array.length dba) in 
@@ -685,7 +691,7 @@ let rec new_batche ?(mode=2) dba =
 		| 1 -> false,mode (* generate mode *)
 		| _ -> ( let d = (Random.int 10) < 7 in 
 			d,(if d then 0 else 1) ) in
-			(* note: generate mode last longer, hence probabilities need to be adjusted *)
+			(* note: generate mode lasts longer, hence probabilities need to be adjusted *)
 	let nb = (Random.int (ndba-1)) + 1 in
 	let na = if doedit then (Random.int (ndba-1)) + 1 else 0 in
 	let distthresh = if doedit then 5 else 15 in
@@ -758,7 +764,7 @@ let update_edited edited ed =
 			edited.(i+1) <- edited.(i)
 		) done; 
 		edited.(la+pp) <- 1.0 )
-	| _ -> () ) 
+	| _ -> () )
 	
 let apply_edits be = 
 	(* apply after (of course) sending to python. *)
@@ -767,17 +773,58 @@ let apply_edits be =
 	apply the edits from the model to d *)
 	let ed = List.hd be.edits in
 	let c = Levenshtein.apply_edits be.c_progenc [ed] in
-	let d,dedits = if List.length be.dedits > 0 then (
-		let ded = List.hd be.dedits in
-		let d = Levenshtein.apply_edits be.d_progenc [ded] in
-		update_edited be.dedited ded; 
-		d,(List.tl dedits)
-	) else "",[] in
-	if be.superv || List.length be.dedits = 0 
-	then update_edited be.edited ed
-	else update_edited be.edited ded ; (* TODO!! *)
-	{ be with c_progenc=c; d_progenc=d; edits=(List.tl be.edits); dedits }
+	update_edited be.edited ed
+	{ be with c_progenc=c; edits=(List.tl be.edits) }
 	
+let tensor_of_bigarray2 m =
+	let d1 = Bigarray.Array2.dim1 m in
+	let d2 = Bigarray.Array2.dim2 m in
+	let o = Tensor.(zeros [d1 d2]) in
+	for i = 0 to d1 do (
+		for j = 0 to d2 do (
+			(let open Tensor in 
+			o.%.{[i;j]} <- m.{i,j}; ) 
+		) done
+	) done; 
+	o
+
+let normalize_tensor m = 
+	(* normalizes length along dimension 1 *)
+	let len = einsum ~equation:"ij,ij -> i" [m;m] ~path:None 
+			|> Tensor.sqrt in
+	let len = Tensor.(f 1. / len) in
+	einsum ~equation:"ij,i -> ij" [m;len] ~path:None 
+	
+let decode_edit bd = 
+	let open Tensor in
+	(* decode model output (from python) *)
+	let device = Torch.Cpu in
+	let o = tensor_of_bigarray2 bd.bedth in
+	(* typ = th.argmax(y[:,0:4], 1) *)
+	let typ = argmax (narrow m ~dim:1 ~start:0 ~length:4) 
+			~dim:1 ~keepdim:false in
+	let chr = (argmax (narrow m ~dim:1 ~start:4 ~length:toklen)
+			~dim:1 ~keepdim:false) in
+			(* convert to characters in a loop, on the cpu. *)
+	(* now need to compute cosine distance.  normalize vectors first *)
+	let pos = narrow m ~dim:1 ~start:5+toklen ~length:2*poslen 
+			|> normalize_tensor in (* wait where does 5 come from? *)
+	let pos = expand pos ~size:[p_ctx;batch_size;poslen*2] ~implicit:true in
+	let posenc = expand bd.posencn ~size:[batch_size;p_ctx;poslen*2] ~implicit:true in
+	let sim = einsum ~equation:"cbp,bcp -> bc" ~path:None in
+	let loc = argmax sim ~dim:1 ~keepdim:false in
+	(* location must be clipped to within the program. *)
+	let edit_arr = Array.init batch_size (fun i -> 
+		let etyp = match typ.%.{i} with
+			| 0 -> "sub"
+			| 1 -> "del" 
+			| 2 -> "ins"
+			| _ -> "fin" in
+		let echr = chr.%.{i} + Char.to_code('0') in
+		let eloc = loc.%.{i} in
+		(etyp,echr,eloc) ) in
+	edit_arr
+	(* TODO .. continue here *)
 	
 let update_bea dba bd = 
 	(* iterate over batchd struct, make new program pairs when edits are empty *)
@@ -936,14 +983,53 @@ let truncate_list n l =
 	let a = Array.of_list l in
 	Array.sub a 0 n |> Array.to_list
 	
-let init_database device db (dbf : Tensor.t) = 
-	(* generate the initial program, image pairs *)
-	Logs.info(fun m -> m  "init_database %d" image_count); 
+let sort_database device db
+	(* sorts the database & updates Tensor dbf *)
+	(* sorts both primary keys and equivalent lists *)
+	let dba = Vector.to_array db in (* easier .. *)
+	Array.sort (fun a b -> compare a.pcost b.pcost) dba; 
+	(* remove duplicate equivalents *)
+	let rec removeDup ls =
+		if List.length ls > 1 then (
+			let b = List.hd ls in
+			let c = List.tl ls in
+			if List.exists (fun d -> d.eprogenc = b.eprogenc) c
+			then removeDup c
+			else b :: (removeDup c)
+		) else ls
+	in
+	(* sort the equivalents *)
+	Array.iteri (fun i data -> 
+		let dedup = removeDup data.equiv in
+		let sl = List.sort (fun a b -> compare a.epcost b.epcost)
+			dedup in
+		(* remove head duplicates *)
+		let sl = List.filter (fun a -> a.eprogenc <> data.progenc) sl in
+		dba.(i) <- {data with equiv=sl} ) dba; 
+	let dbal = Array.length dba in
+	let dbf = if dbal > image_count then (
+		Logs.err (fun m -> m "size of database %d > %d, can't create tensor" dbal image_count)
+		Tensor.ones [1]
+	) else (
+		(* new dbf; otherwise might be orphan images *)
+		let dbf = Tensor.( 
+			( ones [image_count; image_res; image_res] ) * (f (-1.0))) 
+			|> Tensor.to_device ~device in
+		Array.iteri (fun i data -> 
+			let img = bigarray_img2tensor data.img device in
+			Tensor.copy_ (Tensor.narrow dbf ~dim:0 ~start:i ~length:1) ~src:img ) dba ; 
+		dbf
+	) in
+	Vector.of_array dba, dbf
+	
+let init_database device db dbf count = 
+	(* generate 'count' initial program & image pairs *)
+	Logs.info(fun m -> m  "init_database %d" count); 
 	let i = ref 0 in
 	let iters = ref 0 in
 	let replace = ref 0 in
 	let equivalents = ref 0 in
-	while !i < image_count do (
+	while !i < count do (
 		let data = if !i = 0 then
 			generate_empty_logo !i image_res else
 			generate_random_logo !i image_res in
@@ -972,10 +1058,11 @@ let init_database device db (dbf : Tensor.t) =
 					{data with equiv = (ed :: data2.equiv)} 
 					) else data in
 				Vector.set db mindex data;
+				(* change the image *)
 				Tensor.copy_ (Tensor.narrow dbf ~dim:0 ~start:mindex ~length:1) ~src:img;
 				incr replace
 			) else (
-				(* they are equivalent; see if it's already there *)
+				(* they are equivalent; cost >=; see if it's already there *)
 				(* if the list is short, add it; otherwise only add to list if it's better (above)*) 
 				if dist < 0.6 then (
 					if List.length data2.equiv < 32 then (
@@ -1001,35 +1088,17 @@ let init_database device db (dbf : Tensor.t) =
 			)
 		); 
 		if !iters mod 40 = 39 then 
-			(* diminishing returns as this gets larger *)
+			(* needed to clean up torch allocations *)
 			Caml.Gc.major (); 
 		incr iters
 	) done; 
-	(* need to sort everything -- primary keys and equivalent lists *)
-	let dba = Vector.to_array db in
-	Array.sort (fun a b -> compare a.pcost b.pcost) dba; 
-	(* remove duplicate equivalents *)
-	let rec removeDup ls =
-		if List.length ls > 1 then (
-			let b = List.hd ls in
-			let c = List.tl ls in
-			if List.exists (fun d -> d.eprogenc = b.eprogenc) c
-			then removeDup c
-			else b :: (removeDup c)
-		) else ls
-	in
-	(* sort the equivalents *)
-	Array.iteri (fun i data -> 
-		let dedup = removeDup data.equiv in
-		let sl = List.sort (fun a b -> compare a.epcost b.epcost)
-			dedup in
-		(* remove head duplicates *)
-		let sl = List.filter (fun a -> a.eprogenc <> data.progenc) sl in
-		dba.(i) <- {data with equiv=sl} ) dba; 
+	let db, dbf = sort_database db in
 	Logs.info(fun m -> m  "%d done; %d sampled; %d replacements; %d equivalents" !i !iters !replace !equivalents); 
-	dba
+	db, dbf
 	
-let save_database dba = 
+let save_database db = 
+	(* saves in the current state -- not sorted. *)
+	let dba = Vector.to_array db in (* inefficient *)
 	let fil = open_out "db_prog.txt" in
 	Printf.fprintf fil "%d\n" image_count; 
 	Array.iteri (fun i d -> 
@@ -1060,10 +1129,11 @@ let load_database device db dbf =
 		| h::r -> h,r
 		| [] -> "0",[] in
 	let ai = int_of_string a in
-	if ai <> image_count then (
-		Logs.err(fun m -> m "image_count mismatch, %d != %d" ai image_count); 
+	if ai > image_count then (
+		Logs.err(fun m -> m "image_count too large, %d > %d" ai image_count); 
 		false
 	) else (
+		(* db_prog format: [$id] program | eq. prog | eq. prog ... \n *)
 		List.iter (fun s -> 
 			let sl = Pcre.split ~pat:"[\\[\\]]+" s in
 			let _h,ids,ps = match sl with
@@ -1096,7 +1166,7 @@ let load_database device db dbf =
 						{epro; eprogenc; eimg; escost; epcost; esegs}
 						)
 					| _ -> ( 
-						Logs.err(fun m -> m  "could not parse program %d %s" pid s); 
+						Logs.err(fun m -> m  "could not parse equiv program %d %s" pid s); 
 						nulpequiv ) ) prl in
 				let data = {pid; pro; progenc; img; 
 								scost; pcost; segs; equiv} in
@@ -1362,6 +1432,49 @@ let handle_message state bd:batchd msg =
 		)
 	| _ -> bd,"Unknown command"
 
+let read_socket client_sock = 
+	let maxlen = 256 in
+	let data_read = Bytes.create maxlen in
+	let data_length =
+		try
+			recv client_sock data_read 0 maxlen []
+		with Unix.Unix_error (e, _, _) ->
+			Logs.err (fun m -> m "Sock can't receive: %s ; shutting down.\n%!"
+				(Unix.error_message e);
+			shutdown client_sock SHUTDOWN_ALL; 
+			0 in
+	if data_length > 0 then 
+		Bytes.sub data_read 0 data_length |> Some (Bytes.to_string )
+	else None
+
+	
+let servthread sockno state () = 
+	(let open Unix in
+	Logs.debug (fun m -> m "Starting server on %d" sockno); 
+	let server_sock = socket PF_INET SOCK_STREAM 0 in
+	let listen_address = inet_addr_loopback in
+	setsockopt server_sock SO_REUSEADDR true ; (* for faster restarts *)
+	bind server_sock (ADDR_INET (listen_address, socketno)) ;
+	listen server_sock 2 ; (* 2 max connections *)
+	let bd,fdlist = init_batchd (sockno-4340) in
+	while true do (
+		let (client_sock, client_addr) = accept server_sock in
+		let conn = ref true in
+		while !conn do (
+			let msg = read_socket client_sock in
+			match msg with (
+			| Some msg -> 
+				let bd,resp = handle_message state bd msg in
+				ignore ( send client_sock (Bytes.of_string str) 
+					0 (String.length resp) [] ) ; 
+			| _ -> 
+				conn := false; 
+				save_database dba (* save the database *)
+			)
+		) done
+	) done
+	) (* )open Unix *)
+	
 let rec handle_connection state bd fdlist ic oc () =
 	(* init batch datastructures *)
 	Lwt_io.read_line_opt ic >>=
@@ -1416,7 +1529,7 @@ let create_server state sock =
 let usage_msg = "program.exe -b <batch_size>"
 let input_files = ref []
 let output_file = ref ""
-let anon_fun filename =
+let anon_fun filename = (* just incase we need later *)
   input_files := filename :: !input_files
 let speclist =
   [("-b", Arg.Set_int batch_size, "Training batch size");
@@ -1427,7 +1540,8 @@ let () =
 	Random.self_init (); 
 	let () = Logs.set_reporter (Logs.format_reporter ()) in
 	let () = Logs.set_level (Some Logs.Info) in
-	(* App, Error, Warning, Info, Debug *)
+	Logs_threaded.enable (); 
+	(* Logs levels: App, Error, Warning, Info, Debug *)
 
 	Logs.info(fun m -> m "batch_size:%d" !batch_size);
 	Logs.info(fun m -> m "cuda available: %b%!" 
@@ -1444,49 +1558,40 @@ let () =
 	Tensor.copy_ (
 		Tensor.narrow mnist_img ~dim:1 ~start:1 ~length:28 |> 
 		Tensor.narrow ~dim:2 ~start:1 ~length:28) ~src:mimg ;
+		(* Tensor.narrow basically returns a pointer/view; copy_ is in-place. *)
 		(* keep on CPU? *)
-	
-	let { Dataset_helper.train_images; _ } = mnist in
-	Printf.printf Torch.shape train_images
 
 	let db = Vector.create ~dummy:nulpdata in
 	let dbf = Tensor.( 
 		( ones [image_count; image_res; image_res] ) * (f (-1.0))) 
 		|> Tensor.to_device ~device in
 	
-	let g = if Sys.file_exists "db_prog.txt" then ( 
-			if load_database device db dbf; 
-			 then Some (render_simplest db) 
-			 else None
-			(* don't sort -- criteria is different! *)
-		) else None in
-	let dba = match g with
-	| Some(gg) -> (
-		Logs.app(fun m -> m "Loaded %d programs from db_prog.txt" image_count); 
-		gg )
-	| None -> (
-		Logs.app(fun m -> m "Generating %d programs" image_count);
+	let db,dbf = if Sys.file_exists "db_prog.txt" then ( 
+		load_database device db dbf; 
+		render_simplest db; 
+		db,dbf
+	) else ( 
+		Logs.app(fun m -> m "Generating %d programs" image_count/2);
 		let () = Logs.set_level (Some Logs.Debug) in
 		let start = Unix.gettimeofday () in
-		let dba = init_database device db dbf in
+		let db,dbf = init_database device db dbf (image_count/2) in
+		(* init also sorts. *)
 		let stop = Unix.gettimeofday () in
 		Logs.app(fun m -> m "Execution time: %fs\n%!" (stop -. start)); 
-	
 		Logs.info(fun m -> m "render_simplest: first 10 programs");
 		for i = 0 to 9 do (
 			let p = Vector.get db i in
 			Logs.info(fun m -> m "%d: %s" i
 					(Logo.output_program_pstr p.pro)); 
 		) done; 
-		save_database dba ; 
-		dba
-		) in 
+		save_database db ; 
+		db,dbf
+	) in
 	
-	
-	let sock = create_socket () in
-	let state = device,dba,dbf,mnist in
-	let serve = create_server state sock in
-	Lwt_main.run @@ serve () 
+	let state = device,db,dbf,mnist in
+	let d = Domain.spawn (servthread 4340 state) in
+	servthread 4341 state () ; 
+	Domain.join d
 
 (*
 let image_dist dbf img = 

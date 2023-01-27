@@ -4,7 +4,7 @@ sudo apt-get install ocaml
 # upgrade opam
 bash -c "sh <(curl -fsSL https://raw.githubusercontent.com/ocaml/opam/master/shell/install.sh)"
 # add a flambda build, with the latest ocaml compiler
-sudo apt-get install make -y gcc unzip bubblewrap
+sudo apt-get install -y make gcc unzip bubblewrap
 opam init
 opam update --confirm-level=unsafe-yes
 opam switch create myswitch ocaml-variants.4.14.0+options ocaml-option-flambda
@@ -18,7 +18,7 @@ unzip ~/libtorch-cxx11-abi-shared-with-deps-1.13.1+cu116.zip
 mv libtorch ~
 export LIBTORCH=/home/ubuntu/libtorch
 
-opam install --confirm-level=unsafe-yes core core_unix vg cairo2 pbrt vector ocaml-protoc lwt logs pcre torch
+opam install --confirm-level=unsafe-yes core core_unix vg cairo2 pbrt vector lwt logs pcre torch
 eval $(opam env --switch=myswitch)
 dune build
 
