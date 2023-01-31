@@ -1,5 +1,3 @@
-open Core (* need to remove this!! *)
-open Base.Poly
 open Vgwrapper
 
 (* variables will be referenced to the stack, de Brujin indexes *)
@@ -116,7 +114,7 @@ let rec enc_prog g s =
 		)
 	| `Seq(l,_) -> (
 		enc_char "(" s; 
-		List.iteri ~f:(fun i a ->
+		List.iteri (fun i a ->
 			if i > 0 then (enc_char ";" s);
 			enc_prog a s) l ; 
 		enc_char ")" s )
@@ -130,7 +128,7 @@ let rec enc_prog g s =
 	| `Call(i,l,_) -> (
 		enc_char "call" s; 
 		enc_int i s; 
-		List.iteri ~f:(fun i a ->
+		List.iteri (fun i a ->
 			if i > 0 then (enc_char "," s);
 			enc_prog a s) l )
 	| `Def(i,a,_) -> (
@@ -148,30 +146,26 @@ let encode_program g =
 let decode_program il = 
 	(* convert a program encoded as a list of ints to a string, 
 	and then to the ast *)
-	let sl = List.map ~f:dec_item il in
-	List.fold_left ~f:(fun a b -> a^b) ~init:"" sl 
+	let sl = List.map dec_item il in
+	List.fold_left (fun a b -> a^b) "" sl 
 	(* parse in calling fun, via lexer and parser *)
 	
 let intlist_to_string e =
 	(* convenience encoding -- see asciitable for what it turns to *)
-	let offs = 10 + (Char.to_int '0') in 
+	let offs = 10 + (Char.code '0') in 
 	(* integers are mapped 1:1, 0 -> [-10] -> 0 -> '0' *)
-	let cof_int i =
-		match Char.of_int (i + offs) with 
-		| Some c -> c 
-		| _ -> '!' in
+	let cof_int i = Char.chr (i + offs) in
 	let bf = Buffer.create 32 in
-	List.iter ~f:(fun a -> Buffer.add_char bf (cof_int a)) e;
+	List.iter (fun a -> Buffer.add_char bf (cof_int a)) e;
 	Buffer.contents bf
 	
 let string_to_intlist e = 
 	(* outputs a list, range [-10 17] *)
-	let offs = 10 + (Char.to_int '0') in
-	String.fold ~f:(fun a c -> 
-		let i = (Char.to_int c) - offs in
-		i :: a) ~init:[] e
+	let offs = 10 + (Char.code '0') in
+	String.fold_left (fun a c -> 
+		let i = (Char.code c) - offs in
+		i :: a) [] e
 	|> List.rev 
-	(* I don't know why -- maybe need to get away from Core *)
 	
 let output_program_p bf g = (* p is for parseable *)
 	let gl = encode_program g in (* compressed encoding *)
@@ -218,14 +212,14 @@ let rec output_program_h g lg =
 	
 and output_list_h lg l sep =
 	Printf.fprintf lg "("; 
-	List.iteri ~f:(fun i v -> 
+	List.iteri (fun i v -> 
 		if i > 0 then Printf.fprintf lg "%s" sep ;
 		output_program_h v lg) l ; 
 	Printf.fprintf lg ")"
 	
 and output_list_p bf l sep =
 	Printf.bprintf bf "("; 
-	List.iteri ~f:(fun i v -> 
+	List.iteri (fun i v -> 
 		if i > 0 then Printf.bprintf bf "%s" sep ;
 		output_program_p bf v) l ; 
 	Printf.bprintf bf ")"
@@ -240,12 +234,12 @@ type state =
   ; stk : float array
   }
 
-let defs = Array.create ~len:10 `Nop
+let defs = Array.make 10 `Nop
 
 type segment = float*float*float*float
 
 let output_segments bf seglist = 
-	List.iteri ~f:(fun i (x1,y1,x2,y2) -> 
+	List.iteri (fun i (x1,y1,x2,y2) -> 
 		Printf.bprintf bf 
 			"%d %f,%f %f,%f\n" 
 			i x1 y1 x2 y2) seglist
@@ -257,7 +251,7 @@ let output_segments_str seglist =
 
 let start_state () = 
 	{x=0.0; y=0.0; t=0.0; p=true; r=0;
-		stk=Array.create ~len:10 (-1.0e9)}
+		stk=Array.make 10 (-1.0e9)}
  
 (* eval needs to take a state & program
 and return new state & (bool * float) result & segment list *)
@@ -319,27 +313,27 @@ let rec eval (st0:state) (pr:prog) =
 	| `Const(f,_) -> 
 		(st, (true, f), [])
 	| `Seq(program_list,_) -> 
-			List.fold_left ~f:(fun (st2,res2,segments) sub_prog -> 
+			List.fold_left (fun (st2,res2,segments) sub_prog -> 
 				if st2.r < reclim then (
 					let st3, res3, seg = eval st2 sub_prog in
 					(st3, res3, (List.append seg segments) ) 
 				) else (st2,res2,segments) )
-				~init:(st, (true,0.0), []) program_list
+				(st, (true,0.0), []) program_list
 	| `Loop(indx, niter, body,_) -> 
 		if indx >= 0 && indx < 10 then (
 			let (sta, resa, _) = eval st niter in
 			let n = iof (snd resa) in
 			let n = if n <= 0 then 1 else n in (* not sure how it gets there.. *)
-			let cntlist = List.init n ~f:(fun i -> i) in
+			let cntlist = List.init n (fun i -> i) in
 			(*Printf.printf "loop of %d using v%d (%d)\n" n indx (st.r);*) 
 			(*Out_channel.flush stdout;*)
-			List.fold_left ~f:(fun (st2,res2,segments) i -> 
+			List.fold_left (fun (st2,res2,segments) i -> 
 				if st2.r < reclim then (
 					st2.stk.(indx) <- foi i;
 					let st3, res3, seg = eval st2 body in
 					(st3, res3, (List.append seg segments) ) 
 				) else (st2,res2,segments) )
-				~init:(sta, (true,0.0),[]) cntlist
+				(sta, (true,0.0),[]) cntlist
 		) else nullret()
 	| `Call(indx, program_list,_) ->
 		(* this needs to be updated for the recursion limit *)
@@ -347,11 +341,11 @@ let rec eval (st0:state) (pr:prog) =
 			if List.length program_list < 5 then (
 				(* make a new stack and populate it *)
 				(* arguments are not allowed to have side-effects *)
-				let res = List.map ~f:(fun subprog ->
+				let res = List.map (fun subprog ->
 					let _st, res2, _seg = eval st subprog in
 					res2 ) program_list in
-				let st3 = {x=st.x;y=st.y;t=st.t;p=st.p;r=st.r; stk=(Array.create ~len:10 (-1e9)) } in
-				List.iteri ~f:(fun i v -> st3.stk.(i) <- snd v) res ;
+				let st3 = {x=st.x;y=st.y;t=st.t;p=st.p;r=st.r; stk=(Array.make 10 (-1e9)) } in
+				List.iteri (fun i v -> st3.stk.(i) <- snd v) res ;
 				let _st4, res4, seg4 = eval st3 defs.(indx) in
 				(* call does not affect state *)
 				(st, res4, seg4)
@@ -379,12 +373,12 @@ let center_segs l =
 	| _ ->
 	(* build lists of all the x and y coordinates *)
 		let xs = l |> List.map
-		~f:(function
+		(function
 			| (x,_,x',_) ->
 				[x-.d_from_origin;
 				x'-.d_from_origin;]) |> List.concat in
 		let ys = l |> List.map
-		~f:(function
+		(function
 			| (_,y,_,y') ->
 				[y-.d_from_origin;
 				y'-.d_from_origin;]) |> List.concat in
@@ -397,7 +391,7 @@ let center_segs l =
 		let dy = (y1-.y0)/.2.+.y0 in
 		let d_from_origin = 0. in
 		(* translate all the coordinates *)
-		l |> List.map ~f:(fun(x,y,x',y') ->
+		l |> List.map (fun(x,y,x',y') ->
 			(x-.dx+.d_from_origin, y-.dy+.d_from_origin,
 						x'-.dx+.d_from_origin, y'-.dy+.d_from_origin))
 		
@@ -416,7 +410,7 @@ let segs_to_canvas segs =
 		moveto x1 y1;
 		lineto x2 y2; ()
   in
-  List.iter ~f:eval_instruction segs ;
+  List.iter eval_instruction segs ;
   !c,!total_cost
 
 let segs_to_png segs resolution filename =

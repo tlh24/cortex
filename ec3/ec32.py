@@ -308,7 +308,7 @@ train_opt = th.compile(train, mode="reduce-overhead")
 
 for u in range(train_iters): 
 	# need to set the default tensor type to CPU
-	# so we can read from the mmap files (obvi in CPU mem)
+	# so we can read from the mmap files (CPU to GPU mem)
 	# th.set_default_tensor_type('torch.FloatTensor')
 	bpro = read_mmap(fd_bpro, [batch_size, p_ctx, p_indim])
 	bimg = read_mmap(fd_bimg, [batch_size, 3, image_res, image_res])

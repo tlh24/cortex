@@ -3729,4 +3729,17 @@ check that the model is outputting correct code
 add in mutex to 'db'
 (later) longer episodes, finally! 
 
+January 28th 2023
 
+Need to get python & ocaml working together again before adding the dreaming python. 
+todo: 
+add edits into the database!!
+select an MNIST starting point stochastically close to target character.
+        For this, I think we need to include the VAE.. ?
+stopped on program.ml:889 
+
+January 30 2023
+
+Mostly have the ocaml framework in place ... need to get it to compile, 
+and then work on the python side (reverse mmap: python writes)
+Todo: make sure thread state is initialized properly for the train and dream threads. 
