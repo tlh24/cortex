@@ -3743,3 +3743,7 @@ January 30 2023
 Mostly have the ocaml framework in place ... need to get it to compile, 
 and then work on the python side (reverse mmap: python writes)
 Todo: make sure thread state is initialized properly for the train and dream threads. 
+
+January 31 2023
+
+Bug in bedts!  Does not consistently fill out the whole array ... not sure why? 

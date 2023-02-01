@@ -10,6 +10,7 @@ import socket
 import time
 import clip_model
 import argparse
+import io
 import pdb
 
 import torch._dynamo as dynamo
@@ -52,8 +53,12 @@ sock.sendall(b"update_batch\n")
 data = sock.recv(1024)
 print(f"Received {data!r}")
 
-def make_mmf(fname): 
+def make_mmf_rd(fname): 
 	fd = open(fname, "r+b")
+	return mmap.mmap(fd.fileno(), 0)
+	
+def make_mmf_wr(fname): 
+	fd = open(fname, "w+b")
 	return mmap.mmap(fd.fileno(), 0)
 
 def read_mmap(mmf, dims): 
@@ -65,10 +70,19 @@ def read_mmap(mmf, dims):
 	x = th.reshape(x, dims)
 	return x
 	
-fd_bpro = make_mmf("bpro.mmap")
-fd_bimg = make_mmf("bimg.mmap")
-fd_bedt = make_mmf("bedt.mmap")
-fd_posenc = make_mmf("posenc.mmap")
+def write_mmap(mmf, data): 
+	buff = io.BytesIO()
+	torch.save(data, buff)
+	buff.seek(0)
+	mmf.seek(0)
+	n = mmf.write(buff)
+	return n
+	
+fd_bpro = make_mmf_rd("bpro_0.mmap")
+fd_bimg = make_mmf_rd("bimg_0.mmap")
+fd_bedts = make_mmf_rd("bedts_0.mmap")
+fd_bedtd = make_mmf_wr("bedtd_0.mmap")
+fd_posenc = make_mmf_rd("posenc_0.mmap")
 posenc = read_mmap(fd_posenc, [p_ctx, poslen*2])
 
 torch_device = 0
@@ -236,7 +250,7 @@ def hallucinate ():
 		# range depends on the design spec -- e.g. max 8 edits.
 		bpro = read_mmap(fd_bpro, [batch_size, p_ctx, p_indim])
 		bimg = read_mmap(fd_bimg, [batch_size, 3, image_res, image_res])
-		bedt = read_mmap(fd_bedt, [batch_size, e_indim])
+		bedts = read_mmap(fd_bedts, [batch_size, e_indim])
 	
 		# with th.autocast(device_type='cuda', dtype=torch.float16):
 		y,q = model(u, bimg.cuda(), bpro.cuda())
@@ -295,10 +309,10 @@ tic = time.time()
 print("training...")
 
 # compiling this does not seem to work... 
-def train(mod, bimg, bpro, bedt): 
+def train(mod, bimg, bpro, bedts): 
 	model.zero_grad()
 	y,q = model(u, bimg.cuda(), bpro.cuda())
-	loss = lossfunc(y, bedt.cuda())
+	loss = lossfunc(y, bedts.cuda())
 	lossflat = th.sum(loss)
 	lossflat.backward()
 	th.nn.utils.clip_grad_norm_(model.parameters(), 0.05)
@@ -312,18 +326,19 @@ for u in range(train_iters):
 	# th.set_default_tensor_type('torch.FloatTensor')
 	bpro = read_mmap(fd_bpro, [batch_size, p_ctx, p_indim])
 	bimg = read_mmap(fd_bimg, [batch_size, 3, image_res, image_res])
-	bedt = read_mmap(fd_bedt, [batch_size, e_indim])
+	bedts = read_mmap(fd_bedts, [batch_size, e_indim])
 	# set back to GPU 
 	# th.set_default_tensor_type('torch.cuda.FloatTensor')
 	
 	# now that we have a copy, can ask ocaml to update async
 	sock.sendall(b"update_batch\n")
+	data = sock.recv(100)
 	
 	# with th.autocast(device_type='cuda', dtype=torch.float16):
-	#train_opt(model, bimg.cuda(), bpro.cuda(), bedt.cuda())
+	#train_opt(model, bimg.cuda(), bpro.cuda(), bedts.cuda())
 	model.zero_grad()
 	y,q = model(u, bimg.cuda(), bpro.cuda())
-	loss = lossfunc(y, bedt.cuda())
+	loss = lossfunc(y, bedts.cuda())
 	lossflat = th.sum(loss)
 	lossflat.backward()
 	th.nn.utils.clip_grad_norm_(model.parameters(), 0.05)
@@ -334,24 +349,11 @@ for u in range(train_iters):
 	# scaler.step(optimizer)
 	# scaler.update()
 	
-	# do this later (async) to improve gpu utilization
+	write_mmap(fd_bedtd, [batch_size, e_indim])
+	sock.sendall(b"decode_edit\n")
 	data = sock.recv(100)
-	try:
-		nreplace = int(data[3:].decode("utf-8"))
-	except: 
-		print("didn't get nreplace")
 	
 	slowloss = 0.99*slowloss + 0.01 * lossflat.detach()
-	if u % 7 == 0 :
-		toc = time.time()
-		rate = int((batch_size * 7) / (toc - tic))
-		tic = toc
-		print(f'{u} {lr:.6f} loss: {lossflat:.5f}; slowloss {slowloss:.5f}; {rate} samp/sec')
-		compare_edit(bedt, y.cpu())
-		# print(i, lossflat, loss[0], y_mask[0])
-		# print(x[0])
-		# print(y[0])
-		# print(x[0] - y[0])
 	ngpu = th.cuda.device_count()
 	q = th.reshape(q, (ngpu,-1))
 	q = th.mean(q, 0)
@@ -390,7 +392,8 @@ for u in range(train_iters):
 
 fd_bpro.close()
 fd_bimg.close()
-fd_bedt.close()
+fd_bedts.close()
+fd_bedtd.close()
 fd_posenc.close()
 
 sock.close()

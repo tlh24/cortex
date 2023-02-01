@@ -97,7 +97,7 @@ type tsteak = (* thread state *)
 	}
 
 let pi = 3.1415926
-let image_count = 6*2048 
+let image_count = 6*2048*2
 let image_res = 30
 let batch_size = ref (256*3)
 let toklen = 30
@@ -705,6 +705,7 @@ let reset_bea () =
 	bea,fresh
 	
 let init_batchd filnum =
+	Logs.debug (fun m -> m "init_batchd"); 
 	let mkfnam s = 
 		Printf.sprintf "%s_%d.mmap" s filnum in
 	let fd_bpro,bpro = mmap_bigarray3 (mkfnam "bpro") 
@@ -761,8 +762,8 @@ let rec new_batche doedit db =
 	(* check this .. really should be -2 as in bigfill_batchd *)
 	if a_ns <= 4 && b_ns <= 4 && a_np < lim && b_np < lim then (
 		let dist,_ = Levenshtein.distance a.progenc b.progenc false in
-		Logs.debug(fun m -> m  
-			"trying [%d] [%d] for batch; dist %d" na nb dist);
+		(*Logs.debug(fun m -> m  
+			"trying [%d] [%d] for batch; dist %d" na nb dist);*)
 		if dist > 0 && dist < distthresh then (
 			(* "move a , b ;" is 5 insertions; need to allow *)
 			let _, edits = Levenshtein.distance a.progenc b.progenc true in
@@ -778,9 +779,9 @@ let rec new_batche doedit db =
 			(* also add a 'done' edit/indicator *)
 			let edits = ("fin",0,'0') :: edits in
 			let edits = List.rev edits in
-			Logs.debug(fun m -> m 
+			(*Logs.debug(fun m -> m 
 				"adding [%d] %s [%d] %s to batch (unsorted pids: %d %d)"
-				na a.progenc nb b.progenc a.pid b.pid);
+				na a.progenc nb b.progenc a.pid b.pid);*)
 			let edited = Array.make p_ctx 0.0 in
 			{a_pid=na; b_pid=nb; 
 				a_progenc = a.progenc; 
@@ -817,9 +818,9 @@ let new_batche_dream db = (* use this *)
 		new_batche_unsup db
 	)
 	
-let update_edited be = 
+let update_edited be ed = 
 	(* update the 'edited' array, which indicates what has changed in the program string *)
-	let typ,pp,_chr = List.hd be.edits in 
+	let typ,pp,_chr = ed in 
 	let la = String.length be.a_progenc in
 	let lc = String.length be.c_progenc in
 	(* in-place array modification *)
@@ -887,7 +888,7 @@ let apply_edits be =
 	(* note: Levenshtein clips the edit positions *)
 	let c = Levenshtein.apply_edits be.c_progenc [ed] in
 	let be2 = { be with c_progenc=c; edits=(List.tl be.edits) } in
-	update_edited be2; 
+	update_edited be2 ed; 
 	be2
 	
 let progenc2progstr progenc = 
@@ -1244,7 +1245,7 @@ let save_database db =
 			Printf.fprintf fil "| %s " ps) d.equiv; 
 		Printf.fprintf fil "\n") dba ; 
 	close_out fil; 
-	Logs.app(fun m -> m  "saved %d to db_prog.txt" image_count); 
+	Logs.app(fun m -> m  "saved %d to db_prog.txt" (Array.length dba)); 
 	
 	(* verification .. human readable*)
 	let fil = open_out "db_human_log.txt" in
@@ -1253,8 +1254,7 @@ let save_database db =
 		Printf.fprintf fil "\n[%d]\t" i ; 
 		Logo.output_program_h d.pro fil) dba ; 
 	close_out fil; 
-	Logs.debug(fun m -> m  "saved %d to db_human_log.txt" image_count)
-	
+	Logs.debug(fun m -> m  "saved %d to db_human_log.txt" (Array.length dba))
 	(* save the equivalents too? *)
 	
 let load_database device db dbf = 
@@ -1311,7 +1311,8 @@ let load_database device db dbf =
 			| _ -> Logs.err(fun m -> m 
 					"could not parse program %d %s" pid s ))
 			) progs; 
-		Printf.printf "Loaded %d equivalents\n" !equivalent; 
+		Logs.info (fun m -> m "Loaded %d programs (%d max) and %d equivalents" 
+			(List.length progs) image_count !equivalent); 
 		db
 	)
 	
@@ -1383,12 +1384,12 @@ let () =
 	close_out lg; 
 *)
 
-(* This should reach ~97% accuracy. *)
 let hidden_nodes = 128
 let epochs = 10000
 let learning_rate = 1e-3
 
 let test_torch () =
+	(* This should reach ~97% accuracy. *)
 	Stdio.printf "cuda available: %b%!" (Cuda.is_available ());
 	Stdio.printf "cudnn available: %b%!" (Cuda.cudnn_is_available ());
 	let device = Torch.Device.cuda_if_available () in
@@ -1426,6 +1427,7 @@ let test_torch () =
 	done
 	
 let handle_message steak bd msg =
+	(*Logs.debug (fun m -> m "handle_message %s" msg);*)
 	let msgl = String.split_on_char ':' msg in
 	let cmd = if List.length msgl = 1 then msg 
 		else List.hd msgl in
@@ -1433,6 +1435,7 @@ let handle_message steak bd msg =
 	| "update_batch" -> (
 		(* supervised: sent when python has a working copy of data *)
 		(* dreaming : sent when the model has produced edits *)
+		Logs.debug (fun m -> m "update_batch"); 
 		let bd = if steak.superv 
 			then update_bea_sup steak bd
 			else update_bea_dream steak bd in (* applies the dreamed edits *)
@@ -1441,7 +1444,7 @@ let handle_message steak bd msg =
 		Logs.debug(fun m -> m "new batch %d" steak.batchno); 
 		bd,(Printf.sprintf "ok %d" !nreplace)
 		)
-	| "decode_edits" -> (
+	| "decode_edit" -> (
 		(* python sets bd.bedtd -- the dreamed edits *)
 		(* read this independently of updating bd.bedts; so as to determine acuracy. *)
 		let edit_arr = decode_edit bd in
@@ -1452,12 +1455,13 @@ let handle_message steak bd msg =
 				if typ = styp then incr typright; 
 				if pos = spos then incr posright; 
 				if chr = schr then incr chrright; 
-				Logs.info (fun m -> m "| true: %s [%d] %c ; est: %s [%d] %c"
-					styp spos schr typ pos chr )
+				if i = 0 then 
+					Logs.info (fun m -> m "| true: %s [%d] %c ; est: %s [%d] %c"
+						styp spos schr typ pos chr )
 			) ) edit_arr ; 
 		let pctg v = (foi !v) /. (foi !batch_size) in
 		Logs.info (fun m -> m (* TODO: debug mode *)
-			"decode_edits: correct typ %0.3f chr %0.3f pos %0.3f " 
+			"decode_edit: correct typ %0.3f chr %0.3f pos %0.3f " 
 			(pctg typright) (pctg chrright) (pctg posright) ); 
 		bd, "ok" )
 	(*| "reset_batch" -> (
@@ -1528,9 +1532,12 @@ let read_socket client_sock =
 		try
 			Unix.recv client_sock data_read 0 maxlen []
 		with Unix.Unix_error (e, _, _) ->
-			Logs.err (fun m -> m "Sock can't receive: %s ; shutting down.\n%!"
+			Logs.err (fun m -> m "Sock can't receive: %s ; shutting down"
 				(Unix.error_message e));
-			Unix.shutdown client_sock SHUTDOWN_ALL; 
+			( try Unix.shutdown client_sock SHUTDOWN_ALL
+			with Unix.Unix_error (e, _, _) ->
+				Logs.err (fun m -> m "Sock can't shutdown: %s"
+					(Unix.error_message e)) ); 
 			0 in
 	if data_length > 0 then 
 		Some (Bytes.sub data_read 0 data_length |> Bytes.to_string )
@@ -1545,9 +1552,10 @@ let servthread steak () = (* steak = thread state *)
 	bind server_sock (ADDR_INET (listen_address, steak.sockno)) ;
 	listen server_sock 2 ; (* 2 max connections *)
 	while !glive do (
-		let (client_sock, _client_addr) = accept server_sock in
-		(* make new mmap files & batchd for each connection *)
 		let bd,fdlist = init_batchd (steak.sockno-4340) in
+		let (client_sock, _client_addr) = accept server_sock in
+		Logs.debug (fun m -> m "new connection on %d" steak.sockno); 
+		(* make new mmap files & batchd for each connection *)
 		let rec message_loop bd =
 			let msg = read_socket client_sock in
 			(match msg with 
@@ -1559,7 +1567,8 @@ let servthread steak () = (* steak = thread state *)
 			| _ -> (
 				save_database steak.db ) ) in
 		message_loop bd ; 
-		(* if te client disconnects, close the files and reopen *)
+		(* if client disconnects, close the files and reopen *)
+		Logs.debug (fun m -> m "disconnect %d" steak.sockno); 
 		List.iter (fun fd -> close fd) fdlist; 
 	) done; 
 	) (* )open Unix *)
@@ -1628,7 +1637,7 @@ let () =
 	Arg.parse speclist anon_fun usage_msg;
 	Random.self_init (); 
 	let () = Logs.set_reporter (Logs.format_reporter ()) in
-	let () = Logs.set_level (Some Logs.Info) in
+	let () = Logs.set_level (Some Logs.Debug) in
 	Logs_threaded.enable (); 
 	(* Logs levels: App, Error, Warning, Info, Debug *)
 
@@ -1682,11 +1691,11 @@ let () =
 	let dreamfid = open_out "/tmp/png/replacements_dream.txt" in
 	let supsteak = {device; db; dbf; db_mutex; mnist;
 			superv=true; sockno=4340; fid=supfid; batchno=0} in
-	let dreamsteak = {device; db; dbf; db_mutex; mnist;
-			superv=false; sockno=4341; fid=dreamfid; batchno=0} in
-	let d = Domain.spawn (servthread supsteak) in
-	servthread dreamsteak () ; 
-	Domain.join d; 
+	(*let dreamsteak = {device; db; dbf; db_mutex; mnist;
+			superv=false; sockno=4341; fid=dreamfid; batchno=0} in*)
+	(*let d = Domain.spawn (servthread supsteak) in*)
+	servthread supsteak () ; 
+	(*Domain.join d;*) 
 	close_out supfid; 
 	close_out dreamfid; 
 
