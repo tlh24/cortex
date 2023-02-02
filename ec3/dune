@@ -28,7 +28,7 @@
 (executable
 	(name program)
 	(modules logo parser lexer vgwrapper colors levenshtein program)
-	(libraries core core_unix.command_unix vg vg.cairo pbrt vector torch pcre lwt lwt.unix logs logs.threaded)
+	(libraries core core_unix.command_unix vg vg.cairo pbrt vector torch pcre lwt lwt.unix logs logs.threaded domainslib)
 	)
 
 

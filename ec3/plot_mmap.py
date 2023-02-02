@@ -37,6 +37,9 @@ fd_bimg = make_mmf_rd("bimg_0.mmap")
 fd_bedts = make_mmf_rd("bedts_0.mmap")
 fd_bedtd = make_mmf_wr("bedtd_0.mmap")
 fd_posenc = make_mmf_rd("posenc_0.mmap")
+fd_editdiff = make_mmf_rd("editdiff.mmap")
+# fallocate -l 6016 editdiff.mmap for batch size 32
+# 6016 = 32 * 47 * 4
 
 parser = argparse.ArgumentParser(description='image mmaped files')
 parser.add_argument("-b", "--batch_size", help="Set the batch size", type=int)
@@ -76,24 +79,29 @@ def plot_tensor(r, c, v, name, lo, hi):
 	#cbar[r][c].update_normal(im[r][c]) # probably does nothing
 	axs[r,c].set_title(name)
 
+bs = batch_size
+if batch_size > 32: 
+	bs = 32
+
 while True:
 	bpro = read_mmap(fd_bpro, [batch_size, p_ctx, p_indim])
 	bimg = read_mmap(fd_bimg, [batch_size, 3, image_res, image_res])
 	bedts = read_mmap(fd_bedts, [batch_size, e_indim])
 	bedtd = read_mmap(fd_bedtd, [batch_size, e_indim])
 	posenc = read_mmap(fd_posenc, [p_ctx, poslen*2])
+	editdiff = read_mmap(fd_editdiff, [batch_size, e_indim])
 
 	plot_tensor(0, 0, bpro[0,:,:], "bpro[0,:,:]", -1.0, 1.0)
 	plot_tensor(0, 1, bimg[0,0,:,:], "bimg[0,:,:]", -1.0, 1.0)
 	plot_tensor(0, 2, bimg[0,1,:,:], "bimg[1,:,:]", -1.0, 1.0)
-	plot_tensor(1, 0, bedts[:,:], "bedts[:,:]", -1.0, 1.0)
-	plot_tensor(1, 1, bedtd[:,:], "bedtd[:,:]", -1.0, 1.0)
-	plot_tensor(1, 2, posenc[:,:], "posenc[:,:]", -1.0, 1.0)
+	plot_tensor(1, 0, bedts[:bs,:], "bedts[:,:]", -2.0, 2.0)
+	plot_tensor(1, 1, bedtd[:bs,:], "bedtd[:,:]", -2.0, 2.0)
+	plot_tensor(1, 2, editdiff[:bs,:], "editdiff", -2.0, 2.0) # brighter colors
 	
 	fig.tight_layout()
 	fig.canvas.draw()
 	fig.canvas.flush_events()
-	time.sleep(1)
+	time.sleep(2)
 	print("tick")
 	initialized=True
 

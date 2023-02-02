@@ -3747,3 +3747,31 @@ Todo: make sure thread state is initialized properly for the train and dream thr
 January 31 2023
 
 Bug in bedts!  Does not consistently fill out the whole array ... not sure why? 
+Might just be a synchronization thing: seems like ocaml is using ~ 100% of one CPU & the system is pretty heavily loaded.
+Yes, this seems to be the case. 
+	But not a good sign that Ocaml is limiting .. ?!
+
+February 1 2023
+
+Now the bug is that position decoding is not very accurate. 
+Probably need a positive control?  (e.g. decode the supvervised edit signals)
+Yep, confirmed: decoding the edit position accurately. 
+OK, go back to the simplest test case: only produce 'insert' (no editing), keep the programs short. 
+This was known to work in the past.
+Right, it works .. just rather slowly.  I've changed something that's making things train slowly; only about 600 samp/sec; was getting more like 4600 before. 
+remove all batch updating.. yep, back to 4600 samples/sec.
+bigfill_batchd very very slow.  This is consistent with the array tearing seen in bedts above! 
+is it bimg?  that code has changed. 
+Yes, that's half of it -- up to 2760 samples / sec. 
+	Seems that pulling from torch is inefficient.  Doh!!
+	Still not as fast as no update whatsoever.  Hmm.  One thing at a time. 
+Right, so using torch (which is simpler) on the CPU is faster -- around 1700 samp/sec training -- but still slower than before. 
+Remove the pytorch code & go back to bigarrays, which seem pretty quick.. ? 
+Right ... loading into float arrays makes things slower, though. 
+	Used Domainlibs to speed things up a good bit, but I suspect that might have placed some of the elments out-of-order .. ? 
+	Best bet is to sort shortly after loading, just in case! 
+	Fixed.
+tensor_of_bigarray2 is sloooowww.  
+	Fixed: used the built-in conversion functions. 
+Also, there is significant warm-up time for libtorch. fyi. 
+Next: figure out why it's not training properly.  This was working fine two weeks ago.
