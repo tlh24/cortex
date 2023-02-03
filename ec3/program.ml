@@ -6,6 +6,8 @@ open Printf
 open Logo
 open Torch
 
+module Dtask = Domainslib.Task
+
 type pequiv = 
 	{ epro : Logo.prog
 	; eprogenc : string
@@ -94,6 +96,7 @@ type tsteak = (* thread state *)
 	; sockno : int
 	; fid : out_channel (* log for e.g. replacements *)
 	; mutable batchno : int (* for e.g doing garbage collection *)
+	; mutable pool : Domainslib.Task.pool (* needs to be replaced for dream *)
 	}
 
 let pi = 3.1415926
@@ -130,13 +133,13 @@ let print_position lexbuf =
 
 let parse_with_error lexbuf =
 	let prog = try Some (Parser.parse_prog Lexer.read lexbuf) with
-	| SyntaxError msg ->
-		Logs.debug (fun m -> m "%s: %s" 
-			(print_position lexbuf) msg); 
+	| SyntaxError _msg ->
+		(*Logs.debug (fun m -> m "%s: %s" 
+			(print_position lexbuf) msg);*)  (* these errors overwhelm while dreaming *)
 		None
 	| Parser.Error ->
-		Logs.debug (fun m -> m "%s: syntax error" 
-			(print_position lexbuf));
+		(*Logs.debug (fun m -> m "%s: syntax error" 
+			(print_position lexbuf));*)
 		None in
 	prog
 
@@ -732,10 +735,10 @@ let init_batchd filnum =
 	
 let rec new_batche doedit db = 
 	(* only supervised mode! *)
-	let ndb = min (Vector.length db) 2048 in  (* FIXME *)
+	let ndb = (Vector.length db) in
 	let nb = (Random.int (ndb-1)) + 1 in
 	let na = if doedit then (Random.int (ndb-1)) + 1 else 0 in
-	let distthresh = if doedit then 4 else 12 in (* FIXME: 4,12 -> 5,15 *)
+	let distthresh = if doedit then 5 else 15 in (* FIXME: 4,12 -> 5,15 *)
 	(*let na = if (Random.int 10) = 0 then 0 else (Random.int nb) in*)
 	(* small portion of the time na is the empty program *)
 	let a = Vector.get db na in
@@ -903,9 +906,9 @@ let db_set steak i d img =
 let db_push steak d imgf = 
 	(*imgf is a tensor on same device as dbf*)
 	let added = ref false in
-	Mutex.lock steak.db_mutex ; 
+	Mutex.lock steak.db_mutex; 
 	let l = Vector.length steak.db in
-	if l < image_count * 2 then (
+	if l < image_count then (
 		Vector.push steak.db d ;
 		Tensor.copy_ (Tensor.narrow steak.dbf ~dim:0 ~start:(l-1) ~length:1) ~src:imgf;
 		added := true
@@ -913,9 +916,11 @@ let db_push steak d imgf =
 	Mutex.unlock steak.db_mutex; 
 	!added,l
 	
-let dbf_dist dbf img = 
-	let d = Tensor.( (dbf - img) ) in
-	let d = Tensor.einsum ~equation:"ijk, ijk -> i" [d;d] ~path:None in
+let dbf_dist steak img = 
+	(*Mutex.lock steak.db_mutex;*) 
+	let d = Tensor.( (steak.dbf - img) ) in (* broadcast *)
+	(*Mutex.unlock steak.db_mutex;*) (* we have a copy *)
+	let d = Tensor.einsum ~equation:"ijk,ijk -> i" [d;d] ~path:None in
 	let mindex = Tensor.argmin d ~dim:None ~keepdim:true 
 		|> Tensor.int_value in
 	let dist = Tensor.get d mindex |> Tensor.float_value in
@@ -932,7 +937,6 @@ let pdata_to_edata p =
 let try_add_program steak progenc = 
 	let progstr = progenc2progstr progenc in
 	let g = parse_logo_string progstr in
-	if steak.batchno mod 41 = 40 then Caml.Gc.major (); (* clean up torch variables *)
 	match g with
 	| Some g2 -> (
 		let pd = program_to_pdata g2 99999 image_res in
@@ -940,7 +944,8 @@ let try_add_program steak progenc =
 		| Some data -> (
 			(*Logs.info (fun m -> m "Parsed! [%d]: %s \"%s\"" bi progenc progstr);*)
 			let imgf = tensor_of_bigarray2 data.img steak.device in
-			let dist,mindex = dbf_dist steak.dbf imgf in
+			let dist,mindex = dbf_dist steak imgf in
+			steak.batchno <- steak.batchno + 1 ; 
 			(* idea: if it's similar to a currently stored program, but has been hallucinated by the network, and is not too much more costly than what's there, 
 			then replace the entry! *)
 			if dist < 0.6 then (
@@ -963,16 +968,24 @@ let try_add_program steak progenc =
 					incr nreplace
 					(* those two operations are in-place, so subsequent batches should contain the new program :-) *)
 				)
-			) else if dist > 5.0 then (
+			) ; 
+			if dist > 5.0 then (
 				let added,l = db_push steak data imgf in
 				if added then (
-					Logs.debug(fun m -> m 
+					Logs.info(fun m -> m 
 						"try_add_program: adding new [%d] = %s" l 
 						(Logo.output_program_pstr data.pro) )
 				) else (
-					Logs.debug(fun m -> m 
+					Logs.info(fun m -> m 
 						"try_add_program: could not add new, db full. [%d]" l )
 				)
+			) ; 
+			if dist >= 0.6 && dist <= 5.0 then (
+				let data2 = db_get steak mindex in
+				Logs.info(fun m -> m 
+						"try_add_program: new \n\t%s sim existing\n\t%s"  
+						(Logo.output_program_pstr data.pro)
+						(Logo.output_program_pstr data2.pro) )
 			) )
 			| _ -> () )
 		| _ -> ()
@@ -980,39 +993,53 @@ let try_add_program steak progenc =
 let update_bea_sup steak bd = 
 	let sta = Unix.gettimeofday () in
 	(* need to run through twice, first to apply the edits, second to replace the finished elements. *)
-	let bea2 = Array.mapi (fun i be -> 
-		if List.length be.edits > 0 then (
+	let innerloop i = 
+		let be = bd.bea.(i) in
+		let be2 = if List.length be.edits > 0 then (
 			bd.fresh.(i) <- false; 
 			apply_edits be 
-		) else be ) bd.bea in
-	let bea3 = Array.mapi (fun i be -> 
-		if List.length be.edits = 0 then (
+			) else be in
+		let be3 = if List.length be.edits = 0 then (
 			bd.fresh.(i) <- true; (* update image flag *)
 			new_batche_sup steak.db
-		) else be 
-		) bea2 in
+			) else be2 in
+		bd.bea.(i) <- be3 in (* /innerloop *)
+	Dtask.parallel_for steak.pool ~start:0 ~finish:(!batch_size-1)
+		~body:innerloop ; 
 	let fin = Unix.gettimeofday () in
 	Logs.debug (fun m -> m "update_bea_sup time %f" (fin-.sta));
-	{bd with bea=bea3}
+	(* array update was in-place, so just return bd. *)
+	bd
 	
 let update_bea_dream steak bd = 
 	Logs.debug (fun m -> m "entering update_bea_dream");
 	(* this one only needs one run-through. *)
 	let edit_arr = decode_edit bd bd.bedtd in
-	let bea2 = Array.mapi (fun i be -> 
+	let innerloop i = 
+		let be = bd.bea.(i) in
 		let cnt = be.count in
 		let typ,loc,chr = edit_arr.(i) in
-		let be2 = {be with edits=[(typ,loc,chr)];count=cnt+1} in
+		(* edited is initialized in update_be_sup/new_batche_sup; same here *)
+		let edited = if Array.length be.edited <> p_ctx 
+			then Array.make p_ctx 0.0 else be.edited in
+		let be2 = {be with edits=[(typ,loc,chr)];count=cnt+1;edited} in
 		let be3 = apply_edits be2 in
-		if typ = "fin" || be2.count >= p_ctx/2 then (
+		let be4 = if typ = "fin" || be2.count >= p_ctx/2 then (
 			try_add_program steak be3.c_progenc; 
 			bd.fresh.(i) <- true; 
 			new_batche_dream steak.db
 		) else (
 			bd.fresh.(i) <- false; 
 			be3 
-		) ) bd.bea in
-	{bd with bea=bea2}
+		) in
+		bd.bea.(i) <- be4; 
+	in (* /innerloop *)
+	Dtask.parallel_for steak.pool ~start:0 ~finish:(!batch_size-1) 
+		~body:innerloop ; 
+	Caml.Gc.major (); (* clean up torch variables *)
+	(* cannot do this within a parallel for loop!!! *)
+	(* in-place update of bea *)
+	bd
 	
 let bigfill_batchd steak bd = 
 	let sta = Unix.gettimeofday () in
@@ -1025,8 +1052,9 @@ let bigfill_batchd steak bd =
 	for u = 0 to !batch_size-1 do (
 		bd.bedts.{u,0} <- -1. (* TEST *)
 	) done; 
-	Array.iteri (fun u be -> 
-	  (* - bpro - *)
+	let innerloop u = 
+		let be = bd.bea.(u) in
+		(* - bpro - *)
 		let offs = Char.code '0' in
 		let llim = (p_ctx/2)-2 in
 		let l = String.length be.a_progenc in
@@ -1045,6 +1073,7 @@ let bigfill_batchd steak bd =
 				(* indicate this is c, to be edited *)
 				bd.bpro.{u,i+l,toklen-1} <- 1.0 ) ) be.c_progenc ;
 		(* copy over the edited tags (set in apply_edits) *)
+		assert (Array.length be.edited = p_ctx) ; 
 		for i = 0 to p_ctx-1 do (
 			bd.bpro.{u,i,toklen} <- be.edited.(i)
 		) done; 
@@ -1109,8 +1138,9 @@ let bigfill_batchd steak bd =
 			for i = 0 to poslen*2-1 do (
 				bd.bedts.{u,5+toklen+i} <- bd.posenc.{pp,i}
 			) done
-		); 
-	) bd.bea ; 
+		) in (* /innerloop *)
+	Dtask.parallel_for steak.pool ~start:0 ~finish:(!batch_size-1)
+		~body:innerloop; 
 	let fin = Unix.gettimeofday () in
 	Logs.debug (fun m -> m "bigfill_batchd time %f" (fin-.sta))
 	
@@ -1163,7 +1193,7 @@ let sort_database device db =
 	Logs.debug (fun m -> m "sort_database tensor copy done, %f" (fin-.sta)); 
 	(Vector.of_array ~dummy:nulpdata dba),dbf
 
-let init_database device db dbf count = 
+let init_database steak count = 
 	(* generate 'count' initial program & image pairs *)
 	Logs.info(fun m -> m  "init_database %d" count); 
 	let i = ref 0 in
@@ -1174,18 +1204,17 @@ let init_database device db dbf count =
 		let data = if !i = 0 then
 			generate_empty_logo !i image_res else
 			generate_random_logo !i image_res in
-		let img = tensor_of_bigarray2 data.img device in
-		let dist,mindex = dbf_dist dbf img in
+		let imgf = tensor_of_bigarray2 data.img steak.device in
+		let dist,mindex = dbf_dist steak imgf in
 		if dist > 5. then (
 			Logs.debug(fun m -> m 
 				"%d: adding [%d] = %s" !iters !i 
 				(Logo.output_program_pstr data.pro) ); 
-			Vector.push db data; 
-			Tensor.copy_ (Tensor.narrow dbf ~dim:0 ~start:!i ~length:1) ~src:img;
+			ignore( db_push steak data imgf ); 
 			incr i;
 		) else (
 			(* see if there's a replacement *)
-			let data2 = Vector.get db mindex in
+			let data2 = db_get steak mindex in
 			let c1 = data.pcost in (* progenc_cost  *)
 			let c2 = data2.pcost in
 			if c1 < c2 then (
@@ -1198,9 +1227,7 @@ let init_database device db dbf count =
 					let ed = pdata_to_edata data2 in
 					{data with equiv = (ed :: data2.equiv)} 
 					) else data in
-				Vector.set db mindex data;
-				(* change the image *)
-				Tensor.copy_ (Tensor.narrow dbf ~dim:0 ~start:mindex ~length:1) ~src:img;
+				db_set steak mindex data imgf; 
 				incr replace
 			) else (
 				(* they are equivalent; cost >=; see if it's already there *)
@@ -1215,12 +1242,12 @@ let init_database device db dbf count =
 							!iters mindex (List.length data2.equiv) 
 							(Logo.output_program_pstr data.pro) 
 							(Logo.output_program_pstr data2.pro));*)
-						
 							let ed = pdata_to_edata data in
 							let eqlist = ed :: data2.equiv (*|> 
 								List.sort (fun a b -> compare a.epcost b.epcost)*) in 
 							let data2 = {data2 with equiv = eqlist} in
-							Vector.set db mindex data2; 
+							let imgf = tensor_of_bigarray2 data2.img Torch.Device.Cpu in
+							db_set steak mindex data2 imgf; 
 							(* do not change the image *)
 							incr equivalents
 						)
@@ -1233,7 +1260,7 @@ let init_database device db dbf count =
 			Caml.Gc.major (); 
 		incr iters
 	) done; 
-	let db,dbf = sort_database device db in
+	let db,dbf = sort_database steak.device steak.db in
 	Logs.info(fun m -> m  "%d done; %d sampled; %d replacements; %d equivalents" !i !iters !replace !equivalents); 
 	db,dbf
 	
@@ -1241,7 +1268,7 @@ let save_database db =
 	(* saves in the current state -- not sorted. *)
 	let dba = Vector.to_array db in (* inefficient *)
 	let fil = open_out "db_prog.txt" in
-	Printf.fprintf fil "%d\n" image_count; 
+	Printf.fprintf fil "%d\n" (Array.length dba); 
 	Array.iteri (fun i d -> 
 		let pstr = Logo.output_program_pstr d.pro in
 		Printf.fprintf fil "[%d] %s "  i pstr; 
@@ -1254,7 +1281,7 @@ let save_database db =
 	
 	(* verification .. human readable*)
 	let fil = open_out "db_human_log.txt" in
-	Printf.fprintf fil "%d\n" image_count; 
+	Printf.fprintf fil "%d\n" (Array.length dba); 
 	Array.iteri (fun i d -> 
 		Printf.fprintf fil "\n[%d]\t" i ; 
 		Logo.output_program_h d.pro fil) dba ; 
@@ -1317,12 +1344,12 @@ let load_database steak =
 		(* db_prog format: [$id] program | eq. prog | eq. prog ... \n *)
 		let progsa = Array.of_list progs in
 		let pl = Array.length progsa in
-		let pool = Domainslib.Task.setup_pool ~num_domains:24 () in
+		let pool = Dtask.setup_pool ~num_domains:24 () in
 		let runtask () = 
-			Domainslib.Task.parallel_for pool ~start:0 ~finish:(pl-1) 
+			Dtask.parallel_for pool ~start:0 ~finish:(pl-1) 
 				~body:( fun i -> load_database_line steak progsa.(i) equivalent ) in
-		Domainslib.Task.run pool runtask ; 
-		Domainslib.Task.teardown_pool pool;
+		Dtask.run pool runtask ; 
+		Dtask.teardown_pool pool;
 		Logs.info (fun m -> m "Loaded %d programs (%d max) and %d equivalents" 
 			(List.length progs) image_count (Atomic.get equivalent)); 
 	)
@@ -1445,7 +1472,7 @@ let handle_message steak bd msg =
 	match cmd with
 	| "update_batch" -> (
 		(* supervised: sent when python has a working copy of data *)
-		(* dreaming : sent when the model has produced edits *)
+		(* dreaming : sent when the model has produced edits (maybe old) *)
 		let bd = if steak.superv 
 			then update_bea_sup steak bd
 			else update_bea_dream steak bd in (* applies the dreamed edits *)
@@ -1465,9 +1492,9 @@ let handle_message steak bd msg =
 					if typ = styp then incr typright; 
 					if pos = spos then incr posright; 
 					if chr = schr then incr chrright; 
-					if i = 0 then 
+					(*if i = 0 then 
 						Logs.info (fun m -> m "| true: %s [%d] %c ; est: %s [%d] %c"
-							styp spos schr typ pos chr )
+							styp spos schr typ pos chr )*)
 				) ) edit_arr ; 
 			let pctg v = (foi !v) /. (foi !batch_size) in
 			Logs.info (fun m -> m (* TODO: debug mode *)
@@ -1560,7 +1587,7 @@ let read_socket client_sock =
 
 let servthread steak () = (* steak = thread state *)
 	(let open Unix in
-	Logs.debug (fun m -> m "Starting server on %d" steak.sockno); 
+	Logs.info (fun m -> m "Starting server on %d" steak.sockno); 
 	let server_sock = socket PF_INET SOCK_STREAM 0 in
 	let listen_address = inet_addr_loopback in
 	setsockopt server_sock SO_REUSEADDR true ; (* for faster restarts *)
@@ -1569,7 +1596,7 @@ let servthread steak () = (* steak = thread state *)
 	while !glive do (
 		let bd,fdlist = init_batchd (steak.sockno-4340) in
 		let (client_sock, _client_addr) = accept server_sock in
-		Logs.debug (fun m -> m "new connection on %d" steak.sockno); 
+		Logs.info (fun m -> m "new connection on %d" steak.sockno); 
 		(* make new mmap files & batchd for each connection *)
 		let rec message_loop bd =
 			let msg = read_socket client_sock in
@@ -1584,63 +1611,12 @@ let servthread steak () = (* steak = thread state *)
 				message_loop bd )
 			| _ -> (
 				save_database steak.db ) ) in
-		message_loop bd ; 
+		Dtask.run steak.pool (fun () -> message_loop bd ) ; 
 		(* if client disconnects, close the files and reopen *)
 		Logs.debug (fun m -> m "disconnect %d" steak.sockno); 
 		List.iter (fun fd -> close fd) fdlist; 
 	) done; 
 	) (* )open Unix *)
-	
-(*let rec handle_connection state bd fdlist ic oc () =
-	(* init batch datastructures *)
-	Lwt_io.read_line_opt ic >>=
-	(fun msg ->
-		match msg with
-		| Some msg -> (
-			let bd,reply = handle_message state bd msg in
-			(*Logs.info (fun m -> m "%s" reply);*) 
-			Lwt_io.write_line oc reply 
-			>>= handle_connection state bd fdlist ic oc )
-		| None -> (
-			List.iter (fun fd -> Unix.close fd) fdlist; 
-			Logs_lwt.info (fun m -> m "Connection closed")
-			>>= return) )*)
-	
-(*let accept_connection steak conn =
-	let device,dba,dbf,mnist = steak in
-	let fd, _ = conn in
-	let ic = Lwt_io.of_fd ~mode:Lwt_io.Input fd  in
-	let oc = Lwt_io.of_fd ~mode:Lwt_io.Output fd in
-	let fid = open_out "/tmp/png/replacements_log.txt" in
-	let state2 = device,dba,dbf,mnist,fid in
-	let bd,fdlist = init_batchd () in
-	let bd = update_bea dba bd in
-	bigfill_batchd dba bd ; 
-	Lwt.on_failure (handle_connection state2 bd fdlist ic oc ()) 
-		(fun e -> 
-			Logs.err (fun m -> m "%s" (Printexc.to_string e) );
-			Printexc.print_backtrace stdout; 
-			flush stdout; 
-			List.iter (fun fd -> Unix.close fd) fdlist;
-			close_out fid;
-			(* save the database *)
-			save_database dba
-			);
-	Logs_lwt.info (fun m -> m "New connection") 
-	>>= return*)
-	
-(*let create_socket () =
-	let open Lwt_unix in
-	let sock = socket PF_INET SOCK_STREAM 0 in
-	let adr = ADDR_INET(listen_address, port) in
-	Lwt.async( fun () -> bind sock adr );
-	listen sock backlog;
-	sock*)
-
-(*let create_server state sock =
-	let rec serve () =
-		Lwt_unix.accept sock >>= accept_connection state >>= serve
-	in serve*)
 	
 let measure_torch_copy_speed device = 
 	let start = Unix.gettimeofday () in
@@ -1682,9 +1658,9 @@ let () =
 				(Cuda.cudnn_is_available ()));
 	let device = Torch.Device.cuda_if_available () in
 	(*let device = Torch.Device.Cpu in*) (* slower *)
-	for _i = 0 to 4 do 
+	(*for _i = 0 to 4 do 
 		measure_torch_copy_speed device
-	done; 
+	done; *)
 	
 	let mnistd = Mnist_helper.read_files ~prefix:"../otorch-test/data" () in
 	let mimg = Tensor.reshape mnistd.train_images 
@@ -1694,7 +1670,7 @@ let () =
 	Tensor.copy_ (
 		Tensor.narrow mnist ~dim:1 ~start:1 ~length:28 |> 
 		Tensor.narrow ~dim:2 ~start:1 ~length:28) ~src:mimg ;
-		(* Tensor.narrow basically returns a pointer/view; copy_ is in-place. *)
+		(* Tensor.narrow returns a pointer/view; copy_ is in-place. *)
 		(* keep on CPU? *)
 
 	let db = Vector.create ~dummy:nulpdata in
@@ -1703,12 +1679,11 @@ let () =
 		|> Tensor.to_device ~device in
 	
 	let db_mutex = Mutex.create () in
+	let pool = Dtask.setup_pool ~num_domains:16 () in
 	let supfid = open_out "/tmp/png/replacements_sup.txt" in
 	let dreamfid = open_out "/tmp/png/replacements_dream.txt" in
 	let supsteak = {device; db; dbf; db_mutex; mnist;
-			superv=true; sockno=4340; fid=supfid; batchno=0} in
-	(*let dreamsteak = {device; db; dbf; db_mutex; mnist;
-			superv=false; sockno=4341; fid=dreamfid; batchno=0} in*)
+			superv=true; sockno=4340; fid=supfid; batchno=0; pool} in
 			
 	let db,dbf = if Sys.file_exists "db_prog.txt" then ( 
 		load_database supsteak ; 
@@ -1719,7 +1694,7 @@ let () =
 		Logs.app(fun m -> m "Generating %d programs" (image_count/2));
 		let () = Logs.set_level (Some Logs.Debug) in
 		let start = Unix.gettimeofday () in
-		let db,dbf = init_database device db dbf (image_count/2) in
+		let db,dbf = init_database supsteak (image_count/2) in
 		(* init also sorts. *)
 		let stop = Unix.gettimeofday () in
 		Logs.app(fun m -> m "Execution time: %fs\n%!" (stop -. start)); 
@@ -1734,13 +1709,19 @@ let () =
 	) in
 	
 	(* update the thread state *)
-	let supsteak2 = {supsteak with db; dbf } in 
+	let _supsteak2 = {supsteak with db; dbf } in 
+	let dreamsteak = {device; db; dbf; db_mutex; mnist;
+			superv=false; sockno=4341; fid=dreamfid; batchno=0; pool} in
 			
-	(*let d = Domain.spawn (servthread supsteak) in*)
-	servthread supsteak2 () ; 
-	(*Domain.join d;*) 
+	let d = Domain.spawn (fun _ -> 
+		let pool2 = Dtask.setup_pool ~num_domains:8 () in
+		dreamsteak.pool <- pool2; 
+		servthread dreamsteak () ) in
+	servthread supsteak () ; 
+	Domain.join d;
 	close_out supfid; 
 	close_out dreamfid; 
+	Dtask.teardown_pool supsteak.pool ; 
 
 (*
 let image_dist dbf img = 

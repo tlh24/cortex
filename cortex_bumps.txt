@@ -3775,3 +3775,24 @@ tensor_of_bigarray2 is sloooowww.
 	Fixed: used the built-in conversion functions. 
 Also, there is significant warm-up time for libtorch. fyi. 
 Next: figure out why it's not training properly.  This was working fine two weeks ago.
+Fixed!! 
+
+February 2 2023
+
+Ok, feeling slighly burned, but would like to make progress irregardless. 
+Need to get the dreaming module working! 
+Right, a bit of optimization warmup first? 
+Currently running at 4375 samples/sec, batch size 512, that's 8.5 batches/sec, 117ms / batch.  
+Looks like ocaml is taking about <5ms to update the batch, excluding communication. 
+This is pretty evenly split between update_bea_sup and bigfill_batchd, both which have a loop over the batch dimension.
+Ok, both of those have been parallelized -- easy! 
+now computation is dominated by decode_edit, which is already parallel via torch. I'll just leave that one alone, since it will scale to arbitrary batch sizes well.  Also, it's working.
+Ok dreaming.  Start with only dream, and make train + dream later. 
+
+Dual training + dreaming works : but there are data problems, replacements do not seem to be working properly.. 
+	Usually they work, but sometimes they don't work.  Wonder why.
+	We might need to throw away the whole database.  Bleh.  
+Also: training doesn't always reliably boot up; not at all sure why *that* is.. 
+
+Beyond the bugs, need to add some directionality to the program selection -- e.g. select programs that are 'close' to MNIST. 
+Also also, very important, it's getting to be the time for multiple interactions! 
