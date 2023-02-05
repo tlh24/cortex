@@ -910,7 +910,7 @@ let db_push steak d imgf =
 	let l = Vector.length steak.db in
 	if l < image_count then (
 		Vector.push steak.db d ;
-		Tensor.copy_ (Tensor.narrow steak.dbf ~dim:0 ~start:(l-1) ~length:1) ~src:imgf;
+		Tensor.copy_ (Tensor.narrow steak.dbf ~dim:0 ~start:l ~length:1) ~src:imgf;
 		added := true
 	); 
 	Mutex.unlock steak.db_mutex; 
@@ -958,13 +958,21 @@ let try_add_program steak progenc =
 					let ed = pdata_to_edata data2 in
 					let data = {data with equiv = (ed :: data2.equiv)} in
 					db_set steak mindex data imgf; 
-					Printf.fprintf steak.fid "(%d) [%d] %s --> %s\n"
-						!nreplace mindex progstr2 progstr; 
+					Printf.fprintf steak.fid 
+						"(%d) [%d] d:%f %s --> %s | pcost %d -> %d | scost %f -> %f\n"
+						!nreplace mindex dist progstr2 progstr c2 c1
+						data2.scost data.scost; 
 					flush steak.fid; 
 					Logo.segs_to_png data2.segs 64
 					 (Printf.sprintf "/tmp/png/%05d_old.png" !nreplace);
 					Logo.segs_to_png data.segs 64
 					 (Printf.sprintf "/tmp/png/%05d_new.png" !nreplace);
+					(* get the dbf entry too, to check *)
+					let dbfim = Tensor.narrow steak.dbf ~dim:0 ~start:mindex ~length:1 in
+					let filename = Printf.sprintf 
+						"/tmp/png/%05d_dbf.png" !nreplace in
+					Torch_vision.Image.write_image Tensor.((f 1. - dbfim) * f 255.) ~filename; 
+					
 					incr nreplace
 					(* those two operations are in-place, so subsequent batches should contain the new program :-) *)
 				)
@@ -980,13 +988,13 @@ let try_add_program steak progenc =
 						"try_add_program: could not add new, db full. [%d]" l )
 				)
 			) ; 
-			if dist >= 0.6 && dist <= 5.0 then (
+			(*if dist >= 0.6 && dist <= 5.0 then (
 				let data2 = db_get steak mindex in
 				Logs.info(fun m -> m 
 						"try_add_program: new \n\t%s sim existing\n\t%s"  
 						(Logo.output_program_pstr data.pro)
 						(Logo.output_program_pstr data2.pro) )
-			) )
+			)*) )
 			| _ -> () )
 		| _ -> ()
 
@@ -1034,8 +1042,11 @@ let update_bea_dream steak bd =
 		) in
 		bd.bea.(i) <- be4; 
 	in (* /innerloop *)
-	Dtask.parallel_for steak.pool ~start:0 ~finish:(!batch_size-1) 
-		~body:innerloop ; 
+	for i = 0 to (!batch_size-1) do (* non-parallel version *)
+		innerloop i
+	done ; 
+	(*Dtask.parallel_for steak.pool ~start:0 ~finish:(!batch_size-1) 
+		~body:innerloop ;*) 
 	Caml.Gc.major (); (* clean up torch variables *)
 	(* cannot do this within a parallel for loop!!! *)
 	(* in-place update of bea *)
@@ -1264,10 +1275,10 @@ let init_database steak count =
 	Logs.info(fun m -> m  "%d done; %d sampled; %d replacements; %d equivalents" !i !iters !replace !equivalents); 
 	db,dbf
 	
-let save_database db = 
+let save_database db fname = 
 	(* saves in the current state -- not sorted. *)
 	let dba = Vector.to_array db in (* inefficient *)
-	let fil = open_out "db_prog.txt" in
+	let fil = open_out fname in
 	Printf.fprintf fil "%d\n" (Array.length dba); 
 	Array.iteri (fun i d -> 
 		let pstr = Logo.output_program_pstr d.pro in
@@ -1277,7 +1288,7 @@ let save_database db =
 			Printf.fprintf fil "| %s " ps) d.equiv; 
 		Printf.fprintf fil "\n") dba ; 
 	close_out fil; 
-	Logs.app(fun m -> m  "saved %d to db_prog.txt" (Array.length dba)); 
+	Logs.app(fun m -> m  "saved %d to %s" (Array.length dba) fname); 
 	
 	(* verification .. human readable*)
 	let fil = open_out "db_human_log.txt" in
@@ -1311,7 +1322,7 @@ let load_database_line steak s equivalent =
 		let equiv = List.map (fun s -> 
 			let g = parse_logo_string s in
 			match g with 
-			| Some epro -> (
+			| Some epro -> ( 
 				let eprogenc = Logo.encode_program_str epro in
 				let (_,_,esegs) = Logo.eval (Logo.start_state ()) epro in
 				let escost = segs_to_cost esegs in
@@ -1344,12 +1355,11 @@ let load_database steak =
 		(* db_prog format: [$id] program | eq. prog | eq. prog ... \n *)
 		let progsa = Array.of_list progs in
 		let pl = Array.length progsa in
-		let pool = Dtask.setup_pool ~num_domains:24 () in
-		let runtask () = 
-			Dtask.parallel_for pool ~start:0 ~finish:(pl-1) 
-				~body:( fun i -> load_database_line steak progsa.(i) equivalent ) in
-		Dtask.run pool runtask ; 
-		Dtask.teardown_pool pool;
+		for i = 0 to (pl-1) do 
+			load_database_line steak progsa.(i) equivalent 
+		done; 
+		(*Dtask.parallel_for steak.pool ~start:0 ~finish:(pl-1) 
+				~body:( fun i -> load_database_line steak progsa.(i) equivalent );*) 
 		Logs.info (fun m -> m "Loaded %d programs (%d max) and %d equivalents" 
 			(List.length progs) image_count (Atomic.get equivalent)); 
 	)
@@ -1610,7 +1620,7 @@ let servthread steak () = (* steak = thread state *)
 					0 (String.length resp) [] ) ; 
 				message_loop bd )
 			| _ -> (
-				save_database steak.db ) ) in
+				save_database steak.db "db_prog_new.txt" ) ) in
 		Dtask.run steak.pool (fun () -> message_loop bd ) ; 
 		(* if client disconnects, close the files and reopen *)
 		Logs.debug (fun m -> m "disconnect %d" steak.sockno); 
@@ -1679,7 +1689,7 @@ let () =
 		|> Tensor.to_device ~device in
 	
 	let db_mutex = Mutex.create () in
-	let pool = Dtask.setup_pool ~num_domains:16 () in
+	let pool = Dtask.setup_pool ~num_domains:1 () in
 	let supfid = open_out "/tmp/png/replacements_sup.txt" in
 	let dreamfid = open_out "/tmp/png/replacements_dream.txt" in
 	let supsteak = {device; db; dbf; db_mutex; mnist;
@@ -1688,7 +1698,7 @@ let () =
 	let db,dbf = if Sys.file_exists "db_prog.txt" then ( 
 		load_database supsteak ; 
 		let db,dbf = sort_database device db in
-		render_simplest db; 
+		(*render_simplest db;*) 
 		db,dbf
 	) else ( 
 		Logs.app(fun m -> m "Generating %d programs" (image_count/2));
@@ -1704,7 +1714,7 @@ let () =
 			Logs.info(fun m -> m "%d: %s" i
 					(Logo.output_program_pstr p.pro)); 
 		) done; 
-		save_database db ; 
+		save_database db "db_prog.txt"; 
 		db,dbf
 	) in
 	
@@ -1714,7 +1724,7 @@ let () =
 			superv=false; sockno=4341; fid=dreamfid; batchno=0; pool} in
 			
 	let d = Domain.spawn (fun _ -> 
-		let pool2 = Dtask.setup_pool ~num_domains:8 () in
+		let pool2 = Dtask.setup_pool ~num_domains:6 () in
 		dreamsteak.pool <- pool2; 
 		servthread dreamsteak () ) in
 	servthread supsteak () ; 

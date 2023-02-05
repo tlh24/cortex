@@ -28,7 +28,7 @@
 (executable
 	(name program)
 	(modules logo parser lexer vgwrapper colors levenshtein program)
-	(libraries core core_unix.command_unix vg vg.cairo pbrt vector torch pcre lwt lwt.unix logs logs.threaded domainslib)
+	(libraries core core_unix.command_unix vg vg.cairo pbrt vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib)
 	)
 
 
@@ -36,3 +36,6 @@
 ; opam install core core_unix vg cairo2 pbrt vector
 ; opam switch create myswitch ocaml-variants.4.14.0+options ocaml-option-flambda
 ; export OCAMLPARAM='_,rounds=4,O3=1,inline=100,inline-max-unroll=5'
+
+; python 3.10 (pytorch doesn't work with 3.11): 
+; source ~/venv/py310/bin/activate
