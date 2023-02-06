@@ -3796,3 +3796,11 @@ Also: training doesn't always reliably boot up; not at all sure why *that* is..
 
 Beyond the bugs, need to add some directionality to the program selection -- e.g. select programs that are 'close' to MNIST. 
 Also also, very important, it's getting to be the time for multiple interactions! 
+
+February 5 2023
+
+Fixed the indexing bug ... but now I'm wondering: this seems like a incredibly inefficient way of doing equality saturation or even directed substritution.  
+The model is able to discover new equivalences, but not nearly as efficiently as a bespoke, dedicated datastructure.  
+I wonder ... 
+Anyway, it's time to try to "apply some wind" and get the model to solve MNIST -- instead of simply exploring program space.  
+	The space of all possible even small programs is insanely large ~!
