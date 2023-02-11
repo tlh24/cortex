@@ -17,7 +17,7 @@ type pequiv =
 	; esegs : Logo.segment list
 	}
 
-type pdata = (* db is a Vector of pdatas *)
+type pdata = (* db is a Vector of pdata *)
 	{ pid : int
 	; pro  : Logo.prog
 	; progenc : string
@@ -86,6 +86,12 @@ type batchd = (* batch data structure *)
 	; fresh : bool array
 	}
 	
+type dreamcheck = 
+	{ be : batche
+	; mutable decode : string list
+	; mutable correct_cnt : int
+	}
+	
 type tsteak = (* thread state *)
 	{ device : Torch.Device.t
 	; db : pdata Vector.t
@@ -100,8 +106,10 @@ type tsteak = (* thread state *)
 	; fid : out_channel (* log for e.g. replacements *)
 	; mutable batchno : int (* for e.g doing garbage collection *)
 	; mutable pool : Domainslib.Task.pool (* needs to be replaced for dream *)
+	; mutable dreamn : int
+	; dreams : dreamcheck array option
 	}
-
+	
 let pi = 3.1415926
 let image_count = 6*2048*2
 let image_res = 30
@@ -181,18 +189,18 @@ let write_protobuf sout pfunc r =
 	flush sout
 
 
-let run_prog prog res =
-	Logs.debug(fun m -> m "enter run_prog");
+let run_prog prog res fname =
+	(*Logs.debug(fun m -> m "enter run_prog");*)
 	match prog with
 	| Some(prog) -> (
 		let (_,_,segs) = Logo.eval (Logo.start_state ()) prog in
-		Logs.debug(fun m -> m "%s" (Logo.output_program_pstr prog)); 
-		Logs.debug(fun m -> m "%s" (Logo.output_segments_str segs)); 
-		Logo.segs_to_png segs res "test.png"; 
-		let _arr,scost = Logo.segs_to_array_and_cost segs res in
-		Logs.debug(fun m -> m "run_prog cost %f" scost); 
+		(*Logs.debug(fun m -> m "%s" (Logo.output_program_pstr prog)); 
+		Logs.debug(fun m -> m "%s" (Logo.output_segments_str segs));*) 
+		Logo.segs_to_png segs res fname; 
+		(*let _arr,scost = Logo.segs_to_array_and_cost segs res in*)
+		(*Logs.debug(fun m -> m "run_prog cost %f" scost);*) 
 			(* another good way of doing it*)
-		Logs.debug(fun m -> m  "run_prog done");
+		(*Logs.debug(fun m -> m  "run_prog done");*)
 		true)
 	| None -> ( false )
 
@@ -200,6 +208,10 @@ let parse_logo_string s =
 	let lexbuf = Lexing.from_string s in
 	lexbuf.lex_curr_p <- { lexbuf.lex_curr_p with pos_fname = "from string" };
 	parse_with_error lexbuf
+	
+let run_logo_string s res fname = 
+	let pro = parse_logo_string s in
+	run_prog pro res fname 
 	
 let parse_logo_file fname = 
 	let ic = open_in fname in
@@ -209,7 +221,7 @@ let parse_logo_file fname =
 
 let run_logo_file fname =
 	let prog = parse_logo_file fname in
-	ignore(run_prog prog 256 )
+	ignore(run_prog prog 256 (fname^".png") )
 
 
 let num_actvar actvar =
@@ -786,6 +798,21 @@ let init_batchd filnum =
 	{bpro; bimg; bedts; bedtd; posenc; posencn; bea; fresh}, 
 	[fd_bpro; fd_bimg; fd_bedts; fd_bedtd; fd_posenc]
 	
+let progenc_to_edits a b = 
+	let _, edits = Levenshtein.distance a.progenc b.progenc true in
+	let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
+	(* verify .. a bit of overhead *)
+	(*let re = Levenshtein.apply_edits a.progenc edits in
+	if re <> b.progenc then (
+		Logs.err(fun m -> m  
+			"error! %s edits should be %s was %s"
+			a.progenc b.progenc re)
+	);*)
+	(* edits are applied in reverse *)
+	(* & add a 'done' edit/indicator *)
+	let edits = ("fin",0,'0') :: edits in
+	List.rev edits
+	
 let rec new_batche doedit db = 
 	(* only supervised mode! *)
 	let ndb = (Vector.length db) in
@@ -807,20 +834,7 @@ let rec new_batche doedit db =
 		(*Logs.debug(fun m -> m  
 			"trying [%d] [%d] for batch; dist %d" na nb dist);*)
 		if dist > 0 && dist < distthresh then (
-			(* "move a , b ;" is 5 insertions; need to allow *)
-			let _, edits = Levenshtein.distance a.progenc b.progenc true in
-			let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
-			(* verify .. a bit of overhead *)
-			let re = Levenshtein.apply_edits a.progenc edits in
-			if re <> b.progenc then (
-				Logs.err(fun m -> m  
-					"error! %s edits should be %s was %s"
-					a.progenc b.progenc re)
-			);
-			(* edits are applied in reverse, do it here not py *)
-			(* also add a 'done' edit/indicator *)
-			let edits = ("fin",0,'0') :: edits in
-			let edits = List.rev edits in
+			let edits = progenc_to_edits a b in
 			(*Logs.debug(fun m -> m 
 				"adding [%d] %s [%d] %s to batch (unsorted pids: %d %d)"
 				na a.progenc nb b.progenc a.pid b.pid);*)
@@ -874,12 +888,23 @@ let new_batche_unsup steak =
 		edits = []; edited; count=0; }
 	(* note: bd.fresh is set in the calling function *)
 		
-let new_batche_dream steak = (* use this *)
+let new_batche_dream_x steak = (* use this *)
 	if (Random.int 10) < 7 then (
 		new_batche_sup steak.db
 	) else (
 		new_batche_unsup steak
 	)
+	
+let new_batche_dream steak = (* use this *)
+	(* not threaded !! *)
+	match steak.dreams with
+	| Some dreams -> (
+		let i = steak.dreamn in
+		let d = dreams.(i) in
+		steak.dreamn <- (i+1) mod image_count; 
+		let edited = Array.make p_ctx 0.0 in (* memory thrash *)
+		{d.be with edited} )
+	| None -> ( nulbatche )
 	
 let update_edited be ed = 
 	(* update the 'edited' array, which indicates what has changed in the program string *)
@@ -1110,7 +1135,18 @@ let update_bea_dream steak bd =
 		let be2 = {be with edits=[(typ,loc,chr)];count=cnt+1;edited} in
 		let be3 = apply_edits be2 in
 		let be4 = if typ = "fin" || be2.count >= p_ctx/2 then (
-			try_add_program steak be3.c_progenc be3; 
+			(* log it! *)
+			(match steak.dreams with
+			| Some dreams -> (
+				let i = be.b_pid in
+				let s = progenc2progstr be.c_progenc in
+				dreams.(i).decode <- (s :: dreams.(i).decode); 
+				if be.c_progenc = be.b_progenc then ( 
+					dreams.(i).correct_cnt <- dreams.(i).correct_cnt+1; 
+					Logs.debug (fun m -> m "[%d] %s decoded correctly." i s)
+				) )
+			| None -> () ); 
+			(*try_add_program steak be3.c_progenc be3;*) (* FIXME *)
 			bd.fresh.(i) <- true; 
 			new_batche_dream steak
 		) else (
@@ -1630,6 +1666,22 @@ let read_socket client_sock =
 	if data_length > 0 then 
 		Some (Bytes.sub data_read 0 data_length |> Bytes.to_string )
 	else None
+	
+let dreams_save dreams = 
+	let fid = open_out "dreamcheck.txt" in
+	Array.iteri (fun i dc -> 
+		let s = progenc2progstr dc.be.b_progenc in
+		let d = if List.length dc.decode > 1 then 
+			List.hd dc.decode else "" in
+		Printf.fprintf fid "[%d] c:%d is:%s decode:%s\n"
+			i dc.correct_cnt s d; 
+		if i < 4096 then (
+			ignore(run_logo_string s 64 
+				(Printf.sprintf "/tmp/png/d%05d_real.png" i)); 
+			ignore(run_logo_string d 64 
+				(Printf.sprintf "/tmp/png/d%05d_decode.png" i)) );
+		) dreams;
+	close_out fid
 
 let servthread steak () = (* steak = thread state *)
 	(let open Unix in
@@ -1656,7 +1708,11 @@ let servthread steak () = (* steak = thread state *)
 					0 (String.length resp) [] ) ; 
 				message_loop bd )
 			| _ -> (
-				save_database steak.db "db_prog_new.txt" ) ) in
+				save_database steak.db "db_prog_new.txt"; 
+				(match steak.dreams with
+				| Some dreams -> ( dreams_save dreams )
+				| _ -> () ); 
+			) ) in
 		if !gparallel then (
 			Dtask.run steak.pool (fun () -> message_loop bd )
 		) else (
@@ -1682,6 +1738,23 @@ let measure_torch_copy_speed device =
 	Printf.printf "%f\n%!" (Tensor.float_value z) 
 	(* this is working just as fast or faster than python.*)
 	(* something else must be going on in the larger program *)
+	
+let make_dreams db = 
+	(* make an array of dreams to test *)
+	let a = Vector.get db 0 in
+	Array.mapi (fun i b -> 
+		let edits = progenc_to_edits a b in (* not needed, maybe useful *)
+		let edited = Array.make p_ctx 0.0 in
+		let be = {a_pid=0; 
+					b_pid=i; 
+					a_progenc=a.progenc; 
+					b_progenc=b.progenc; 
+					c_progenc=""; 
+					edits; 
+					edited; 
+					count=0 } in
+		{be; decode=[]; correct_cnt=0}
+		) (Vector.to_array db)
 	
 
 let usage_msg = "program.exe -b <batch_size>"
@@ -1745,7 +1818,8 @@ let () =
 	let mnist_enc = Tensor.zeros [2;2] in
 	let vae = Vae.dummy_ext () in
 	let supsteak = {device; db; dbf; mnist; dbf_enc; mnist_enc; vae; db_mutex;
-			superv=true; sockno=4340; fid=supfid; batchno=0; pool} in
+			superv=true; sockno=4340; fid=supfid; batchno=0; pool; 
+			dreamn=0; dreams=None} in
 			
 	let db,dbf = if Sys.file_exists "db_prog.txt" then ( 
 		if !gparallel then 
@@ -1776,21 +1850,25 @@ let () =
 	(* try to train the vae? *)
 	let vae,dbf_enc,mnist_enc = Vae.train_ext dbf mnist device !batch_size in
 	
+	(* dreams test structure *)
+	let dreams = make_dreams db in
+	
 	(* update the thread state *)
 	let supsteak2 = {supsteak with db; dbf; dbf_enc; mnist_enc; vae} in 
 	let dreamsteak = {device; db; dbf; mnist; 
 			dbf_enc; mnist_enc; vae; db_mutex;
-			superv=false; sockno=4341; fid=dreamfid; batchno=0; pool} in
+			superv=false; sockno=4341; fid=dreamfid; batchno=0; pool; 
+			dreamn=0; dreams=(Some dreams)} in
 			
 	(* extra bit of complexity!! if Cuda hangs in one of the domains, e.g. for an out-of-memory error, you won't see it on stdout -- it will just stop. 
 	to properly debug, will need to strip down to one thread, no domainslib *)
-	let d = Domain.spawn (fun _ -> 
+	(*let d = Domain.spawn (fun _ -> 
 		let pool2 = Dtask.setup_pool ~num_domains:6 () in
 		dreamsteak.pool <- pool2; 
-		servthread dreamsteak () ) in
-	servthread supsteak2 () ; 
-	(*servthread dreamsteak () ;*)
-	Domain.join d;
+		servthread dreamsteak () ) in*)
+	(*servthread supsteak2 () ; *)
+	servthread dreamsteak () ;
+	(*Domain.join d;*)
 	close_out supfid; 
 	close_out dreamfid; 
 	Dtask.teardown_pool supsteak2.pool ; 

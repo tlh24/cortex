@@ -3804,3 +3804,32 @@ The model is able to discover new equivalences, but not nearly as efficiently as
 I wonder ... 
 Anyway, it's time to try to "apply some wind" and get the model to solve MNIST -- instead of simply exploring program space.  
 	The space of all possible even small programs is insanely large ~!
+
+February 9 2023
+
+Not so many notes, but still been committing. 
+I'm unclear if the network can actually solve tasks ... need to instrument this, completely! 
+e.g.: what sets of images can it create denovo? 
+What edits can it make: insert / sub / delete ? 
+Making the dreaming stochastic is needlessly confusing. 
+
+February 10 2023
+
+What's the best way to make such an iterator over dreams? 
+We need state: where it is on the program list
+	Generate all db programs; compare; log
+	Generate all short edits; compare; log
+	Generate all mnist digits; compare; log
+Iterator output: one "dream" batche ds. 
+Rather dumb / easy way of doing it: generate everything before, store in an array, iterate.  
+Aside:: Need to add 'temperature' to the edit decoding.  (?)
+Looking at dreamcheck.txt, seems that we have an aliasing problem: if the angle exceeds 2pi, or goes negative, it's not clear which angle to emit; one solution would be to remove those programs as 'indadmissable' 
+	Better would be to remove programs that are confusing from the training corpus.  
+	The equivalence tracker should contribute to this. 
+	To generate MNIST digits, the transformer needs to get better at fractional angles (and likely fractional distances); 
+		deal with recompression factorization later.  
+	Also not clear that the transformer has internalized the idea of turtle state -- maybe just express this as some form of input?? No debugging required? 
+	Requires more experimentation & thought
+		Maybe go back to the planning doc. 
+-> It's clear that the transformer can learn this relatively simple space quite quickly though! 
+-> 
