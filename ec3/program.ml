@@ -57,6 +57,7 @@ type batche = (* batch edit structure *)
 	; edits : (string*int*char) list (* supervised *)
 	; edited : float array (* tell python which chars have been changed*)
 	; count : int (* count & cap total # of edits *)
+	; indx : int
 	}
 	
 let nulbatche = 
@@ -68,6 +69,7 @@ let nulbatche =
 	; edits = []
 	; edited = [| 0.0 |]
 	; count = 0 
+	; indx = 0
 	}
 	
 type batchd = (* batch data structure *)
@@ -90,6 +92,12 @@ type dreamcheck =
 	{ be : batche
 	; mutable decode : string list
 	; mutable correct_cnt : int
+	}
+	
+let nuldream = 
+	{ be = nulbatche
+	; decode = []
+	; correct_cnt = 0
 	}
 	
 type tsteak = (* thread state *)
@@ -701,6 +709,12 @@ let db_push steak d imgf =
 	); 
 	Mutex.unlock steak.db_mutex; 
 	!added,l
+	
+let db_len steak = 
+	Mutex.lock steak.db_mutex ; 
+	let r = Vector.length steak.db in
+	Mutex.unlock steak.db_mutex ; 
+	r
 
 let dbf_dist steak img = 
 	(* using Cosine Similarity *)
@@ -799,7 +813,7 @@ let init_batchd filnum =
 	[fd_bpro; fd_bimg; fd_bedts; fd_bedtd; fd_posenc]
 	
 let progenc_to_edits a b = 
-	let _, edits = Levenshtein.distance a.progenc b.progenc true in
+	let dist, edits = Levenshtein.distance a.progenc b.progenc true in
 	let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
 	(* verify .. a bit of overhead *)
 	(*let re = Levenshtein.apply_edits a.progenc edits in
@@ -811,9 +825,58 @@ let progenc_to_edits a b =
 	(* edits are applied in reverse *)
 	(* & add a 'done' edit/indicator *)
 	let edits = ("fin",0,'0') :: edits in
-	List.rev edits
+	dist, (List.rev edits)
 	
-let rec new_batche doedit db = 
+let edit_criteria edits dosub = 
+	let count_type typ = 
+		List.fold_left 
+		(fun a (t,_p,_c) -> if t = typ then a+1 else a) 0 edits 
+	in
+	let nsub = count_type "sub" in
+	let ndel = count_type "del" in
+	let nins = count_type "ins" in
+	let r = ref false in
+	if dosub then (
+		if nsub = 1 && ndel = 0 && nins = 0 then r := true 
+	) else (
+		if nsub = 0 && ndel <= 6 && nins = 0 then r := true; 
+		if nsub = 0 && ndel = 0 && nins <= 6 then r := true
+	);
+	!r
+	
+let rec new_batche steak bn dosub = 
+	(* only supervised mode! *)
+	let ndb = db_len steak in
+	let nb = (Random.int (ndb-1)) + 1 in
+	(*let na = if doedit then (Random.int (ndb-1)) + 1 else 0 in*)
+	let na = (Random.int ndb) in
+	(* small portion of the time na is the empty program *)
+	let a = db_get steak na in
+	let b = db_get steak nb in
+	let a_ns = List.length a.segs in
+	let b_ns = List.length b.segs in
+	let a_np = String.length a.progenc in
+	let b_np = String.length b.progenc in
+	let lim = (p_ctx/2)-4 in 
+	(* check this .. really should be -2 as in bigfill_batchd *)
+	if a_ns <= 8 && b_ns <= 8 && a_np < lim && b_np < lim then (
+		let dist,edits = progenc_to_edits a b in
+		(*Logs.debug(fun m -> m  
+			"trying [%d] [%d] for batch; dist %d" na nb dist);*)
+		if edit_criteria edits dosub && dist > 0 then (
+			(*Logs.debug(fun m -> m 
+				"|%d adding [%d] %s [%d] %s to batch; dist:%d"
+				bn na a.progenc nb b.progenc dist);*)
+			let edited = Array.make p_ctx 0.0 in
+			{a_pid=na; b_pid=nb; 
+				a_progenc = a.progenc; 
+				b_progenc = b.progenc; 
+				c_progenc = a.progenc; 
+				edits; edited; count=0; indx=na} (* FIXME indx *)
+		) else new_batche steak bn dosub
+	) else new_batche steak	bn dosub
+
+(*let rec new_batche doedit db = 
 	(* only supervised mode! *)
 	let ndb = (Vector.length db) in
 	let nb = (Random.int (ndb-1)) + 1 in
@@ -829,8 +892,8 @@ let rec new_batche doedit db =
 	let b_np = String.length b.progenc in
 	let lim = (p_ctx/2)-4 in 
 	(* check this .. really should be -2 as in bigfill_batchd *)
-	if a_ns <= 4 && b_ns <= 4 && a_np < lim && b_np < lim then (
-		let dist,_ = Levenshtein.distance a.progenc b.progenc false in
+	if a_ns <= 8 && b_ns <= 8 && a_np < lim && b_np < lim then (
+		let dist,edits = Levenshtein.distance a.progenc b.progenc false in
 		(*Logs.debug(fun m -> m  
 			"trying [%d] [%d] for batch; dist %d" na nb dist);*)
 		if dist > 0 && dist < distthresh then (
@@ -843,15 +906,15 @@ let rec new_batche doedit db =
 				a_progenc = a.progenc; 
 				b_progenc = b.progenc; 
 				c_progenc = a.progenc; 
-				edits; edited; count=0; }
+				edits; edited; count=0; indx=na} (* FIXME indx *)
 		) else new_batche doedit db
-	) else new_batche doedit db
+	) else new_batche doedit db*)
 	
-let new_batche_sup db = 
+let new_batche_sup steak bn = 
 	(* supervised only -- use this *)
 	(* generate mode lasts longer, hence probabilities need to be adjusted *)
-	let doedit = (Random.int 10) < 7  in
-	new_batche doedit db
+	let dosub = (Random.int 10) < 5  in
+	new_batche steak bn dosub
 
 	
 let dbf_to_png bigt i filename = 
@@ -885,15 +948,15 @@ let new_batche_unsup steak =
 		a_progenc = a.progenc; 
 		b_progenc = ""; 
 		c_progenc = a.progenc; 
-		edits = []; edited; count=0; }
+		edits = []; edited; count=0; indx=mid}
 	(* note: bd.fresh is set in the calling function *)
 		
-let new_batche_dream_x steak = (* use this *)
+(*let new_batche_dream_x steak = (* use this *)
 	if (Random.int 10) < 7 then (
-		new_batche_sup steak.db
+		new_batche_sup steak
 	) else (
 		new_batche_unsup steak
-	)
+	)*)
 	
 let new_batche_dream steak = (* use this *)
 	(* not threaded !! *)
@@ -901,7 +964,7 @@ let new_batche_dream steak = (* use this *)
 	| Some dreams -> (
 		let i = steak.dreamn in
 		let d = dreams.(i) in
-		steak.dreamn <- (i+1) mod image_count; 
+		steak.dreamn <- (i+1) mod (Array.length dreams); 
 		let edited = Array.make p_ctx 0.0 in (* memory thrash *)
 		{d.be with edited} )
 	| None -> ( nulbatche )
@@ -939,6 +1002,8 @@ let update_edited be ed =
 
 (* seems like this would be much faster if simply implemented directly in ocaml with bigarrays!! *)
 (* also, simpler and more comprehensible ... and might as well use the parallel pool for this *)
+(* eh .. this scales easily to very large batches *)
+(* TODO: softmax + temperature decoding (via torch *)
 	
 let decode_edit bd ba_edit = 
 	(* decode model output (from python) *)
@@ -967,10 +1032,11 @@ let decode_edit bd ba_edit =
 		let echr = (Tensor.get_int1 chr i) + Char.code('0') |> Char.chr in
 		let eloc = Tensor.get_int1 loc i in
 		(etyp,eloc,echr) ) in
-	(*for i = 0 to (min 9 !batch_size) do (
+	(* debug *)
+	(*for i = 0 to (min 1 !batch_size) do (
 		let typ,loc,chr = edit_arr.(i) in
 		Logs.debug (fun m -> m "decode_edit %d: %s,%c,%d" i typ chr loc)
-	) done; *)
+	) done;*)
 	let fin = Unix.gettimeofday () in
 	Logs.debug (fun m -> m "decode_edit time %f" (fin-.sta)); 
 	edit_arr
@@ -1107,7 +1173,7 @@ let update_bea_sup steak bd =
 			) else be in
 		let be3 = if List.length be.edits = 0 then (
 			bd.fresh.(i) <- true; (* update image flag *)
-			new_batche_sup steak.db
+			new_batche_sup steak i
 			) else be2 in
 		bd.bea.(i) <- be3 in (* /innerloop *)
 	if !gparallel then
@@ -1122,6 +1188,7 @@ let update_bea_sup steak bd =
 	bd
 	
 let update_bea_dream steak bd = 
+	let sta = Unix.gettimeofday () in
 	Logs.debug (fun m -> m "entering update_bea_dream");
 	(* this one only needs one run-through. *)
 	let edit_arr = decode_edit bd bd.bedtd in
@@ -1138,12 +1205,25 @@ let update_bea_dream steak bd =
 			(* log it! *)
 			(match steak.dreams with
 			| Some dreams -> (
-				let i = be.b_pid in
+				let a = be.a_pid in
+				let b = be.b_pid in
+				let i = be.indx in
 				let s = progenc2progstr be.c_progenc in
-				dreams.(i).decode <- (s :: dreams.(i).decode); 
-				if be.c_progenc = be.b_progenc then ( 
-					dreams.(i).correct_cnt <- dreams.(i).correct_cnt+1; 
-					Logs.debug (fun m -> m "[%d] %s decoded correctly." i s)
+				if b < image_count then (
+					if be.c_progenc = be.b_progenc then ( 
+						dreams.(i).decode <- (s :: dreams.(i).decode);
+						dreams.(i).correct_cnt <- dreams.(i).correct_cnt+1; 
+						Logs.debug (fun m -> m "dream:%d [%d]->[%d] %s decoded correctly." i a b s)
+					) else (
+						(* if wrong, save one example decode *)
+						if (List.length dreams.(i).decode) = 0 then
+						dreams.(i).decode <- (s :: dreams.(i).decode);
+					) 
+				) else (
+					let mid = b - image_count in
+					if mid < 60000 then (
+						dreams.(i).decode <- (s :: dreams.(i).decode);
+					)
 				) )
 			| None -> () ); 
 			(*try_add_program steak be3.c_progenc be3;*) (* FIXME *)
@@ -1161,10 +1241,14 @@ let update_bea_dream steak bd =
 	else 
 		for i = 0 to (!batch_size-1) do (* non-parallel version *)
 			innerloop i done; 
-	Logs.debug (fun m -> m "update_bea_dream: Caml.Gc.major ();"); 
+	let fin = Unix.gettimeofday () in
+	Logs.debug (fun m -> m "update_bea_dream time %f" (fin-.sta));
 	Mutex.lock steak.db_mutex; 
-	Caml.Gc.major (); (* clean up torch variables *)
+(* 	Caml.Gc.major (); (* clean up torch variables *) *)
 	Mutex.unlock steak.db_mutex; 
+	let fin2 = Unix.gettimeofday () in
+	Logs.debug (fun m -> m "update_bea_dream: Caml.Gc.major time %f;" 
+			(fin2 -. fin)); 
 	(* cannot do this within a parallel for loop!!! *)
 	(* in-place update of bea *)
 	bd
@@ -1178,7 +1262,7 @@ let bigfill_batchd steak bd =
 	Bigarray.Array3.fill bd.bpro 0.0 ;
 	Bigarray.Array2.fill bd.bedts 0.0 ; 
 	for u = 0 to !batch_size-1 do (
-		bd.bedts.{u,0} <- -1. (* TEST *)
+		bd.bedts.{u,0} <- -1. (* TEST (checked via min, python side) *)
 	) done; 
 	let innerloop u = 
 		let be = bd.bea.(u) in
@@ -1627,15 +1711,18 @@ let handle_message steak bd msg =
 		(* read this independently of updating bd.bedts; so as to determine acuracy. *)
 		let decode_edit_accuracy edit_arr str = 
 			let typright, chrright, posright = ref 0, ref 0, ref 0 in
+			let print = ref true in
 			Array.iteri (fun i (typ,pos,chr) -> 
 				if List.length (bd.bea.(i).edits) > 0 then (
 					let styp,spos,schr = List.hd (bd.bea.(i).edits) in (* supervised *)
 					if typ = styp then incr typright; 
 					if pos = spos then incr posright; 
 					if chr = schr then incr chrright; 
-					(*if i = 0 then 
-						Logs.info (fun m -> m "| true: %s [%d] %c ; est: %s [%d] %c"
-							styp spos schr typ pos chr )*)
+					if !print then (
+						Logs.info (fun m -> m "|%d true: %s [%d] %c ; est: %s [%d] %c"
+							i styp spos schr typ pos chr ); 
+						print := false
+					)
 				) ) edit_arr ; 
 			let pctg v = (foi !v) /. (foi !batch_size) in
 			Logs.info (fun m -> m (* TODO: debug mode *)
@@ -1667,21 +1754,33 @@ let read_socket client_sock =
 		Some (Bytes.sub data_read 0 data_length |> Bytes.to_string )
 	else None
 	
-let dreams_save dreams = 
+let dreams_save mnist dreams = 
 	let fid = open_out "dreamcheck.txt" in
 	Array.iteri (fun i dc -> 
-		let s = progenc2progstr dc.be.b_progenc in
-		let d = if List.length dc.decode > 1 then 
-			List.hd dc.decode else "" in
-		Printf.fprintf fid "[%d] c:%d is:%s decode:%s\n"
-			i dc.correct_cnt s d; 
-		if i < 4096 then (
-			ignore(run_logo_string s 64 
-				(Printf.sprintf "/tmp/png/d%05d_real.png" i)); 
-			ignore(run_logo_string d 64 
-				(Printf.sprintf "/tmp/png/d%05d_decode.png" i)) );
-		) dreams;
-	close_out fid
+		let d = if List.length dc.decode >= 1 then 
+				List.hd dc.decode else "" in
+		if dc.be.b_pid < image_count then (
+			let a = progenc2progstr dc.be.a_progenc in
+			let b = progenc2progstr dc.be.b_progenc in
+			Printf.fprintf fid "[%d] ncorrect:%d is:%s->%s decode:%s\n"
+				i dc.correct_cnt a b d; 
+			if i < 4096 then (
+				ignore(run_logo_string b 64 
+					(Printf.sprintf "/tmp/png/d%05d_real.png" i)); 
+				ignore(run_logo_string d 64 
+					(Printf.sprintf "/tmp/png/d%05d_decode.png" i)) );
+		) else (
+			let mid = dc.be.b_pid - image_count in
+			if mid < 60000 then (
+				Printf.fprintf fid "[%d] decode:%s\n" i d;
+				dbf_to_png mnist mid
+					(Printf.sprintf "/tmp/png/d%05d_real.png" i); 
+				ignore(run_logo_string d 64 
+					(Printf.sprintf "/tmp/png/d%05d_decode.png" i)) 
+			)
+		) ) dreams;
+	close_out fid; 
+	Logs.debug (fun m -> m "Saved %d to dreamcheck.txt" (Array.length dreams))
 
 let servthread steak () = (* steak = thread state *)
 	(let open Unix in
@@ -1710,7 +1809,7 @@ let servthread steak () = (* steak = thread state *)
 			| _ -> (
 				save_database steak.db "db_prog_new.txt"; 
 				(match steak.dreams with
-				| Some dreams -> ( dreams_save dreams )
+				| Some dreams -> ( dreams_save steak.mnist dreams )
 				| _ -> () ); 
 			) ) in
 		if !gparallel then (
@@ -1741,21 +1840,61 @@ let measure_torch_copy_speed device =
 	
 let make_dreams db = 
 	(* make an array of dreams to test *)
-	let a = Vector.get db 0 in
-	Array.mapi (fun i b -> 
-		let edits = progenc_to_edits a b in (* not needed, maybe useful *)
+	let dreams = Vector.create ~dummy:nuldream in
+	let aa = Vector.get db 0 in
+	(*let dba = Vector.to_array db in
+	Array.iteri (fun i b -> 
+		let edits = progenc_to_edits aa b in (* not needed, maybe useful *)
 		let edited = Array.make p_ctx 0.0 in
 		let be = {a_pid=0; 
 					b_pid=i; 
-					a_progenc=a.progenc; 
+					a_progenc=aa.progenc; (* null program *)
 					b_progenc=b.progenc; 
 					c_progenc=""; 
 					edits; 
 					edited; 
-					count=0 } in
-		{be; decode=[]; correct_cnt=0}
-		) (Vector.to_array db)
-	
+					count=0; 
+					indx=i } in
+		Vector.push dreams {be; decode=[]; correct_cnt=0}
+		) dba ;*) 
+	let ndenovo = Vector.length dreams in
+	(*let dba2 = Array.sub dba 0 2048 in
+	(* add in all 2-edits *)
+	Array.iteri (fun i a -> 
+		Array.iteri (fun j b -> 
+			let dist,edits = Levenshtein.distance a.progenc b.progenc true in
+			if dist > 0 && dist <= 2 then (
+				let edited = Array.make p_ctx 0.0 in
+				let be = {a_pid = i; 
+							b_pid = j;
+							a_progenc = a.progenc; 
+							b_progenc = b.progenc; 
+							c_progenc = a.progenc; (* starting point *)
+							edits; 
+							edited; 
+							count = 0; 
+							indx = (Vector.length dreams)} in
+				Vector.push dreams {be; decode=[]; correct_cnt=0}
+			)
+		) dba2
+	) dba2 ; *)
+	let nedits = Vector.length dreams in
+	for i=0 to 2000-1 do (
+		let edited = Array.make p_ctx 0.0 in (* don't forget this has to be replaced later *)
+		let be = {a_pid = 0; 
+					b_pid = image_count + i; 
+					a_progenc = aa.progenc; 
+					b_progenc = ""; 
+					c_progenc = ""; 
+					edits = []; 
+					edited; 
+					count=0; indx = (Vector.length dreams)} in
+		Vector.push dreams {be; decode=[]; correct_cnt=0}
+	) done; 
+	let nall = Vector.length dreams in
+	Logs.debug (fun m -> m "Generated %d dreams (%d denovo, %d edits, %d mnist)"
+		nall ndenovo (nedits-ndenovo) (nall-nedits)); 
+	Vector.to_array dreams
 
 let usage_msg = "program.exe -b <batch_size>"
 let input_files = ref []
@@ -1811,7 +1950,8 @@ let () =
 		|> Tensor.to_device ~device in
 	
 	let db_mutex = Mutex.create () in
-	let pool = Dtask.setup_pool ~num_domains:12 () in
+	let pool = Dtask.setup_pool ~num_domains:8 () in 
+		(* tune this -- 8-12 seems ok *)
 	let supfid = open_out "/tmp/png/replacements_sup.txt" in
 	let dreamfid = open_out "/tmp/png/replacements_dream.txt" in
 	let dbf_enc = Tensor.zeros [2;2] in
@@ -1866,8 +2006,8 @@ let () =
 		let pool2 = Dtask.setup_pool ~num_domains:6 () in
 		dreamsteak.pool <- pool2; 
 		servthread dreamsteak () ) in*)
-	(*servthread supsteak2 () ; *)
-	servthread dreamsteak () ;
+	servthread supsteak2 () ; 
+	(*servthread dreamsteak () ;*)
 	(*Domain.join d;*)
 	close_out supfid; 
 	close_out dreamfid; 

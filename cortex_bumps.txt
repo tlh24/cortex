@@ -3822,8 +3822,8 @@ We need state: where it is on the program list
 	Generate all mnist digits; compare; log
 Iterator output: one "dream" batche ds. 
 Rather dumb / easy way of doing it: generate everything before, store in an array, iterate.  
-Aside:: Need to add 'temperature' to the edit decoding.  (?)
-Looking at dreamcheck.txt, seems that we have an aliasing problem: if the angle exceeds 2pi, or goes negative, it's not clear which angle to emit; one solution would be to remove those programs as 'indadmissable' 
+Aside:: Need to add 'temperature' to the edit decoding & do more than just single maximum.  (?)
+Looking at dreamcheck.txt, seems that we have an aliasing problem: if the angle exceeds 2pi, or goes negative, it's not clear which angle to emit; one solution would be to remove those programs as 'inadmissable' 
 	Better would be to remove programs that are confusing from the training corpus.  
 	The equivalence tracker should contribute to this. 
 	To generate MNIST digits, the transformer needs to get better at fractional angles (and likely fractional distances); 
@@ -3832,4 +3832,62 @@ Looking at dreamcheck.txt, seems that we have an aliasing problem: if the angle 
 	Requires more experimentation & thought
 		Maybe go back to the planning doc. 
 -> It's clear that the transformer can learn this relatively simple space quite quickly though! 
--> 
+
+February 13 2023
+
+Looking over (new, improved) dreamcheck.txt - seems like what the model has done is to memorize certain 'b' statements & is capable of conditional editing of most any source 'a' into 'b'.  
+Other, similar output statements are not memorized and the transformer can't produce the edits. 
+As mentioned on friday, I think we need to dramatically restrict what edits are possible in order to make the model "intelligable"
+Hypothetically: 
+* adding a 'move' term = always OK.  This is 5 ins edits. 
+* replacing one const with another = always OK.  1 sub edit. 
+* adding a multiply or divide, to scale angle or length = 2 ins edits.  
+* replacing two const with other = probably OK, 2 sub edits. 
+* removing one move term = always ok, 5 del edits. 
+Many of the other possible edits are likely too confusing.  
+	If I would get confused, then the model would get confused too! 
+	& Probably we're operating on a much too large database.. 
+Certainly worth seeing what the model does with MNIST digits. 
+
+Todo: 
+-> Add noise to decoding, T>0 ; 
+--> Might need softmax?  And change loss to cross-entropy? 
+
+February 14 2023
+
+Lots of thoughts last night; had a hard time sleeping but at least spent some of the time thinking about 'ec3'.  
+Todo: 
+-> Cross-entropy loss and noise decoding / dreaming. 
+-> Pen up / pen down commands
+	MNIST is made of disconnected segments. 
+	Might be helpful to make the pen 'change color' (e.g -0.5) & have these pixels ignored by the MSE matching algorithm. 
+		Actually, I think the drawing backend is full RGB, so have built-in 3 channels! 
+-> Origin command.
+	Need to be able to reset state; cuts dependencies. 
+-> Larger workspace. 
+	Since we only have integers and fractions, make it easier to approximate the digits. 
+-> Turn off centering: the turtle needs to move in absolute coordinates. 
+	If we use MSE matching, need absolute positioning. 
+	NB: might want to disable or change the convolutional vision encoder for this. 
+		Unless of course we leave the VAE matching on.  
+		Hmm.  The problem is that it might encourage a few lines to capture most all the shape, unlike human, which does incremental matching. 
+			Think we need to try it both ways. 
+-> Decode/dream many solutions, select the one which best matches to the digit specification.  
+	Ideally, this would be enumeration -- but I guess for now we can pass through the transformer.
+		That is, search!
+		Need temperature here. 
+-> The encoder needs to learn to **ignore segments** (and pixels).
+	This is perhaps the most important thing! 
+	It means breaking the problem down into smaller parts & solving them incrementally.
+		Obviously essential. 
+	Can we change the training process to 'force' the transformer to learn to ignore pixels? 
+		I think the transformer itself is computationally capable of this. 
+		But the current training database does not encourage it; or it it does, only weakly.  
+		I guess could fix this by more strongly encouraging generative / additive edits, 
+			particuarly edits on the end of the stroke. 
+	
+Maybe need to build a graph of edits; filling it out online is really slow.  
+	Also: hidden state ?!! 
+	A lot of the edits are to of the initial angle, which serves to rotate the whole image; this might be really hard for the transformer to learn! 
+		How did it learn so well when there were so many edits??! 
+	Maybe should concentrate on smaller edits first?  Many big jumps here. 

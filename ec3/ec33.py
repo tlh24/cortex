@@ -196,8 +196,14 @@ if exists("ec32.ptx"):
 
 # model = nn.DataParallel(model)
 
-# lossfunc = nn.CrossEntropyLoss(label_smoothing = 0.08, reduction='none')
-lossfunc = nn.MSELoss(reduction='mean')
+# loss is on the predicted edit: 
+# [0:4] is the categorical edit type, sub del ins fin
+# [4:toklen] is the categorical character/token.  
+# [5+toklen:5+toklen+poslen*2] is the (absolute) position encoding, vectoral.
+# not sure why there is a 5 in there.
+
+lossfunc_cel = nn.CrossEntropyLoss(label_smoothing = 0.08, reduction='mean')
+lossfunc_mse = nn.MSELoss(reduction='mean')
 optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
 def print_model_params(): 
@@ -254,7 +260,12 @@ for u in range(train_iters):
 	model.zero_grad()
 	y,q = model(u, bimg.cuda(), bpro.cuda())
 	if g_training: 
-		loss = lossfunc(y, bedts.cuda())
+		targ = bedts.cuda()
+		loss = lossfunc_mse(y, targ)
+		# loss_typ = lossfunc_cel(y[:,0:4], targ[:,0:4])
+		# loss_chr = lossfunc_cel(y[:,4:4+toklen], targ[:,4:4+toklen])
+		# loss_pos = lossfunc_mse(y[:,5+toklen:], targ[:,5+toklen:])
+		# loss = loss_typ + loss_chr + loss_pos # should be batch_size
 		lossflat = th.sum(loss)
 		lossflat.backward()
 		th.nn.utils.clip_grad_norm_(model.parameters(), 0.05)
