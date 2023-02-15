@@ -194,6 +194,11 @@ if exists("ec32.ptx"):
 # except: 
 # 	print("could not load model parameters from ec32.ptx")
 
+trainable_params = sum(
+	p.numel() for p in model.parameters() if p.requires_grad
+)
+print(f"Number of model parameters:{trainable_params/1e6}")
+
 # model = nn.DataParallel(model)
 
 # loss is on the predicted edit: 
