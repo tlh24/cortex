@@ -3858,6 +3858,7 @@ February 14 2023
 Lots of thoughts last night; had a hard time sleeping but at least spent some of the time thinking about 'ec3'.  
 Todo: 
 -> Cross-entropy loss and noise decoding / dreaming. 
+	Not sure if this is 'better' than MSE.  TBD.
 -> Pen up / pen down commands
 	MNIST is made of disconnected segments. 
 	Might be helpful to make the pen 'change color' (e.g -0.5) & have these pixels ignored by the MSE matching algorithm. 
@@ -3891,3 +3892,12 @@ Maybe need to build a graph of edits; filling it out online is really slow.
 	A lot of the edits are to of the initial angle, which serves to rotate the whole image; this might be really hard for the transformer to learn! 
 		How did it learn so well when there were so many edits??! 
 	Maybe should concentrate on smaller edits first?  Many big jumps here. 
+	
+February 15 2023
+	Switched the training from random select to full pre-compute ... proceeds much m ore quickly, though of course requires a good bit of upfront computation. 	
+	Idea: enumeration of all edges in the edit graph is better than random exploration. 
+		Need to write this to disk, since they can reasonably fit in text files.  
+	About 100k examples for both sub and ins/del edits. 
+	Terminal loss about -3.5 log, MSE.  decoding accuracy: typ 0.7 chr 0.5 pos 0.5
+	Getting 4460 samples/sec on one 4090. 
+		Aside: 12 threads is about optimal for the Ryzen 9 5950x, as this maxes out both poert consuption (144W) and clock.  More  threads -> slower clocks. 

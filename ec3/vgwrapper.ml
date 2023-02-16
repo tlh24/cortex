@@ -7,13 +7,16 @@ type kind = MOVE | LINE | CIRCLE
 let d_from_origin = 4.5
 let d2 = 2. *. d_from_origin
 
-type canvas = (kind*float*float) list
+type canvas = (kind*float*float*float) list
 
 let new_canvas : unit -> canvas = fun () -> []
 
-let moveto : canvas -> float -> float -> canvas = fun l x y -> (MOVE,x,y)::l
-let lineto : canvas -> float -> float -> canvas = fun l x y -> (LINE,x,y)::l
-let circle : canvas -> float -> float -> canvas = fun l x y -> (CIRCLE,x,y)::l
+let moveto : canvas -> float -> float -> canvas = 
+  fun l x y -> (MOVE,x,y,0.)::l
+let lineto : canvas -> float -> float -> float -> canvas = 
+  fun l x y a -> (LINE,x,y,a)::l
+let circle : canvas -> float -> float -> float -> canvas = 
+  fun l x y a -> (CIRCLE,x,y,a)::l
 
 let moveto_np c x y = P.sub  (P2.v x y) c
 let lineto_np c x y = P.line (P2.v x y) c
@@ -26,10 +29,17 @@ let lineto_p = fun (c,(ox,oy)) x y ->
   ((P.empty |> (P.sub  (P2.v ox oy)) |> (P.line (P2.v x y))),l)::c,(x,y)
 let circle_p = fun (c,(ox,oy)) x y ->
   ((P.empty |> (P.sub  (P2.v ox oy)) |> (P.circle (Gg.P2.v x y) 0.1)),0.)::c,(x,y)
+  
+let moveto_a = fun (c,(_,_)) x y ->
+  (((P.empty |> (P.sub  (P2.v x y))),0.)::c),(x,y)
+let lineto_a = fun (c,(ox,oy)) x y a ->
+  ((P.empty |> (P.sub  (P2.v ox oy)) |> (P.line (P2.v x y))),a)::c,(x,y)
+let circle_a = fun (c,(ox,oy)) x y a ->
+  ((P.empty |> (P.sub  (P2.v ox oy)) |> (P.circle (Gg.P2.v x y) 0.1)),a)::c,(x,y)
 
 let rec convert_canvas c = match c with
   | [] -> (P.sub (Gg.P2.v 0. 0.) P.empty)
-  | (t,x,y)::r ->
+  | (t,x,y,_)::r ->
     let cc = convert_canvas r in
       (match t with
       | MOVE -> moveto_np cc x y
@@ -38,12 +48,21 @@ let rec convert_canvas c = match c with
 
 let rec convert_canvas_pretty c = match c with
   | [] -> ([],(d_from_origin,d_from_origin))
-  | (t,x,y)::r ->
+  | (t,x,y,_)::r ->
       let cc = convert_canvas_pretty r in
       (match t with
       | MOVE -> moveto_p cc x y
       | LINE -> lineto_p cc x y
       | CIRCLE -> circle_p cc x y)
+      
+let rec convert_canvas_alpha c = match c with
+  | [] -> ([],(d_from_origin,d_from_origin))
+  | (t,x,y,a)::r ->
+      let cc = convert_canvas_alpha r in
+      (match t with
+      | MOVE -> moveto_a cc x y
+      | LINE -> lineto_a cc x y a
+      | CIRCLE -> circle_a cc x y a)
 
 let size = Size2.v d2 d2
 let view = Box2.v P2.o (Size2.v d2 d2)
@@ -55,7 +74,17 @@ let green = I.const (Color.v_srgb 0. 1. 0.)
 let blue = I.const (Color.v_srgb 0. 0. 1.)
 let colors = [|red ; green ; blue|]
 
-let list_to_image pretty l =
+let list_to_image l = 
+  let (c,(_,_)) = convert_canvas_alpha l in
+  List.fold_right (fun (path,a) img -> 
+    (* if pen pressure is negative, eraser! (white *)
+    let r,g,b = if a > 0. then 0.0,0.0,0.0 else 1.0,1.0,1.0 in
+    I.blend img (I.cut ~area:(areaPretty) path 
+      (I.const (Color.v_srgb ?a:(Some a) r g b))) )
+    c
+    (I.const (Color.v_srgb ?a:(Some(0.)) 0.0 0.0 0.0))
+
+let list_to_image_x pretty l =
   let rec build_c c aux = match c with
     | [] -> [],aux
     | (x,l)::r ->
@@ -79,8 +108,8 @@ let list_to_image pretty l =
     I.cut ~area p black
   end
 
-let output_canvas_png ?pretty:(pretty=false) c desired fname =
-  let image = list_to_image pretty c in
+let output_canvas_png (*?pretty:(pretty=false)*) c desired fname =
+  let image = list_to_image c in
   let res = 1000. *. (float_of_int desired) /. (Gg.Size2.h size) in
   let fmt = `Png (Size2.v res res) in
   let warn w = Vgr.pp_warning Format.err_formatter w in
@@ -91,7 +120,7 @@ let output_canvas_png ?pretty:(pretty=false) c desired fname =
   close_out oc
 
 let canvas_to_1Darray c desired =
-  let image = list_to_image false c in
+  let image = list_to_image c in
   let res = (float_of_int desired) /. (Gg.Size2.h size) in
   let w,h = desired,desired in
   let stride = Cairo.Image.(stride_for_width A8 w) in

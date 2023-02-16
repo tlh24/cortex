@@ -7,11 +7,7 @@ import matplotlib.pyplot as plt
 from ctypes import * # for c_char
 import time
 
-def make_mmf_rd(fname): 
-	fd = open(fname, "r+b")
-	return mmap.mmap(fd.fileno(), 0)
-	
-def make_mmf_wr(fname): 
+def make_mmf(fname): 
 	fd = open(fname, "r+b")
 	return mmap.mmap(fd.fileno(), 0)
 
@@ -32,12 +28,12 @@ def write_mmap(mmf, data):
 	n = mmf.write(buff.read())
 	return n
 	
-fd_bpro = make_mmf_rd("bpro_0.mmap")
-fd_bimg = make_mmf_rd("bimg_0.mmap")
-fd_bedts = make_mmf_rd("bedts_0.mmap")
-fd_bedtd = make_mmf_wr("bedtd_0.mmap")
-fd_posenc = make_mmf_rd("posenc_0.mmap")
-fd_editdiff = make_mmf_rd("editdiff.mmap")
+fd_bpro = make_mmf("bpro_0.mmap")
+fd_bimg = make_mmf("bimg_0.mmap")
+fd_bedts = make_mmf("bedts_0.mmap")
+fd_bedtd = make_mmf("bedtd_0.mmap")
+fd_posenc = make_mmf("posenc_0.mmap")
+fd_editdiff = make_mmf("editdiff_0.mmap")
 # fallocate -l 6016 editdiff.mmap for batch size 32
 # 6016 = 32 * 47 * 4
 

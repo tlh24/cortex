@@ -7,6 +7,7 @@
 %token <int> DEF
 %token UNIT_ANGLE
 %token UNIT_LENGTH
+%token PEN
 %token MULT
 %token DIVI
 %token PLUS
@@ -30,7 +31,7 @@ value:
   | LEFT_PAREN; obj = seq_elements; RIGHT_PAREN 
 		{ `Seq(obj,0)  }
   | v = VAR                                
-		{ `Var(v,0)   }
+		{ `Var(v,0) }
   | MOVE; a = value; COMMA ; b = value 
       { `Move( a, b, 0) }
   | LOOP; a = INT; COMMA ; b = value ; COMMA ; c = value
@@ -39,6 +40,8 @@ value:
       { `Call(a, obj, 0) }
   | a = DEF; COLON; b = value
       { `Def(a, b, 0) }
+  | PEN; a = value
+      { `Pen(a,0) }
   | UNIT_ANGLE
 		{ `Const( 8.0 *. atan 1.0 , 0 ) }
   | UNIT_LENGTH

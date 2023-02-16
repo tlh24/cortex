@@ -116,10 +116,12 @@ type tsteak = (* thread state *)
 	; mutable pool : Domainslib.Task.pool (* needs to be replaced for dream *)
 	; mutable dreamn : int
 	; dreams : dreamcheck array option
+	; trains_sub : dreamcheck array option
+	; trains_insdel : dreamcheck array option
 	}
 	
 let pi = 3.1415926
-let image_count = 6*2048*2
+let image_count = 512 (* 6*2048*2 *)
 let image_res = 30
 let batch_size = ref (256*3)
 let toklen = 30
@@ -263,9 +265,9 @@ let select_readvar actvar =
 let rec gen_ast return_val state = 
 	(* stochastic AST generation ! *)
 	let r, br, av = state in
-	(* recurs lim, binop recursion limit, active variables, loop variables *)
+	(* recurs lim, binop recursion limit, active variables *)
 	if not return_val then (
-		match Random.int 5 with 
+		match Random.int 6 with 
 		| 0 -> 
 			(* generate the rhs before updating available variables *)
 			let b = gen_ast true (r-1,br,av) in
@@ -283,6 +285,7 @@ let rec gen_ast return_val state =
 			av.(i) <- true;
 			let n = `Const(foi(Random.int 12),nulptag) in
 			`Loop(i, n, gen_ast false (r-1,br,av),nulptag)
+		| 4 -> `Pen(gen_ast true (r-1,br,av),nulptag)
 		| _ -> `Nop
 	) else (
 		(* if recursion limit, emit a constant / terminal*)
@@ -294,7 +297,7 @@ let rec gen_ast return_val state =
 		| 0 -> 
 			`Var(select_readvar av, nulptag)
 		| 1 -> (
-			match Random.int 3 with
+			match Random.int 4 with
 			| 0 -> `Const(8.0 *. atan 1.0,nulptag) (* unit angle *)
 			| 1 -> `Const(1.0,nulptag) (* unit length *)
 			| _ -> `Const(Random.int 5 |> foi,nulptag)
@@ -321,6 +324,7 @@ let rec count_ast ast =
 	| `Loop(_,a,b,_) -> 1 + (count_ast a) + (count_ast b)
 	| `Call(_,l,_) -> List.fold_left (fun a e -> a + count_ast e) 1 l
 	| `Def(_,a,_) -> 1 + count_ast a
+	| `Pen(a,_) -> 1 + count_ast a
 	| `Nop -> 0
 	
 	
@@ -354,6 +358,9 @@ let rec mark_ast ast n sel =
 	| `Def(i,a,_) -> ( if !n = sel then
 		(incr n; `Def(i,(mark_ast a n sel),1) ) else 
 		(incr n; `Def(i,(mark_ast a n sel),nulptag) ) )
+	| `Pen(a,_) -> ( if !n = sel then 
+		(incr n; `Pen((mark_ast a n sel),1) ) else 
+		(incr n; `Pen((mark_ast a n sel),nulptag) ) )
 	| `Nop -> `Nop
 
 let rec chng_ast ast st = 
@@ -392,6 +399,9 @@ let rec chng_ast ast st =
 	| `Def(i,a,w) -> (if w > 0 then 
 		( gen_ast false st ) else 
 		( `Def(i, chng_ast a st, nulptag ) ) )
+	| `Pen(a,w) -> ( if w > 0 then
+		( gen_ast false st ) else 
+		( `Pen(chng_ast a st, nulptag) ) )
 	| `Nop -> `Nop
 	
 let change_ast ast = 
@@ -548,7 +558,8 @@ let rec compress ast change =
 		| _ -> `Seq( List.map (fun a -> compress a change) l2, w )
 		)
 	| `Call(i,l,w) -> `Call(i,l,w)
-	| `Def(i,body,w) -> `Def(i,body,w)
+	| `Def(i,a,w) -> `Def(i, compress a change, w)
+	| `Pen(a,w) -> `Pen(compress a change, w)
 	| `Nop -> `Nop
 
 let rec has_move ast = 
@@ -568,17 +579,17 @@ let rec compress_ast ast =
 
 let segs_bbx segs = 
 	let minx = List.fold_left 
-		(fun c (x0,_,x1,_) -> min (min x0 x1) c) 0.0 segs in
+		(fun c (x0,_,x1,_,_) -> min (min x0 x1) c) 0.0 segs in
 	let maxx = List.fold_left 
-		(fun c (x0,_,x1,_) -> max (max x0 x1) c) 0.0 segs in
+		(fun c (x0,_,x1,_,_) -> max (max x0 x1) c) 0.0 segs in
 	let miny = List.fold_left 
-		(fun c (_,y0,_,y1) -> min (min y0 y1) c) 0.0 segs in
+		(fun c (_,y0,_,y1,_) -> min (min y0 y1) c) 0.0 segs in
 	let maxy = List.fold_left 
-		(fun c (_,y0,_,y1) -> max (max y0 y1) c) 0.0 segs in
+		(fun c (_,y0,_,y1,_) -> max (max y0 y1) c) 0.0 segs in
 	(minx,maxx,miny,maxy)
 	
 let segs_to_cost segs = 
-	let seglen (x0,y0,x1,y1) = 
+	let seglen (x0,y0,x1,y1,_) = 
 		Float.hypot (x0-.x1) (y0-.y1) in
 	let cost = List.fold_left 
 		(fun c s -> c +. (seglen s)) 0.0 segs in
@@ -812,7 +823,7 @@ let init_batchd filnum =
 	{bpro; bimg; bedts; bedtd; posenc; posencn; bea; fresh}, 
 	[fd_bpro; fd_bimg; fd_bedts; fd_bedtd; fd_posenc]
 	
-let progenc_to_edits a b = 
+let pdata_to_edits a b = 
 	let dist, edits = Levenshtein.distance a.progenc b.progenc true in
 	let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
 	(* verify .. a bit of overhead *)
@@ -843,8 +854,20 @@ let edit_criteria edits dosub =
 		if nsub = 0 && ndel = 0 && nins <= 6 then r := true
 	);
 	!r
+
+let new_batche steak _bn dosub = 
+	(* only supervised mode! *)
+	let src = if dosub then steak.trains_sub else steak.trains_insdel in
+	match src with
+	| Some trains -> (
+		let ndb = Array.length trains in
+		let i = Random.int ndb in
+		let be = trains.(i).be in
+		let edited = Array.make p_ctx 0.0 in
+		{be with edited} )
+	| _ -> nulbatche
 	
-let rec new_batche steak bn dosub = 
+(*let rec new_batche steak bn dosub = 
 	(* only supervised mode! *)
 	let ndb = db_len steak in
 	let nb = (Random.int (ndb-1)) + 1 in
@@ -860,10 +883,10 @@ let rec new_batche steak bn dosub =
 	let lim = (p_ctx/2)-4 in 
 	(* check this .. really should be -2 as in bigfill_batchd *)
 	if a_ns <= 8 && b_ns <= 8 && a_np < lim && b_np < lim then (
-		let dist,edits = progenc_to_edits a b in
+		let dist,edits = pdata_to_edits a b in
 		(*Logs.debug(fun m -> m  
 			"trying [%d] [%d] for batch; dist %d" na nb dist);*)
-		if edit_criteria edits dosub && dist > 0 then (
+		if edit_criteria edits dosub (not dosub) && dist > 0 then (
 			(*Logs.debug(fun m -> m 
 				"|%d adding [%d] %s [%d] %s to batch; dist:%d"
 				bn na a.progenc nb b.progenc dist);*)
@@ -874,7 +897,7 @@ let rec new_batche steak bn dosub =
 				c_progenc = a.progenc; 
 				edits; edited; count=0; indx=na} (* FIXME indx *)
 		) else new_batche steak bn dosub
-	) else new_batche steak	bn dosub
+	) else new_batche steak	bn dosub*)
 
 (*let rec new_batche doedit db = 
 	(* only supervised mode! *)
@@ -897,7 +920,7 @@ let rec new_batche steak bn dosub =
 		(*Logs.debug(fun m -> m  
 			"trying [%d] [%d] for batch; dist %d" na nb dist);*)
 		if dist > 0 && dist < distthresh then (
-			let edits = progenc_to_edits a b in
+			let edits = pdata_to_edits a b in
 			(*Logs.debug(fun m -> m 
 				"adding [%d] %s [%d] %s to batch (unsorted pids: %d %d)"
 				na a.progenc nb b.progenc a.pid b.pid);*)
@@ -1424,11 +1447,16 @@ let init_database steak count =
 			generate_random_logo !i image_res in
 		let imgf = tensor_of_bigarray2 data.img steak.device in
 		let dist,mindex = dbf_dist steak imgf in
-		if dist > 5. then (
+		if dist > 0.05 then (
 			Logs.debug(fun m -> m 
 				"%d: adding [%d] = %s" !iters !i 
 				(Logo.output_program_pstr data.pro) ); 
 			ignore( db_push steak data imgf ); 
+			Logo.segs_to_png data.segs 64
+				(Printf.sprintf "/tmp/png/db%05d_.png" !i); 
+			dbf_to_png steak.dbf !i
+				(Printf.sprintf "/tmp/png/db%05d_f.png" !i);
+				(* TODO FIXME ALERT broken images bug *)
 			incr i;
 		) else (
 			(* see if there's a replacement *)
@@ -1450,7 +1478,7 @@ let init_database steak count =
 			) else (
 				(* they are equivalent; cost >=; see if it's already there *)
 				(* if the list is short, add it; otherwise only add to list if it's better (above)*) 
-				if dist < 0.6 then (
+				if dist < 0.006 then (
 					if List.length data2.equiv < 32 then (
 						let pres = List.exists (fun a -> a.eprogenc = data.progenc) data2.equiv in
 						if not pres then ( 
@@ -1837,6 +1865,62 @@ let measure_torch_copy_speed device =
 	Printf.printf "%f\n%!" (Tensor.float_value z) 
 	(* this is working just as fast or faster than python.*)
 	(* something else must be going on in the larger program *)
+
+let make_trains steak = 
+	(* pre-compute training data; enumeration better than search. *)
+	let trains_sub = Vector.create ~dummy:nuldream in
+	let trains_insdel = Vector.create ~dummy:nuldream in
+	let edited = Array.make p_ctx 0.0 in (* needs replacement! *)
+	let dba = Vector.to_array steak.db in
+	let dbn = Vector.length steak.db in
+	(*let dba2 = Array.sub dba 0 8192 in*)
+	let innerloop i = 
+		let a = dba.(i) in
+		Array.iteri (fun j b -> 
+			let dist,edits = pdata_to_edits a b in
+			let admit dosub = 
+				if dist > 0 && (edit_criteria edits dosub) then (
+					{a_pid = i; 
+					b_pid = j;
+					a_progenc = a.progenc; 
+					b_progenc = b.progenc; 
+					c_progenc = a.progenc; (* starting point *)
+					edits; 
+					edited; 
+					count = 0; 
+					indx = 0},true
+				) else (nulbatche,false) in
+			let be2,f = admit true in
+			if f then (
+				let indx = Vector.length trains_sub in
+				if (indx mod 1000) = 0 then 
+					Logs.debug (fun m -> m "trains_sub size %d" indx); 
+				let be = {be2 with indx} in
+				Mutex.lock steak.db_mutex;
+				Vector.push trains_sub {be; decode=[]; correct_cnt=0}; 
+				Mutex.unlock steak.db_mutex
+			); 
+			let be2,f = admit false in
+			if f then (
+				let indx = Vector.length trains_insdel in
+				if (indx mod 1000) = 0 then 
+					Logs.debug (fun m -> m "trains_insdel size %d" indx);
+				let be = {be2 with indx} in
+				Mutex.lock steak.db_mutex;
+				Vector.push trains_insdel {be; decode=[]; correct_cnt=0}; 
+				Mutex.unlock steak.db_mutex
+			); 
+		) dba in (* /innerloop *)
+	if !gparallel then ( 
+		Dtask.run steak.pool (fun () -> 
+			Dtask.parallel_for steak.pool ~start:0 ~finish:(dbn-1) 
+				~body:innerloop )
+	) else (
+		for i = 0 to (dbn-1) do (* non-parallel version *)
+			innerloop i done );
+	Logs.debug (fun m -> m "Generated %d sub and %d insdel training examples" 
+		(Vector.length trains_sub) (Vector.length trains_insdel)); 
+	(Vector.to_array trains_sub),(Vector.to_array trains_insdel)
 	
 let make_dreams db = 
 	(* make an array of dreams to test *)
@@ -1844,7 +1928,7 @@ let make_dreams db =
 	let aa = Vector.get db 0 in
 	(*let dba = Vector.to_array db in
 	Array.iteri (fun i b -> 
-		let edits = progenc_to_edits aa b in (* not needed, maybe useful *)
+		let edits = pdata_to_edits aa b in (* not needed, maybe useful *)
 		let edited = Array.make p_ctx 0.0 in
 		let be = {a_pid=0; 
 					b_pid=i; 
@@ -1950,7 +2034,7 @@ let () =
 		|> Tensor.to_device ~device in
 	
 	let db_mutex = Mutex.create () in
-	let pool = Dtask.setup_pool ~num_domains:8 () in 
+	let pool = Dtask.setup_pool ~num_domains:12 () in 
 		(* tune this -- 8-12 seems ok *)
 	let supfid = open_out "/tmp/png/replacements_sup.txt" in
 	let dreamfid = open_out "/tmp/png/replacements_dream.txt" in
@@ -1959,7 +2043,7 @@ let () =
 	let vae = Vae.dummy_ext () in
 	let supsteak = {device; db; dbf; mnist; dbf_enc; mnist_enc; vae; db_mutex;
 			superv=true; sockno=4340; fid=supfid; batchno=0; pool; 
-			dreamn=0; dreams=None} in
+			dreamn=0; dreams=None; trains_sub=None; trains_insdel=None} in
 			
 	let db,dbf = if Sys.file_exists "db_prog.txt" then ( 
 		if !gparallel then 
@@ -1992,13 +2076,15 @@ let () =
 	
 	(* dreams test structure *)
 	let dreams = make_dreams db in
+	let trains_sub, trains_insdel = make_trains supsteak in
 	
 	(* update the thread state *)
-	let supsteak2 = {supsteak with db; dbf; dbf_enc; mnist_enc; vae} in 
+	let supsteak2 = {supsteak with db; dbf; dbf_enc; mnist_enc; vae; 
+			trains_sub=(Some trains_sub); trains_insdel=(Some trains_insdel);} in 
 	let dreamsteak = {device; db; dbf; mnist; 
 			dbf_enc; mnist_enc; vae; db_mutex;
 			superv=false; sockno=4341; fid=dreamfid; batchno=0; pool; 
-			dreamn=0; dreams=(Some dreams)} in
+			dreamn=0; dreams=(Some dreams); trains_sub=None; trains_insdel=None} in
 			
 	(* extra bit of complexity!! if Cuda hangs in one of the domains, e.g. for an out-of-memory error, you won't see it on stdout -- it will just stop. 
 	to properly debug, will need to strip down to one thread, no domainslib *)

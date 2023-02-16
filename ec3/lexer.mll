@@ -47,6 +47,7 @@ rule read =
   | "loop"  { LOOP }
   | "ua"		{ UNIT_ANGLE }
   | "ul"		{ UNIT_LENGTH }
+  | "pen"	{ PEN }
   | '*'		{ MULT }
   | '/'		{ DIVI }
   | '+'		{ PLUS }

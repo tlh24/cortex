@@ -16,6 +16,7 @@ type prog = [
 	| `Call of int * prog list * ptag (* list of arguments *)
 	| `Def of int * prog * ptag(* same sig as `Save *)
 (* 	| Cmp of prog * (float -> float -> bool) * prog *)
+	| `Pen of prog * ptag (* pen weight *)
 	| `Nop
 ]
 
@@ -46,7 +47,8 @@ let enc_char1 c =
 	| "def" -> 15
 	| ":" -> 16
 	| "call" -> 17
-	| _ -> 18
+	| "pen" -> 18
+	| _ -> 19
 	(* 0 is not used atm *)
 	
 	
@@ -69,6 +71,7 @@ let dec_item1 i =
 	| 15 -> "d"
 	| 16 -> ": "
 	| 17 -> "c"
+	| 18 -> "pen "
 	| _ -> " "
 	
 let enc_char c s = 
@@ -135,6 +138,9 @@ let rec enc_prog g s =
 		enc_char "def" s; 
 		enc_int i s; 
 		enc_char ":" s;
+		enc_prog a s )
+	| `Pen(a,_) -> (
+		enc_char "pen" s;
 		enc_prog a s )
 	| `Nop -> ()
 	
@@ -208,6 +214,8 @@ let rec output_program_h g lg =
 		output_list_h lg l ", "
 	| `Def(i,a,w) -> Printf.fprintf lg "Def %d " i; pmark lg w;
 		output_program_h a lg
+	| `Pen(a,w) -> Printf.fprintf lg "Pen "; pmark lg w;
+		output_program_h a lg;
 	| `Nop -> Printf.fprintf lg "Nop "
 	
 and output_list_h lg l sep =
@@ -229,20 +237,20 @@ type state =
   { x : float
   ; y : float
   ; t : float (* theta *)
-  ; p : bool (* pen down = true *)
+  ; p : float (* 1 = black ; 0 = clear ; -1 = white*)
   ; r : int (* execution count *)
   ; stk : float array
   }
 
 let defs = Array.make 10 `Nop
 
-type segment = float*float*float*float
+type segment = float*float*float*float*float
 
 let output_segments bf seglist = 
-	List.iteri (fun i (x1,y1,x2,y2) -> 
+	List.iteri (fun i (x1,y1,x2,y2,a) -> 
 		Printf.bprintf bf 
-			"%d %f,%f %f,%f\n" 
-			i x1 y1 x2 y2) seglist
+			"%d %f,%f %f,%f:%f\n" 
+			i x1 y1 x2 y2 a) seglist
 			
 let output_segments_str seglist = 
 	let bf = Buffer.create 64 in
@@ -250,7 +258,7 @@ let output_segments_str seglist =
 	(Buffer.contents bf)
 
 let start_state () = 
-	{x=0.0; y=0.0; t=0.0; p=true; r=0;
+	{x=0.0; y=0.0; t=0.0; p=1.0; r=0;
 		stk=Array.make 10 (-1.0e9)}
  
 (* eval needs to take a state & program
@@ -291,7 +299,7 @@ let rec eval (st0:state) (pr:prog) =
 			let x' = stb.x +. (dist *. Float.cos(t')) in 
 			let y' = stb.y +. (dist *. Float.sin(t')) in 
 			let st2 = {stb with x = x'; y = y'; t = t' } in
-			let seg = st.x, st.y, st2.x, st2.y in
+			let seg = st.x, st.y, st2.x, st2.y, st2.p in
 			(*Printf.printf "emitting seg (%d)\n" st2.r; *)
 			(*Out_channel.flush stdout;*)
 			(st2, (true, dist), [seg])
@@ -355,6 +363,11 @@ let rec eval (st0:state) (pr:prog) =
 		if (indx >= 0 && indx < 10) then (
 			defs.(indx) <- body ) ;
 		(st, (false, 0.0), [])
+	| `Pen(a,_) -> 
+		let (sta, (_,resa), _) = eval st a in
+		(* you can scale the alpha with fractions .. *)
+		let p = Float.max (Float.min resa 1.0) (-1.0) in
+		({sta with p},(true, resa), [])
 	| `Nop -> (st, (false, 0.0), [])
 	) else (st0, (false, 0.0), [])
 
@@ -374,12 +387,12 @@ let center_segs l =
 	(* build lists of all the x and y coordinates *)
 		let xs = l |> List.map
 		(function
-			| (x,_,x',_) ->
+			| (x,_,x',_,_) ->
 				[x-.d_from_origin;
 				x'-.d_from_origin;]) |> List.concat in
 		let ys = l |> List.map
 		(function
-			| (_,y,_,y') ->
+			| (_,y,_,y',_) ->
 				[y-.d_from_origin;
 				y'-.d_from_origin;]) |> List.concat in
 		let x0 = xs |> minimum in
@@ -391,24 +404,24 @@ let center_segs l =
 		let dy = (y1-.y0)/.2.+.y0 in
 		let d_from_origin = 0. in
 		(* translate all the coordinates *)
-		l |> List.map (fun(x,y,x',y') ->
+		l |> List.map (fun(x,y,x',y',a) ->
 			(x-.dx+.d_from_origin, y-.dy+.d_from_origin,
-						x'-.dx+.d_from_origin, y'-.dy+.d_from_origin))
+						x'-.dx+.d_from_origin, y'-.dy+.d_from_origin,a))
 		
 		
 let segs_to_canvas segs =
   let segs = center_segs segs in
   let c = ref (new_canvas ()) in
-  let lineto x y = (c := (lineto !c x y)) 
+  let lineto x y a = (c := (lineto !c x y a)) 
   and moveto x y = (c := (moveto !c x y)) in
-  (* lineto and moveto are defined in VGWrapper.ml *)
+  (* lineto and moveto are defined in vgwrapper.ml *)
   let total_cost = ref 0. in
-  let eval_instruction (x1,y1,x2,y2) =
+  let eval_instruction (x1,y1,x2,y2,a) =
       total_cost := !total_cost +. 
 			(sqrt ((x1-.x2)*.(x1-.x2) +. (y1-.y2)*.(y1-.y2))); 
 			(* length of the line *)
 		moveto x1 y1;
-		lineto x2 y2; ()
+		lineto x2 y2 a; ()
   in
   List.iter eval_instruction segs ;
   !c,!total_cost

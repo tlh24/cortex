@@ -61,11 +61,7 @@ sock.sendall(b"update_batch")
 data = sock.recv(1024)
 print(f"Received {data!r}")
 
-def make_mmf_rd(fname): 
-	fd = open(fname, "r+b")
-	return mmap.mmap(fd.fileno(), 0)
-	
-def make_mmf_wr(fname): 
+def make_mmf(fname): 
 	fd = open(fname, "r+b")
 	return mmap.mmap(fd.fileno(), 0)
 
@@ -93,12 +89,12 @@ edsiz = batch_size * e_indim * 4
 os.system(f"fallocate -l {edsiz} editdiff_{mmapno}.mmap")
 # the other mmaps are allocated by ocaml.
 	
-fd_bpro = make_mmf_rd(f"bpro_{mmapno}.mmap")
-fd_bimg = make_mmf_rd(f"bimg_{mmapno}.mmap")
-fd_bedts = make_mmf_rd(f"bedts_{mmapno}.mmap")
-fd_bedtd = make_mmf_wr(f"bedtd_{mmapno}.mmap")
-fd_editdiff = make_mmf_wr(f"editdiff_{mmapno}.mmap")
-fd_posenc = make_mmf_rd(f"posenc_{mmapno}.mmap")
+fd_bpro = make_mmf(f"bpro_{mmapno}.mmap")
+fd_bimg = make_mmf(f"bimg_{mmapno}.mmap")
+fd_bedts = make_mmf(f"bedts_{mmapno}.mmap")
+fd_bedtd = make_mmf(f"bedtd_{mmapno}.mmap")
+fd_editdiff = make_mmf(f"editdiff_{mmapno}.mmap")
+fd_posenc = make_mmf(f"posenc_{mmapno}.mmap")
 posenc = read_mmap(fd_posenc, [p_ctx, poslen*2])
 
 torch_device = 0
@@ -197,7 +193,7 @@ if exists("ec32.ptx"):
 trainable_params = sum(
 	p.numel() for p in model.parameters() if p.requires_grad
 )
-print(f"Number of model parameters:{trainable_params/1e6}")
+print(f"Number of model parameters:{trainable_params/1e6}M")
 
 # model = nn.DataParallel(model)
 
