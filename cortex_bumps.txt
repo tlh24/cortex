@@ -3901,3 +3901,38 @@ February 15 2023
 	Terminal loss about -3.5 log, MSE.  decoding accuracy: typ 0.7 chr 0.5 pos 0.5
 	Getting 4460 samples/sec on one 4090. 
 		Aside: 12 threads is about optimal for the Ryzen 9 5950x, as this maxes out both poert consuption (144W) and clock.  More  threads -> slower clocks. 
+
+February 17 2023
+
+Yesterday reviewed several papers: 
+-- Ellis learning to infer graphics programs from hand-drawn images
+-- Zheng Strokenet neural paiting environment
+-- He Z-coder++ summarizer
+And added several papers to Zotero, notably: 
+-- Ganin 2018 SPIRAL synthesizing programs from images
+-- Schmidhuber 2002 optimal ordered problem solver
+-- 2016 Ritchie neurally-guided procedural models
+-- 2016 Terpret, probabalistic programming language. 
+
+The last one is perhaps the most interesting. 
+
+Email to Kanjun: 
+	> Do you think humans extrapolate? 
+	> Or just interpolate? 
+	> Prompted by our discussion on how people with photographic memories fail to interpolate, and this is why they aren’t super smart.
+	Humans *definitely* both interpolate and extrapolate.  Planning and imagination both involve extrapolation. 
+
+	I think that one of the things that the brain does is to (statistically + stochastically) assign causes to observed effects, store them (record / learn: gated by attention) in a bijective map (the cortex), and then runtime (perception-time) build hierarchies of self-organizing assemblies out of them to iteratively back out (infer) causes. 
+
+	It could be that, in people with photographic memory, the map 'keys' tend to be more strongly explicit cues (time, context..) as opposed to internally generated 'causes'.  However, another friend and neuroscientist (Tim Gardner) thinks this is not true, rather that photographic memory is as much a factor of mental habit as hardware: these people spend much more time rehearsing and reorganizing their episodic memories. 
+
+	Don't really know; I'm sure there is literature on this.  Likely an effect of both. 
+
+	Regarding mental habit: went skiing last weekend with a friend who has a habit (or compulsion) to talk talk talk.  On the course of the drive back from the mountains, this gave a strong sense of how very differently he thinks, even though we are in nominally adjacent fields -- he's in bioinformatics.  I guess that causal inference is so unconstrained that, even with our evolutionary biases and social forcing functions, the individual gears of another's mind tend to be quite unfamiliar ...
+
+
+This evening finished the pen up / pen down integration (now is more of a "pen/eraser..".  Have not fixed the origin; might well leave that alone, guess. 
+
+In the spirit of Ellis 2018, learning to infer graphics programs, think I'll remove loop (for now) & see how well the transformer does on edits.  
+If it can do that, then ... great!! 
+(Though: suprisingly, it seems to be grokking the new pen commands.. much less noisy than before.  perhaps because the database is much cleaner (just regenerated))

@@ -121,7 +121,7 @@ type tsteak = (* thread state *)
 	}
 	
 let pi = 3.1415926
-let image_count = 512 (* 6*2048*2 *)
+let image_count = 6*2048*2
 let image_res = 30
 let batch_size = ref (256*3)
 let toklen = 30
@@ -281,6 +281,8 @@ let rec gen_ast return_val state =
 			let ls = List.init len (fun _i -> gen_ast false (r-1,br,av)) in
 			`Seq(ls,nulptag)
 		| 3 -> 
+			`Move(gen_ast true (r-1,br,av), gen_ast true (r-1,br,av), nulptag)
+		| 7 -> (* FIXME 3 *)
 			let i = select_writevar av in
 			av.(i) <- true;
 			let n = `Const(foi(Random.int 12),nulptag) in
@@ -459,26 +461,26 @@ let rec compress ast change =
 				| _ -> `Binop(compress a change, s,f, compress b change,w) )
 			| "*" -> (
 				match aa,bb with
-				| a3,_ when a3 > neps && a3 < eps -> 
-					(change := true;`Nop)
-				| _,b3 when b3 > neps && b3 < eps -> 
-					(change := true;`Nop)
-				| a3,_ when a3 > 1.0-.eps && a3 < 1.0+.eps ->
+				| a3,_ when a3 > neps && a3 < eps -> (* 0 * x *)
+					(change := true;`Const(aa,nulptag))
+				| _,b3 when b3 > neps && b3 < eps -> (* x * 0 *)
 					(change := true;`Const(bb,nulptag))
-				| _,b3 when b3 > 1.0-.eps && b3 < 1.0+.eps ->
+				| a3,_ when a3 > 1.0-.eps && a3 < 1.0+.eps -> (* 1 * x *)
+					(change := true;`Const(bb,nulptag))
+				| _,b3 when b3 > 1.0-.eps && b3 < 1.0+.eps -> (* x * 1 *)
 					(change := true;`Const(aa,nulptag))
 				| a3,b3 when b3 > a3 -> 
 					(change := true; `Binop(`Const(b3,bw),s,f,`Const(a3,aw),w))
 				| _ -> `Binop(compress a change, s,f, compress b change,w) )
 			| "/" -> (
 				match aa,bb with
-				| a3,_ when a3 > neps && a3 < eps -> 
-					(change := true;`Nop)
-				| _,b3 when b3 > neps && b3 < eps -> 
-					(change := true;`Nop)
-				| _,b3 when b3 > 1.0-.eps && b3 <1.0+.eps -> 
+				| a3,_ when a3 > neps && a3 < eps ->  (* 0 / x *)
 					(change := true;`Const(aa,nulptag))
-				| a3,b3 when a3-.b3 > neps && a3-.b3 < eps -> 
+				| _,b3 when b3 > neps && b3 < eps -> (* x / 0 *)
+					(change := true;`Nop)
+				| _,b3 when b3 > 1.0-.eps && b3 <1.0+.eps -> (* x / 1 *)
+					(change := true;`Const(aa,nulptag))
+				| a3,b3 when a3-.b3 > neps && a3-.b3 < eps -> (* x / x*)
 					(change := true;`Const(1.0,nulptag))
 				| _ -> `Binop(compress a change, s,f, compress b change,w) )
 			| _ -> `Nop )
@@ -559,17 +561,41 @@ let rec compress ast change =
 		)
 	| `Call(i,l,w) -> `Call(i,l,w)
 	| `Def(i,a,w) -> `Def(i, compress a change, w)
-	| `Pen(a,w) -> `Pen(compress a change, w)
+	| `Pen(a,w) -> (
+		match a with 
+		| `Nop -> ( change := true; `Nop )
+		| _ -> `Pen(compress a change, w)
+		)
 	| `Nop -> `Nop
 
-let rec has_move ast = 
+let rec ast_has matchf ast = 
+	let f = ast_has matchf in
+	if matchf ast then true else (
 	match ast with
-	| `Save(_,a,_) -> has_move a
-	| `Move(_,_,_) -> true
-	| `Binop(a,_,_,b,_) -> ( has_move a || has_move b )
-	| `Seq(l,_) -> List.exists (fun q -> has_move q) l
-	| `Loop(_,a,b,_) -> ( has_move a || has_move b )
-	| _ -> false
+	| `Save(_,a,_) -> f a
+	| `Move(a,b,_) -> (f a || f b)
+	| `Binop(a,_,_,b,_) -> (f a || f b)
+	| `Seq(l,_) -> List.exists f l
+	| `Loop(_,a,b,_) -> ( f a || f b )
+	| `Call(_,l,_) -> List.exists f l
+	| `Pen(a,_) -> f a
+	| _ -> false )
+	
+let has_move ast = 
+	let f a = match a with
+		| `Move(_,_,_) -> true
+		| _ -> false in
+	ast_has f ast
+	
+let has_pen_nop ast = 
+	let f a = match a with
+		| `Pen(b,_) -> (
+			match b with 
+			| `Nop -> true
+			| _ -> false )
+		| _ -> false in
+	ast_has f ast 
+
 	
 let rec compress_ast ast = 
 	let change = ref false in
@@ -613,11 +639,17 @@ let program_to_pdata pro id res =
 		Some {pid=id; pro; progenc; img; 
 				scost; pcost; segs; equiv}
 	) else None
+	
 
 let rec generate_random_logo id res =
 	let actvar = Array.init 5 (fun _i -> false) in
 	let prog = gen_ast false (3,1,actvar) in
 	let pro = compress_ast prog in
+	if has_pen_nop pro then (
+		Logs.err (fun m -> m "pen nop; compressed %s --> %s"
+			(Logo.output_program_pstr prog)
+			(Logo.output_program_pstr pro) ); 
+	); 
 	let pd = program_to_pdata pro id res in
 	match pd with
 	| Some q -> q
@@ -936,7 +968,7 @@ let new_batche steak _bn dosub =
 let new_batche_sup steak bn = 
 	(* supervised only -- use this *)
 	(* generate mode lasts longer, hence probabilities need to be adjusted *)
-	let dosub = (Random.int 10) < 5  in
+	let dosub = (Random.int 10) < 5  in 
 	new_batche steak bn dosub
 
 	
@@ -1437,6 +1469,7 @@ let sort_database device db =
 let init_database steak count = 
 	(* generate 'count' initial program & image pairs *)
 	Logs.info(fun m -> m  "init_database %d" count); 
+	let fid = open_out "/tmp/png/newdbg.txt" in
 	let i = ref 0 in
 	let iters = ref 0 in
 	let replace = ref 0 in
@@ -1447,16 +1480,18 @@ let init_database steak count =
 			generate_random_logo !i image_res in
 		let imgf = tensor_of_bigarray2 data.img steak.device in
 		let dist,mindex = dbf_dist steak imgf in
-		if dist > 0.05 then (
+		if dist < 0.9999 || !i < 2 then (
+		(* bug: white image sets distance to 1.0 to [0] *)
+		if dist > 0.05 then ( 
+			let s = Logo.output_program_pstr data.pro in
 			Logs.debug(fun m -> m 
-				"%d: adding [%d] = %s" !iters !i 
-				(Logo.output_program_pstr data.pro) ); 
+				"%d: adding [%d] = %s" !iters !i s); 
 			ignore( db_push steak data imgf ); 
 			Logo.segs_to_png data.segs 64
 				(Printf.sprintf "/tmp/png/db%05d_.png" !i); 
-			dbf_to_png steak.dbf !i
-				(Printf.sprintf "/tmp/png/db%05d_f.png" !i);
-				(* TODO FIXME ALERT broken images bug *)
+			(*dbf_to_png steak.dbf !i
+				(Printf.sprintf "/tmp/png/db%05d_f.png" !i);*)
+			Printf.fprintf fid "[%d] %s (dist:%f to:%d)\n" !i s dist mindex; 
 			incr i;
 		) else (
 			(* see if there's a replacement *)
@@ -1500,12 +1535,13 @@ let init_database steak count =
 					) 
 				)
 			)
-		); 
+		)); 
 		if !iters mod 40 = 39 then 
 			(* needed to clean up torch allocations *)
 			Caml.Gc.major (); 
 		incr iters
 	) done; 
+	close_out fid; 
 	let db,dbf = sort_database steak.device steak.db in
 	Logs.info(fun m -> m  "%d done; %d sampled; %d replacements; %d equivalents" !i !iters !replace !equivalents); 
 	db,dbf
@@ -1920,7 +1956,50 @@ let make_trains steak =
 			innerloop i done );
 	Logs.debug (fun m -> m "Generated %d sub and %d insdel training examples" 
 		(Vector.length trains_sub) (Vector.length trains_insdel)); 
+	(* save them! (can recreate the edits later) *)
+	let fid = open_out "trains_sub.txt" in
+	Vector.iteri (fun i a -> 
+		Printf.fprintf fid "%d\t%d\t%d\n" i a.be.a_pid a.be.b_pid) trains_sub;
+	close_out fid; 
+	let fid = open_out "trains_insdel.txt" in
+	Vector.iteri (fun i a -> 
+		Printf.fprintf fid "%d\t%d\t%d\n" i a.be.a_pid a.be.b_pid) trains_insdel;
+	close_out fid;
 	(Vector.to_array trains_sub),(Vector.to_array trains_insdel)
+	
+let load_trains steak = 
+	let edited = Array.make p_ctx 0.0 in (* needs replacement! *)
+	let readfile fname = 
+		let lines = read_lines fname in
+		let linesa = Array.of_list lines in
+		let r = Array.map (fun l -> 
+			let sl = String.split_on_char '\t' l in
+			match sl with 
+			| _::aq::bq -> (
+				let ai = int_of_string aq in
+				let bi = int_of_string (List.hd bq) in
+				let a = db_get steak ai in
+				let b = db_get steak bi in
+				let _dist,edits = pdata_to_edits a b in
+				let be = {a_pid = ai; 
+						b_pid = bi;
+						a_progenc = a.progenc; 
+						b_progenc = b.progenc; 
+						c_progenc = a.progenc; (* starting point *)
+						edits; 
+						edited; 
+						count = 0; 
+						indx = 0} in
+				{be; decode=[]; correct_cnt=0}
+				)
+			| _ -> (
+				Logs.err (fun m -> m "%s could not parse %s" fname l); 
+				nuldream
+				) ) linesa in
+		Logs.debug (fun m -> m "%s loaded %d" fname (Array.length r)); 
+		r
+	in
+	(readfile "trains_sub.txt"),(readfile "trains_insdel.txt")
 	
 let make_dreams db = 
 	(* make an array of dreams to test *)
@@ -1995,15 +2074,16 @@ let speclist =
 let () = 
 	Arg.parse speclist anon_fun usage_msg;
 	Random.self_init (); 
+	Logs_threaded.enable ();
 	let () = Logs.set_reporter (Logs.format_reporter ()) in
 	let () = Logs.set_level 
 		(if !g_debug then Some Logs.Debug else Some Logs.Info) in
-	Logs.debug (fun m -> m "Debug logging enabled."); 
+	if !g_debug then Logs.debug (fun m -> m "Debug logging enabled.")
+	else Logs.info (fun m -> m "Debug logging disabled.") ; 
 	if !gparallel then 
 		Logs.info (fun m -> m "Parallel enabled.")
 	else 
 		Logs.info (fun m -> m "Parallel disabled.") ; 
-	Logs_threaded.enable (); 
 	(* Logs levels: App, Error, Warning, Info, Debug *)
 
 	Logs.info(fun m -> m "batch_size:%d" !batch_size);
@@ -2055,7 +2135,6 @@ let () =
 		db,dbf
 	) else ( 
 		Logs.app(fun m -> m "Generating %d programs" (image_count/2));
-		let () = Logs.set_level (Some Logs.Debug) in
 		let start = Unix.gettimeofday () in
 		let db,dbf = init_database supsteak (image_count/2) in
 		(* init also sorts. *)
@@ -2076,7 +2155,11 @@ let () =
 	
 	(* dreams test structure *)
 	let dreams = make_dreams db in
-	let trains_sub, trains_insdel = make_trains supsteak in
+	let trains_sub, trains_insdel = 
+		if Sys.file_exists "trains_sub.txt" 
+			&& Sys.file_exists "trains_insdel.txt" 
+		then load_trains supsteak 
+		else make_trains supsteak in
 	
 	(* update the thread state *)
 	let supsteak2 = {supsteak with db; dbf; dbf_enc; mnist_enc; vae; 
