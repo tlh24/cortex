@@ -1924,7 +1924,7 @@ let make_trains steak =
 					edits; 
 					edited; 
 					count = 0; 
-					indx = 0},true
+					indx = i},true
 				) else (nulbatche,false) in
 			let be2,f = admit true in
 			if f then (
@@ -1969,6 +1969,7 @@ let make_trains steak =
 	
 let load_trains steak = 
 	let edited = Array.make p_ctx 0.0 in (* needs replacement! *)
+	let i = ref 0 in
 	let readfile fname = 
 		let lines = read_lines fname in
 		let linesa = Array.of_list lines in
@@ -1989,7 +1990,8 @@ let load_trains steak =
 						edits; 
 						edited; 
 						count = 0; 
-						indx = 0} in
+						indx = !i} in
+				incr i; 
 				{be; decode=[]; correct_cnt=0}
 				)
 			| _ -> (
@@ -2154,12 +2156,18 @@ let () =
 	let vae,dbf_enc,mnist_enc = Vae.train_ext dbf mnist device !batch_size in
 	
 	(* dreams test structure *)
-	let dreams = make_dreams db in
 	let trains_sub, trains_insdel = 
 		if Sys.file_exists "trains_sub.txt" 
 			&& Sys.file_exists "trains_insdel.txt" 
 		then load_trains supsteak 
 		else make_trains supsteak in
+		
+	(*let dreams = make_dreams db in*)
+	let dreams = Array.append trains_sub trains_insdel |> 
+		(* need to update the accounting variables -- after the edits are decoded, where do we put the string?  This otherwise gets lost in the batch(e) machinery *)
+		Array.mapi (fun i dc -> 
+			let be2 = {dc.be with indx=i} in
+			{dc with be=be2} ) in
 	
 	(* update the thread state *)
 	let supsteak2 = {supsteak with db; dbf; dbf_enc; mnist_enc; vae; 
@@ -2171,13 +2179,13 @@ let () =
 			
 	(* extra bit of complexity!! if Cuda hangs in one of the domains, e.g. for an out-of-memory error, you won't see it on stdout -- it will just stop. 
 	to properly debug, will need to strip down to one thread, no domainslib *)
-	(*let d = Domain.spawn (fun _ -> 
+	let d = Domain.spawn (fun _ -> 
 		let pool2 = Dtask.setup_pool ~num_domains:6 () in
 		dreamsteak.pool <- pool2; 
-		servthread dreamsteak () ) in*)
+		servthread dreamsteak () ) in
 	servthread supsteak2 () ; 
 	(*servthread dreamsteak () ;*)
-	(*Domain.join d;*)
+	Domain.join d;
 	close_out supfid; 
 	close_out dreamfid; 
 	Dtask.teardown_pool supsteak2.pool ; 

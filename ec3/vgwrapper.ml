@@ -4,7 +4,8 @@ open Colors
 
 type kind = MOVE | LINE | CIRCLE
 
-let d_from_origin = 4.5
+let d_from_origin = 4.5 (* originally: 4.5 -> 9x9 *)
+(* changing the scale will require retraining the transformer, of course *)
 let d2 = 2. *. d_from_origin
 
 type canvas = (kind*float*float*float) list

@@ -3858,15 +3858,21 @@ February 14 2023
 Lots of thoughts last night; had a hard time sleeping but at least spent some of the time thinking about 'ec3'.  
 Todo: 
 -> Cross-entropy loss and noise decoding / dreaming. 
-	Not sure if this is 'better' than MSE.  TBD.
+	Not sure if this is 'better' than MSE.  
+	TBD.
+	++ Seems like staying with MSE is fine / better.
 -> Pen up / pen down commands
 	MNIST is made of disconnected segments. 
 	Might be helpful to make the pen 'change color' (e.g -0.5) & have these pixels ignored by the MSE matching algorithm. 
 		Actually, I think the drawing backend is full RGB, so have built-in 3 channels! 
+		Yep, we now have alpha-blending: pen 1 = black, pen 0 = transparent, pen -1 = white. 
 -> Origin command.
 	Need to be able to reset state; cuts dependencies. 
--> Larger workspace. 
+		Punted on this one -- can the model learn to use the transparent pen option? 
+-> Larger image workspace. 
 	Since we only have integers and fractions, make it easier to approximate the digits. 
+	++ This is a relatively easy fix.  
+	++ but changing it requires retraining the transformer. 	
 -> Turn off centering: the turtle needs to move in absolute coordinates. 
 	If we use MSE matching, need absolute positioning. 
 	NB: might want to disable or change the convolutional vision encoder for this. 
@@ -3877,6 +3883,10 @@ Todo:
 	Ideally, this would be enumeration -- but I guess for now we can pass through the transformer.
 		That is, search!
 		Need temperature here. 
+		?? What's the right way to enumerate solutions?  
+			Fortunately, the dreamer is quite fast, > 11k programs/sec, typical.
+			Probably need to keep around a queue of 'diverse and interesting' hypothetical solutions. 
+			And need to continually update the edit-graph (from which training examples are drawn). 
 -> The encoder needs to learn to **ignore segments** (and pixels).
 	This is perhaps the most important thing! 
 	It means breaking the problem down into smaller parts & solving them incrementally.
@@ -3886,8 +3896,10 @@ Todo:
 		But the current training database does not encourage it; or it it does, only weakly.  
 		I guess could fix this by more strongly encouraging generative / additive edits, 
 			particuarly edits on the end of the stroke. 
+-> The dreamer / editor seems to make one-off errors
 	
 Maybe need to build a graph of edits; filling it out online is really slow.  
+	++ Done! 
 	Also: hidden state ?!! 
 	A lot of the edits are to of the initial angle, which serves to rotate the whole image; this might be really hard for the transformer to learn! 
 		How did it learn so well when there were so many edits??! 
@@ -3936,3 +3948,68 @@ This evening finished the pen up / pen down integration (now is more of a "pen/e
 In the spirit of Ellis 2018, learning to infer graphics programs, think I'll remove loop (for now) & see how well the transformer does on edits.  
 If it can do that, then ... great!! 
 (Though: suprisingly, it seems to be grokking the new pen commands.. much less noisy than before.  perhaps because the database is much cleaner (just regenerated))
+
+Feb 20 2023
+
+Read, fairly thoroughly, the TerpreT paper.  It develops a probabalistic programming model, with an intermediate representation like probabalistic assembly with blocks for if/then statements, and unrolled loops. 
+The intermediate representation is attached to four different backends carefully /cleverly. They are: 
+-- Full marginal gradient descent
+	* Where the marginal for each input variable for a given block is treated as a probabalistic variable & parameterized / hyperparameterized. 
+	* if/then blocks have their own marginal + 'ghost variables' are introduced for something something.. 
+-- Integer logic programming
+	* Operands to the assembly blocks are modeled as free variables, and constraints are derived based on interblock consistency + external constraints.  
+	* There are some linear relaxations, again not clear on the details
+-- SMT solver, 
+	* Better / easier translation than above, paper provides a dozen rewrite rules for direct IM to SMT. 
+-- Sketch solver
+	* Like above, only substrate are sketched programs. About as straighforward as the SMT translation. 
+	
+By far, the Sketch solver is the most performant & is the only one that can solve all of the 12 given tasks.  
+In comparison, the gradient descent sovler is the least capable, and uses the most compute -- they give it thousands of epochs (well, each epoch is pretty small -- input data here is rather small..) + restarts with different hyperparameter settings.  
+Still, when the solution space was giveen more degrees of freedom, it was more likely to find a solution & this solution could later be pruned using deterministic algorithms. 
+	C.f. the other algorithms, which all were slower with a larger parameterization space / serch space. 
+	
+This is a clean / clear emphasis that there is much algorithmic work to be done to improve program-synthesis tasks: and a single-pass gradient step / feeback loop is not optimal for very discrete and compact information representations. 
+Instead, solvers like SMT and Sketch have plenty of internal feedback loops (and richer data representations); for example, Sketch runs through a loop where a synthesized program is tested against specifications; if it fails, a negative example is added to the specification and the synthesizer restarts (ish).  
+
+Very likely that the visual cortex does something similar, only even better: there is a continuum between instant-recognition, and effortfull assembly of component parts consistent with the specification.  
+	(Indeed, first pass recognition is probably worse than we internally think; this is only realized when closer examination reveals a discrepancy.)
+	
+I feel that I'm circulating around some sort of "datastructrure" or "data + action structure" or "representation of cause / effect hierarchical spaces", but haven't reach the point where this can be crystalized & implemented. 
+Seems like the brain is doing some sort of statistical relaxation of terse conditional execution model of computers, ala TerpreT, and that it gets around limitations of SGD and pure optimization (the 'pure' part which I'm highly dubious of) with multi-step feedback (omnipresent in brain, less present in ML models due to BPTT issues.). 
+
+Such a datastructure needs to store both keys, values, and 'actions', perhaps forwarding / vector-generalized spaces, of which if/then is a binary extreme?  
+I'm contiuously reminded of just how complicated the brain is, and how many obviously important sub-modules there are (most of which are involved in cognition and behavior in an annoyingly emergent and interdependent way.).  There are elements of reinforcement learning, supervised learning, unsupervised / self-supervised learning, straight memorization, projection into useful latent spaces, evolution of useful latent spaces from experience, annealing, innate abilities like CPGs.  What a mess hah! 
+
+---------
+(from nick): 
+Augmented language models: a survey
+https://arxiv.org/abs/2302.07842 
+
+I hadn't seen that review, thanks for bringing it up -- it's well written.  
+
+(What follows is partly for my own mental organization / trying to maintain perspective amid the whirlwind of recent results.  do comment...)
+
+They reference several papers that I was aware of (namely, STaR, bootstrapping reasoning with reasoning -- pertinent to our approach) and several that I hadn't, including Mind's eye, and PAL, which both have access to an external python interpreter & for use as a physical simulator / data oracle (respectively).   These papers are good, impressive, dizzying.    
+
+Went for a hike yesterday with the ML engineer I mentioned, Alex Naka (& others) and he brought up a good nugget: nobody expected that, by training on really tremendous quantities of pure text data, transformers would not only get a reasonably grounded model of the world, but also some knowledge of how to interact with it -- without interacting themselves.  This is rather profoundly surprising; transformers are statistical predictors! 
+
+Surprising or not, people are very rapidly taking advantage of it, as the review shows.  But it still can't be the whole story; somehow that Vaswani 2017 paper is a gift that keeps on giving; not only are these models capable of interacting, they can be 'programmed' through prompts and examples (Brown 2020, [1]) and are themselves optimizers [2].  This might explain why pre-training on internet English helps LLMs do subsequent operations on DNA sequences.  To understand then regurgitate our world, these models learn computational kernels that apply to base pairs.  Insane.  
+
+Meanwhile, back in program-synthesis land, there is some evidence that stochastic gradient descent (SGD), as is used to train LLMs etc, is rather poor at directly outputting programs [3].  Purpose-built algorithms are orders of magnitude faster, and can solve larger problems. But if transformers are programmable, per above, how can this be?  
+
+As has been observed elsewhere [], SGD works best in very high dimensional spaces, so the 'programs' implemented within start as relaxations of the discrete, compressed representations typically thought of as programs [4].  These sorts of relaxations are smart, and underly another competitor in the inverse-graphics domain: NeRF, or neural radiance fields, which approximate light radiance fields and signed distance functions (hence surfaces) with neural networks.  
+
+Why not just ride the gravy train and do everything with LLMs, then?  Well, people still want programs -- small, terse, interpretable, generalizing bits of code -- not always 175 billion weights that can't usually run on a single computer [5].  The Springtail intermediate approach is not to use transformers to approximate the algorithm, but to have them approximate (and relax) the process of generating algorithms: memory that stores itself as a series of computational kernels.  They can be large and messy, so long as we can check the programs against specifications. 
+
+This merely pushes the problem around a bit: you still need to generate examples of working programs to train on.  Presently I'm doing this through random enumeration, which is OK, but certainly not what humans are doing. Human programmers reason about problems; amortized search is a workable approximation, but it leaves me itching, thinking that there certainly is a better way to represent and store cause:effect data.  The intuition there are many models of computation, and that biology still has some deep insights for us.  That intuition will have to wait, until it firms up.  
+
+[1] https://arxiv.org/abs/2301.13196 Looped Transformers as Programmable Computers[2] https://arxiv.org/abs/2212.10559 Why Can GPT Learn In-Context? Language Models Secretly Perform Gradient Descent as Meta-Optimizers[3] https://arxiv.org/abs/1608.04428 TerpreT: A Probabilistic Programming Language for Program Induction[4] https://transformer-circuits.pub/2021/framework/index.html[5] https://github.com/FMInference/FlexGen
+
+------
+
+Tomorow: 
+-> Enumerate possible program completions based on a specification (MNIST digit). 
+	Then apply a filtering / selection operation based on MSE match. 
+	Use them as a starting point .. 
+	& Add to the training edit graph (if unique). 
