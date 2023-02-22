@@ -4004,7 +4004,11 @@ Why not just ride the gravy train and do everything with LLMs, then?  Well, peo
 
 This merely pushes the problem around a bit: you still need to generate examples of working programs to train on.  Presently I'm doing this through random enumeration, which is OK, but certainly not what humans are doing. Human programmers reason about problems; amortized search is a workable approximation, but it leaves me itching, thinking that there certainly is a better way to represent and store cause:effect data.  The intuition there are many models of computation, and that biology still has some deep insights for us.  That intuition will have to wait, until it firms up.  
 
-[1] https://arxiv.org/abs/2301.13196 Looped Transformers as Programmable Computers[2] https://arxiv.org/abs/2212.10559 Why Can GPT Learn In-Context? Language Models Secretly Perform Gradient Descent as Meta-Optimizers[3] https://arxiv.org/abs/1608.04428 TerpreT: A Probabilistic Programming Language for Program Induction[4] https://transformer-circuits.pub/2021/framework/index.html[5] https://github.com/FMInference/FlexGen
+[1] https://arxiv.org/abs/2301.13196 Looped Transformers as Programmable Computers
+[2] https://arxiv.org/abs/2212.10559 Why Can GPT Learn In-Context? Language Models Secretly Perform Gradient Descent as Meta-Optimizers
+[3] https://arxiv.org/abs/1608.04428 TerpreT: A Probabilistic Programming Language for Program Induction
+[4] https://transformer-circuits.pub/2021/framework/index.html
+[5] https://github.com/FMInference/FlexGen
 
 ------
 
@@ -4013,3 +4017,12 @@ Tomorow:
 	Then apply a filtering / selection operation based on MSE match. 
 	Use them as a starting point .. 
 	& Add to the training edit graph (if unique). 
+
+February 21 2023
+
+To Richard Fuisz: 
+While it's still fresh, let me clarify a thought: 
+Many problem solvers, of which program synthesizers are a special case, rely on bidirectional message-passing schemes (for e.g. constraints) and bespoke (if rigid) datastructures for induction.  They are hence significantly more data and compute efficient than neural networks, but hence also much harder to create / optimize.  Transformers are great in that they *can* approximate arbitrary list manipulation algorithms, and do so emergently from data and SGD, but have limited feedback & could greatly benefit computationally from a more brainlike bidirectionality.  It's also clear that both CS and neuro lean into the idea of 'labeled lines' (the substrate-corollary of datastructures); LLMs find these emergently, but they would have greater data efficiency if more algorithmic structure were built-in.  
+
+The question is whether we can continue to make progress by fine-tuning LLMs trained on as much data as possible, or if we'll need to make something that looks like a statistical relaxation of a bidirectional constraint-solving 'reasoning' system for an 'artificial scientist'.  I really don't know; both?  Favor the latter, obviously, but that's half because the former is moving too fast to keep up!  
+

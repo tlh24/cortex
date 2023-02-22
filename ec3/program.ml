@@ -1059,6 +1059,22 @@ let update_edited be ed =
 (* also, simpler and more comprehensible ... and might as well use the parallel pool for this *)
 (* eh .. this scales easily to very large batches *)
 (* TODO: softmax + temperature decoding (via torch *)
+
+let sample_dist x = 
+	(* sample a discrete decoding from the weightings along dim 1 *)
+	(* assumes batch is dim 0 *)
+	let bs,n = Tensor.shape2_exn x in
+	let y = Tensor.clamp x ~min:(Scalar.float 0.0) ~max:(Scalar.float 1e6)
+			|> Tensor.cumsum ~dim:1 ~dtype:(T Float) in
+	(* this will de facto be sorted, so lo and hi are easy *)
+	let lo = Tensor.narrow y ~dim:1 ~start:0 ~length:1 in
+	let hi = Tensor.narrow y ~dim:1 ~start:(n-1) ~length:1 in
+	let r = Tensor.( (rand_like lo) * (hi-lo) + lo) 
+			|> Tensor.expand ~implicit:true ~size:[bs;n] in
+	let msk = Tensor.( (gt_tensor r y) + (f 0.001)) in (* cast to float *)
+	Tensor.argmax msk ~dim:1 ~keepdim:true
+	(* argmax returns the first index if all are equal (as here) *)
+
 	
 let decode_edit bd ba_edit = 
 	(* decode model output (from python) *)
@@ -1066,17 +1082,17 @@ let decode_edit bd ba_edit =
 	let device = Torch.Device.Cpu in
 	let m = tensor_of_bigarray2 ba_edit device in
 	(* typ = th.argmax(y[:,0:4], 1)  (0 is the batch dim) *)
-	let typ = Tensor.argmax (Tensor.narrow m ~dim:1 ~start:0 ~length:4) 
-			~dim:1 ~keepdim:false in
-	let chr = (Tensor.argmax (Tensor.narrow m ~dim:1 ~start:4 ~length:toklen)
-			~dim:1 ~keepdim:false) in
+	(* need to make this decoding stochastic ... how? *)
+	let typ = sample_dist (Tensor.narrow m ~dim:1 ~start:0 ~length:4) in 
+	let chr = sample_dist (Tensor.narrow m ~dim:1 ~start:4 ~length:toklen) in
 	(* now need to compute cosine distance.  normalize vectors first *)
 	let pos = Tensor.narrow m ~dim:1 ~start:(5+toklen) ~length:(poslen*2)
 			|> normalize_tensor in (* wait where does 5 come from? *)
+	(* add a leading p_ctx dimension *)
 	let pos = Tensor.expand pos ~size:[p_ctx;!batch_size;poslen*2] ~implicit:true in
 	let posenc = Tensor.expand bd.posencn ~size:[!batch_size;p_ctx;poslen*2] ~implicit:true in
 	let sim = Tensor.einsum ~equation:"cbp,bcp -> bc" [pos;posenc] ~path:None in
-	let loc = Tensor.argmax sim ~dim:1 ~keepdim:false in
+	let loc = sample_dist sim in (* only positive matches.. *)
 	(* location must be clipped to within the program. *)
 	let edit_arr = Array.init !batch_size (fun i -> 
 		let etyp = match Tensor.get_int1 typ i with
