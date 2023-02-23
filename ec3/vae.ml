@@ -65,7 +65,7 @@ let train images device batch_size =
   let vs = Var_store.create ~name:"vae" ~device () in
   let vae = VAE.create vs in
   let opt = Optimizer.adam vs ~learning_rate:1e-3 in
-  for epoch_idx = 1 to 4 do
+  for epoch_idx = 1 to 20 do
     let train_loss = ref 0. in
     let samples = ref 0. in
     for _i=0 to 200 do
@@ -83,7 +83,7 @@ let train images device batch_size =
     |> VAE.decode vae
     |> Tensor.to_device ~device:Cpu
     |> Tensor.view ~size:[ -1; 1; image_res; image_res ]
-    |> write_samples ~filename:(Printf.sprintf "s_%d.png" epoch_idx)
+    |> write_samples ~filename:(Printf.sprintf "/tmp/png/vae_samp_%d.png" epoch_idx)
   done; 
   vae
 

@@ -4026,3 +4026,18 @@ Many problem solvers, of which program synthesizers are a special case, rely on 
 
 The question is whether we can continue to make progress by fine-tuning LLMs trained on as much data as possible, or if we'll need to make something that looks like a statistical relaxation of a bidirectional constraint-solving 'reasoning' system for an 'artificial scientist'.  I really don't know; both?  Favor the latter, obviously, but that's half because the former is moving too fast to keep up!  
 
+February 23 2023
+
+Dataflow presently is messy .. needs to be cleaned up between 'dreams' and 'training data' and 'mnist'. 
+Training data: edges in the edit graph corresponding to learnable links.  
+	Edit graph is derived from database of programs, 'db'. 
+	Should be added too when there is a new program, though this will be computationally costly.  
+		coroutine / promise? 
+	Good to continually verify that we can decode supervised data!
+Dreams: A little complicated. 
+	-- Some should blindly starting from the program database (open-ended)
+			Is this needed though?  Can't selecting based on proximity to a target suffice? 
+	-- Some should be verification from supervised data (as above)
+	-- Some should be starting from a close-guess of a mnist specification. 
+	++ All should be added to the database if they meet criteria (generally)
+		-- Though we'll have to tune and shape this admission as time goes on. 

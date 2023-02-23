@@ -254,7 +254,7 @@ for u in range(train_iters):
 	bedts = read_mmap(fd_bedts, [batch_size, e_indim])
 	
 	if th.min(bedts[:,0]) < 0: 
-		print("bedts synchronization issue!\n")
+		print("bedts synchronization issue!")
 	
 	# with th.autocast(device_type='cuda', dtype=torch.float16):
 	# y,q = train_opt(model, bimg.cuda(), bpro.cuda(), bedts.cuda())
