@@ -896,7 +896,8 @@ let new_batche steak _bn dosub =
 		let i = Random.int ndb in
 		let be = trains.(i).be in
 		let edited = Array.make p_ctx 0.0 in
-		{be with edited} )
+		let count = 0 in
+		{be with edited; count} )
 	| _ -> nulbatche
 	
 (*let rec new_batche steak bn dosub = 
@@ -1021,7 +1022,8 @@ let new_batche_dream steak = (* use this *)
 		let d = dreams.(i) in
 		steak.dreamn <- (i+1) mod (Array.length dreams); 
 		let edited = Array.make p_ctx 0.0 in (* memory thrash *)
-		{d.be with edited} )
+		let count = 0 in
+		{d.be with edited; count} )
 	| None -> ( nulbatche )
 	
 let update_edited be ed = 
@@ -1064,17 +1066,20 @@ let sample_dist x =
 	(* sample a discrete decoding from the weightings along dim 1 *)
 	(* assumes batch is dim 0 *)
 	let bs,n = Tensor.shape2_exn x in
-	let y = Tensor.clamp x ~min:(Scalar.float 0.0) ~max:(Scalar.float 1e6)
-			|> Tensor.cumsum ~dim:1 ~dtype:(T Float) in
+	let y = Tensor.clamp x ~min:(Scalar.float 0.0) ~max:(Scalar.float 1e6) in
+	let mx = Tensor.amax y ~dim:[1] ~keepdim:true in
+	let z = Tensor.( exp(y / mx) - (f 1.0) ) (*could be another nonlinearity*)
+			|> Tensor.cumsum  ~dim:1 ~dtype:(T Float) in
 	(* this will de facto be sorted, so lo and hi are easy *)
-	let lo = Tensor.narrow y ~dim:1 ~start:0 ~length:1 in
-	let hi = Tensor.narrow y ~dim:1 ~start:(n-1) ~length:1 in
-	let r = Tensor.( (rand_like lo) * (hi-lo) + lo) 
+	let hi = Tensor.narrow z ~dim:1 ~start:(n-1) ~length:1 in
+	let r = Tensor.( (rand_like hi) * hi ) 
 			|> Tensor.expand ~implicit:true ~size:[bs;n] in
-	let msk = Tensor.( (gt_tensor r y) + (f 0.001)) in (* cast to float *)
-	Tensor.argmax msk ~dim:1 ~keepdim:true
+	let msk = Tensor.( (gt_tensor z r) + (f 0.001) ) in (* cast to float *)
+	Tensor.argmax msk ~dim:1 ~keepdim:false
 	(* argmax returns the first index if all are equal (as here) *)
 
+let sample_dist_dum x = 
+	Tensor.argmax x ~dim:1 ~keepdim:false
 	
 let decode_edit bd ba_edit = 
 	(* decode model output (from python) *)
@@ -1267,6 +1272,8 @@ let update_bea_dream steak bd =
 		let be = bd.bea.(i) in
 		let cnt = be.count in
 		let typ,loc,chr = edit_arr.(i) in
+		(*Logs.debug (fun m -> m "update_bea_dream.innerloop %d %s %d %c" 
+						i typ loc chr );*) 
 		(* edited is initialized in update_be_sup/new_batche_sup; same here *)
 		let edited = if Array.length be.edited <> p_ctx 
 			then Array.make p_ctx 0.0 else be.edited in
@@ -1317,9 +1324,9 @@ let update_bea_dream steak bd =
 	Mutex.lock steak.db_mutex; 
 (* 	Caml.Gc.major (); (* clean up torch variables *) *)
 	Mutex.unlock steak.db_mutex; 
-	let fin2 = Unix.gettimeofday () in
+	(* let fin2 = Unix.gettimeofday () in
 	Logs.debug (fun m -> m "update_bea_dream: Caml.Gc.major time %f;" 
-			(fin2 -. fin)); 
+			(fin2 -. fin)); *) 
 	(* cannot do this within a parallel for loop!!! *)
 	(* in-place update of bea *)
 	bd
@@ -2195,13 +2202,13 @@ let () =
 			
 	(* extra bit of complexity!! if Cuda hangs in one of the domains, e.g. for an out-of-memory error, you won't see it on stdout -- it will just stop. 
 	to properly debug, will need to strip down to one thread, no domainslib *)
-	let d = Domain.spawn (fun _ -> 
+	(*let d = Domain.spawn (fun _ -> 
 		let pool2 = Dtask.setup_pool ~num_domains:6 () in
 		dreamsteak.pool <- pool2; 
-		servthread dreamsteak () ) in
-	servthread supsteak2 () ; 
-	(*servthread dreamsteak () ;*)
-	Domain.join d;
+		servthread dreamsteak () ) in*)
+	(*servthread supsteak2 () ;*) 
+	servthread dreamsteak () ;
+	(*Domain.join d;*)
 	close_out supfid; 
 	close_out dreamfid; 
 	Dtask.teardown_pool supsteak2.pool ; 
