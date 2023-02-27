@@ -364,8 +364,12 @@ let normalize_tensor m =
 	let len = Tensor.(f 1. / len) in
 	Tensor.einsum ~equation:"ij,i -> ij" [m;len] ~path:None 
 	
-let reset_bea () = 
-	let bea = Array.init !batch_size (fun _i -> nulbatche) in
+let reset_bea dreaming =
+	(* dt sets the 'mode' of batchd, which persists thru update_bea*)
+	let dt = {indx=0; dosub=false;
+		dtyp = (if dreaming then `Verify else `Train) } in
+	let bea = Array.init !batch_size
+		(fun _i -> {nulbatche with dt}) in
 	let fresh = Array.init !batch_size (fun _i -> true) in
 	bea,fresh
 	
@@ -488,7 +492,7 @@ let new_batche_mnist steak =
 	Logo.segs_to_png a.segs 64
 		(Printf.sprintf "/tmp/png/b%05d_closest.png" (Atomic.get inspect_counter));
 	Atomic.incr inspect_counter ; *)
-	{ a_pid = indx; b_pid = image_alloc + mid; 
+	{ a_pid = indx; b_pid = 0;
 		a_progenc = a.progenc; 
 		b_progenc = ""; 
 		c_progenc = a.progenc; 
@@ -723,26 +727,29 @@ let try_add_program steak be =
 let update_bea steak bd =
 	let sta = Unix.gettimeofday () in
 	let edit_arr = decode_edit bd bd.bedtd in
-	let innerloop i =
-		let be = bd.bea.(i) in
+	let innerloop bi =
+		let be = bd.bea.(bi) in
 		let cnt = be.count in
-		let typ,loc,chr = edit_arr.(i) in
-		assert (Array.length be.edited = p_ctx) ;
+		let typ,loc,chr = edit_arr.(bi) in
+		(*assert (Array.length be.edited = p_ctx) ;*)
 		let bnew = match be.dt.dtyp with
 		| `Train -> (
 			(* last edit is 'fin', in which case: new batche *)
 			let be2 = if List.length be.edits > 0 then (
-				bd.fresh.(i) <- false;
+				bd.fresh.(bi) <- false;
 				apply_edits be
 				) else be in
 			if List.length be.edits = 0 then (
-				bd.fresh.(i) <- true; (* update image flag *)
-				new_batche_sup steak i false
+				bd.fresh.(bi) <- true; (* update image flag *)
+				new_batche_sup steak bi false
 				) else be2
 			(* TODO : maybe move decoding verification here? *)
 			)
 		| `Verify -> (
-			let be2 = {be with edits=[(typ,loc,chr)];count=cnt+1} in
+			let be1 = if Array.length be.edited <> p_ctx
+				then ( let edited = Array.make p_ctx 0.0 in
+					{be with edited} ) else be in
+			let be2 = {be1 with edits=[(typ,loc,chr)];count=cnt+1} in
 			let be3 = apply_edits be2 in
 			if typ = "fin" || be3.count >= p_ctx/2 then (
 				let train2 = if be.dt.dosub then steak.trains_sub
@@ -751,45 +758,48 @@ let update_bea steak bd =
 				| Some train -> (
 					let a = be3.a_pid in
 					let b = be3.b_pid in
-					let i = be3.dt.indx in
+					let j = be3.dt.indx in
 					let s = progenc2progstr be3.c_progenc in
 					if be3.c_progenc = be3.b_progenc then (
-						train.(i).decode <- (s :: train.(i).decode);
-						train.(i).correct_cnt <- train.(i).correct_cnt + 1;
+						train.(j).decode <- (s :: train.(j).decode);
+						train.(j).correct_cnt <- train.(j).correct_cnt + 1;
 						let ss = if be3.dt.dosub then "_dosub" else "_insdel" in
-						Logs.debug (fun m -> m "train%s:%d [%d]->[%d] %s decoded correctly." ss i a b s)
+						Logs.debug (fun m -> m "train%s:%d [%d]->[%d] %s decoded correctly." ss j a b s)
 					) else (
 						(* if wrong, save one example decode *)
-						if (List.length train.(i).decode) = 0 then
-						train.(i).decode <- (s :: train.(i).decode);
+						if (List.length train.(j).decode) = 0 then
+						train.(j).decode <- (s :: train.(j).decode);
 						(* add to db -- might be new? *)
 						try_add_program steak be3
 					) ;
-					bd.fresh.(i) <- true;
-					new_batche_unsup steak i )
+					bd.fresh.(bi) <- true;
+					new_batche_unsup steak bi )
 				| None -> assert (0 <> 0); nulbatche
 			) else (
-				bd.fresh.(i) <- false;
+				bd.fresh.(bi) <- false;
 				be3
 			) )
 		| `Mnist -> (
-			let be2 = {be with edits=[(typ,loc,chr)];count=cnt+1} in
+			let be1 = if Array.length be.edited <> p_ctx
+				then ( let edited = Array.make p_ctx 0.0 in
+					{be with edited} ) else be in
+			let be2 = {be1 with edits=[(typ,loc,chr)];count=cnt+1} in
 			let be3 = apply_edits be2 in
 			if typ = "fin" || be3.count >= p_ctx/2 then (
-				let mid = be3.dt.indx in
 				(match steak.dreams with
 				| Some dreams -> (
 					let s = progenc2progstr be3.c_progenc in
-					dreams.(i).decode <- (s :: dreams.(i).decode) )
+					let j = be3.dt.indx in
+					dreams.(j).decode <- (s :: dreams.(j).decode) )
 				| None -> assert (0 <> 0); () );
 				try_add_program steak be3;
-				bd.fresh.(i) <- true;
-				new_batche_unsup steak i
+				bd.fresh.(bi) <- true;
+				new_batche_unsup steak bi
 			) else (
-				bd.fresh.(i) <- false;
+				bd.fresh.(bi) <- false;
 				be3
 			) ) in
-		bd.bea.(i) <- bnew;
+		bd.bea.(bi) <- bnew;
 	in (* /innerloop *)
 
 	if !gparallel then
@@ -800,10 +810,10 @@ let update_bea steak bd =
 			innerloop i done;
 
 	let fin = Unix.gettimeofday () in
-	Logs.debug (fun m -> m "update_bea time %f" (fin-.sta))
-	(* Mutex.lock steak.db_mutex;
+	Logs.debug (fun m -> m "update_bea time %f" (fin-.sta));
+	Mutex.lock steak.db_mutex;
 	Caml.Gc.major (); (* clean up torch variables *)
-	Mutex.unlock steak.db_mutex; *)
+	Mutex.unlock steak.db_mutex
 
 
 let bigfill_batchd steak bd = 
@@ -1171,6 +1181,47 @@ let load_database steak =
 			(List.length progs) image_alloc (Atomic.get equivalent)); 
 	)
 
+let save_dreams steak =
+	(* iterate over the training data.. *)
+	let write_dreamcheck dca fname =
+		let fid = open_out (fname^".txt") in
+		Array.iteri (fun i dc ->
+			let d = if List.length dc.decode >= 1 then
+					List.hd dc.decode else "" in
+			let a = progenc2progstr dc.be.a_progenc in
+			let b = progenc2progstr dc.be.b_progenc in
+			Printf.fprintf fid "[%d] ncorrect:%d is:%s->%s decode:%s\n"
+					i dc.correct_cnt a b d;
+			if i < 2048 then (
+				ignore(run_logo_string b 64
+					(Printf.sprintf "/tmp/png/%s%05d_real.png" fname i));
+				ignore(run_logo_string d 64
+					(Printf.sprintf "/tmp/png/%s%05d_decode.png" fname i)) );
+		) dca;
+		close_out fid;
+		Logs.debug (fun m -> m "Saved %d to %s" (Array.length dca) fname) in
+	(match steak.trains_sub with
+	| Some trains -> write_dreamcheck trains "dreamcheck_sub"
+	| _ -> () );
+	(match steak.trains_insdel with
+	| Some trains -> write_dreamcheck trains "dreamcheck_insdel"
+	| _ -> () );
+	(* mnist doesn't need a file, just examples *)
+	let cnt = ref 0 in
+	(match steak.dreams with
+	| Some mnist -> (
+		Array.iteri (fun i dc ->
+			let d = if List.length dc.decode >= 1 then
+					List.hd dc.decode else "" in
+			if (run_logo_string d 64
+				(Printf.sprintf "/tmp/png/mnist%05d_decode.png" i)) then (
+				dbf_to_png steak.mnist dc.be.dt.indx
+					(Printf.sprintf "/tmp/png/mnist%05d_real.png" i);
+				incr cnt)
+			) mnist )
+	| _ -> () );
+	Logs.debug (fun m -> m "Saved %d mnist decodes to /tmp/png" !cnt)
+
 let hidden_nodes = 128
 let epochs = 10000
 let learning_rate = 1e-3
@@ -1264,9 +1315,7 @@ let servthread steak () = (* steak = thread state *)
 				message_loop bd )
 			| _ -> (
 				save_database steak.db "db_prog_new.txt"; 
-				(match steak.dreams with
-				| Some dreams -> ( save_dreams steak.mnist dreams )
-				| _ -> () ); 
+				save_dreams steak ;
 			) ) in
 		if !gparallel then (
 			Dtask.run steak.pool (fun () -> message_loop bd )
@@ -1316,28 +1365,25 @@ let make_trains steak =
 					edits; 
 					edited; 
 					count = 0; 
-					indx = i},true
-				) else (nulbatche,false) in
+					dt=nuldreamtd},true
+				) else (nulbatche,false)
+			in
+			let doadd be2 f train =
+				if f then (
+					let indx = Vector.length train in
+					if (indx mod 1000) = 0 then
+						Logs.debug (fun m -> m "trains_sub size %d" indx);
+					let dt = {indx; dosub=true; dtyp=`Train} in
+					let be = {be2 with dt} in
+					Mutex.lock steak.db_mutex;
+					Vector.push train {be; decode=[]; correct_cnt=0};
+					Mutex.unlock steak.db_mutex
+				)
+			in
 			let be2,f = admit true in
-			if f then (
-				let indx = Vector.length trains_sub in
-				if (indx mod 1000) = 0 then 
-					Logs.debug (fun m -> m "trains_sub size %d" indx); 
-				let be = {be2 with indx} in
-				Mutex.lock steak.db_mutex;
-				Vector.push trains_sub {be; decode=[]; correct_cnt=0}; 
-				Mutex.unlock steak.db_mutex
-			); 
+			doadd be2 f trains_sub ;
 			let be2,f = admit false in
-			if f then (
-				let indx = Vector.length trains_insdel in
-				if (indx mod 1000) = 0 then 
-					Logs.debug (fun m -> m "trains_insdel size %d" indx);
-				let be = {be2 with indx} in
-				Mutex.lock steak.db_mutex;
-				Vector.push trains_insdel {be; decode=[]; correct_cnt=0}; 
-				Mutex.unlock steak.db_mutex
-			); 
+			doadd be2 f trains_insdel ;
 		) dba in (* /innerloop *)
 	if !gparallel then ( 
 		Dtask.run steak.pool (fun () -> 
@@ -1362,7 +1408,7 @@ let make_trains steak =
 let load_trains steak = 
 	let edited = Array.make p_ctx 0.0 in (* needs replacement! *)
 	let i = ref 0 in
-	let readfile fname = 
+	let readfile fname dosub =
 		let lines = read_lines fname in
 		let linesa = Array.of_list lines in
 		let r = Array.map (fun l -> 
@@ -1374,6 +1420,7 @@ let load_trains steak =
 				let a = db_get steak ai in
 				let b = db_get steak bi in
 				let _dist,edits = pdata_to_edits a b in
+				let dt = {indx = !i; dosub; dtyp = `Train} in
 				let be = {a_pid = ai; 
 						b_pid = bi;
 						a_progenc = a.progenc; 
@@ -1382,7 +1429,7 @@ let load_trains steak =
 						edits; 
 						edited; 
 						count = 0; 
-						indx = !i} in
+						dt} in
 				incr i; 
 				{be; decode=[]; correct_cnt=0}
 				)
@@ -1393,93 +1440,28 @@ let load_trains steak =
 		Logs.debug (fun m -> m "%s loaded %d" fname (Array.length r)); 
 		r
 	in
-	(readfile "trains_sub.txt"),(readfile "trains_insdel.txt")
+	(readfile "trains_sub.txt" true),(readfile "trains_insdel.txt" false)
 	
-let make_dreams db = 
-	(* make an array of dreams to test *)
+let make_dreams () =
+	(* array to accumulate mnist approximations *)
 	let dreams = Vector.create ~dummy:nuldream in
-	let aa = Vector.get db 0 in
-	(*let dba = Vector.to_array db in
-	Array.iteri (fun i b -> 
-		let edits = pdata_to_edits aa b in (* not needed, maybe useful *)
+	for i=0 to 60000-1 do (
 		let edited = Array.make p_ctx 0.0 in
-		let be = {a_pid=0; 
-					b_pid=i; 
-					a_progenc=aa.progenc; (* null program *)
-					b_progenc=b.progenc; 
-					c_progenc=""; 
-					edits; 
-					edited; 
-					count=0; 
-					indx=i } in
-		Vector.push dreams {be; decode=[]; correct_cnt=0}
-		) dba ;*) 
-	let ndenovo = Vector.length dreams in
-	(*let dba2 = Array.sub dba 0 2048 in
-	(* add in all 2-edits *)
-	Array.iteri (fun i a -> 
-		Array.iteri (fun j b -> 
-			let dist,edits = Levenshtein.distance a.progenc b.progenc true in
-			if dist > 0 && dist <= 2 then (
-				let edited = Array.make p_ctx 0.0 in
-				let be = {a_pid = i; 
-							b_pid = j;
-							a_progenc = a.progenc; 
-							b_progenc = b.progenc; 
-							c_progenc = a.progenc; (* starting point *)
-							edits; 
-							edited; 
-							count = 0; 
-							indx = (Vector.length dreams)} in
-				Vector.push dreams {be; decode=[]; correct_cnt=0}
-			)
-		) dba2
-	) dba2 ; *)
-	let nedits = Vector.length dreams in
-	for i=0 to 2000-1 do (
-		let edited = Array.make p_ctx 0.0 in (* don't forget this has to be replaced later *)
+			(* don't forget this has to be replaced later *)
+		let dt = {indx = i; dosub = false; dtyp = `Mnist} in
 		let be = {a_pid = 0; 
-					b_pid = image_alloc + i; 
-					a_progenc = aa.progenc; 
+					b_pid = i;
+					a_progenc = "";
 					b_progenc = ""; 
 					c_progenc = ""; 
 					edits = []; 
 					edited; 
-					count=0; indx = (Vector.length dreams)} in
+					count=0; dt} in
 		Vector.push dreams {be; decode=[]; correct_cnt=0}
 	) done; 
 	let nall = Vector.length dreams in
-	Logs.debug (fun m -> m "Generated %d dreams (%d denovo, %d edits, %d mnist)"
-		nall ndenovo (nedits-ndenovo) (nall-nedits)); 
+	Logs.debug (fun m -> m "Generated %d dreams" nall);
 	Vector.to_array dreams
-	
-let save_dreams mnist dreams = 
-	let fid = open_out "dreamcheck.txt" in
-	Array.iteri (fun i dc -> 
-		let d = if List.length dc.decode >= 1 then 
-				List.hd dc.decode else "" in
-		if dc.be.b_pid < image_alloc then (
-			let a = progenc2progstr dc.be.a_progenc in
-			let b = progenc2progstr dc.be.b_progenc in
-			Printf.fprintf fid "[%d] ncorrect:%d is:%s->%s decode:%s\n"
-				i dc.correct_cnt a b d; 
-			if i < 4096 then (
-				ignore(run_logo_string b 64 
-					(Printf.sprintf "/tmp/png/d%05d_real.png" i)); 
-				ignore(run_logo_string d 64 
-					(Printf.sprintf "/tmp/png/d%05d_decode.png" i)) );
-		) else (
-			let mid = dc.be.b_pid - image_alloc in
-			if mid < 60000 && mid >= 0 then (
-				Printf.fprintf fid "[%d] decode:%s\n" i d;
-				dbf_to_png mnist mid
-					(Printf.sprintf "/tmp/png/d%05d_real.png" i); 
-				ignore(run_logo_string d 64 
-					(Printf.sprintf "/tmp/png/d%05d_decode.png" i)) 
-			)
-		) ) dreams;
-	close_out fid; 
-	Logs.debug (fun m -> m "Saved %d to dreamcheck.txt" (Array.length dreams))
 
 let usage_msg = "program.exe -b <batch_size>"
 let input_files = ref []
@@ -1583,12 +1565,7 @@ let () =
 		then load_trains supsteak 
 		else make_trains supsteak in
 		
-	(*let dreams = make_dreams db in*)
-	let dreams = Array.append trains_sub trains_insdel |> 
-		(* need to update the accounting variables -- after the edits are decoded, where do we put the string?  This otherwise gets lost in the batch(e) machinery *)
-		Array.mapi (fun i dc -> 
-			let be2 = {dc.be with indx=i} in
-			{dc with be=be2} ) in
+	let dreams = make_dreams () in
 	
 	(* update the thread state *)
 	let supsteak2 = {supsteak with db; dbf; dbf_enc; mnist_enc; vae; 
@@ -1605,7 +1582,7 @@ let () =
 		let pool2 = Dtask.setup_pool ~num_domains:6 () in
 		dreamsteak.pool <- pool2; 
 		servthread dreamsteak () ) in*)
-	(*servthread supsteak2 () ;*) 
+	(*servthread supsteak2 () ;*)
 	servthread dreamsteak () ;
 	(*Domain.join d;*)
 	close_out supfid; 

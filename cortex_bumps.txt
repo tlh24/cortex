@@ -4041,3 +4041,9 @@ Dreams: A little complicated.
 	-- Some should be starting from a close-guess of a mnist specification. 
 	++ All should be added to the database if they meet criteria (generally)
 		-- Though we'll have to tune and shape this admission as time goes on. 
+		
+February 26 2023
+
+Stop point: need to rejigger dbf_enc to encode new programs as they are added. 
+(Even though, with equivalents, the encoding should not change..)
+Also need to debug that we're training on insdel [0] -> [0] .. ?!!
