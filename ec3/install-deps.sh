@@ -7,7 +7,7 @@ bash -c "sh <(curl -fsSL https://raw.githubusercontent.com/ocaml/opam/master/she
 sudo apt-get install -y make gcc unzip bubblewrap
 opam init
 opam update --confirm-level=unsafe-yes
-opam switch create myswitch ocaml-variants.4.14.0+options ocaml-option-flambda
+opam switch create myswitch ocaml-variants.5.0.0+options ocaml-option-flambda
 eval $(opam env --switch=myswitch)
 opam update --confirm-level=unsafe-yes
 
@@ -18,7 +18,7 @@ unzip ~/libtorch-cxx11-abi-shared-with-deps-1.13.1+cu116.zip
 mv libtorch ~
 export LIBTORCH=/home/ubuntu/libtorch
 
-opam install --confirm-level=unsafe-yes core core_unix vg cairo2 pbrt vector lwt logs pcre torch
+opam install --confirm-level=unsafe-yes vg cairo2 pbrt vector lwt logs pcre torch domainslib
 eval $(opam env --switch=myswitch)
 dune build
 

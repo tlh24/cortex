@@ -23,12 +23,12 @@
 ; 		(bash "export OCAMLPARAM='_,rounds=4,O3=1,inline=100,inline-max-unroll=5'")
 ; 	))
 ; )
-; (modules logo_pb logo_pp logo_types logo parser lexer vgwrapper colors levenshtein program)
+; (modules logo_pb logo_pp logo_types logo parser lexer vgwrapper colors levenshtein ast vae program)
 
 (executable
 	(name program)
 	(modules logo parser lexer vgwrapper colors levenshtein vae ast program)
-	(libraries core core_unix.command_unix vg vg.cairo pbrt vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib)
+	(libraries vg vg.cairo pbrt vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib)
 	)
 
 

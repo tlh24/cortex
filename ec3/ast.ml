@@ -387,29 +387,3 @@ let segs_to_cost segs =
 		(fun c s -> c +. (seglen s)) 0.0 segs in
 	cost
 	
-let rec generate_random_logo id res =
-	let actvar = Array.init 5 (fun _i -> false) in
-	let prog = gen_ast false (3,1,actvar) in
-	let pro = compress_ast prog in
-	if has_pen_nop pro then (
-		Logs.err (fun m -> m "pen nop; compressed %s --> %s"
-			(Logo.output_program_pstr prog)
-			(Logo.output_program_pstr pro) ); 
-	); 
-	let pd = program_to_pdata pro id res in
-	match pd with
-	| Some q -> q
-	| _ -> generate_random_logo id res
-
-let generate_empty_logo id res =
-	(* the first program needs to be empty, for diffing *)
-	let pro = `Nop in
-	let progenc = Logo.encode_program_str pro in
-	Logs.debug(fun m -> m  "empty program encoding: \"%s\"" progenc);
-	let segs = [] in
-	let scost = 0.0 in
-	let pcost = 0 in
-	let img, _ = Logo.segs_to_array_and_cost segs res in
-	let equiv = [] in
-	{pid=id; pro; progenc; img; 
-	scost; pcost; segs; equiv}

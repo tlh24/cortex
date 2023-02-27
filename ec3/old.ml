@@ -294,3 +294,100 @@ let () =
 	close_out sout; 
 	close_out serr;
 	close_out lg; 
+
+
+let update_bea_sup steak bd =
+	let sta = Unix.gettimeofday () in
+	(* need to run through twice, first to apply the edits, second to replace the finished elements. *)
+	let innerloop i =
+		let be = bd.bea.(i) in
+		let be2 = if List.length be.edits > 0 then (
+			bd.fresh.(i) <- false;
+			apply_edits be
+			) else be in
+		let be3 = if List.length be.edits = 0 then (
+			bd.fresh.(i) <- true; (* update image flag *)
+			new_batche_sup steak i
+			) else be2 in
+		bd.bea.(i) <- be3 in (* /innerloop *)
+	if !gparallel then
+		Dtask.parallel_for steak.pool ~start:0 ~finish:(!batch_size-1)
+			~body:innerloop
+	else
+		for i=0 to (!batch_size-1) do
+			innerloop i done;
+	let fin = Unix.gettimeofday () in
+	Logs.debug (fun m -> m "update_bea_sup time %f" (fin-.sta));
+	(* array update was in-place, so just return bd. *)
+	bd
+
+
+let update_bea steak bd =
+	let sta = Unix.gettimeofday () in
+	Logs.debug (fun m -> m "entering update_bea");
+	(* this one only needs one run-through. *)
+	let edit_arr = decode_edit bd bd.bedtd in
+	let innerloop i =
+		let be = bd.bea.(i) in
+		match be.dt with
+		| `Train_sub j -> (
+		let cnt = be.count in
+		let typ,loc,chr = edit_arr.(i) in
+		(*Logs.debug (fun m -> m "update_bea_dream.innerloop %d %s %d %c"
+						i typ loc chr );*)
+		(* edited is initialized in update_be_sup/new_batche_sup; same here *)
+		let edited = if Array.length be.edited <> p_ctx
+			then Array.make p_ctx 0.0 else be.edited in
+		let be2 = {be with edits=[(typ,loc,chr)];count=cnt+1;edited} in
+		let be3 = apply_edits be2 in
+		let be4 = if typ = "fin" || be2.count >= p_ctx/2 then (
+			(* log it! *)
+			(match steak.dreams with
+			| Some dreams -> (
+				let a = be.a_pid in
+				let b = be.b_pid in
+				let i = be.indx in
+				let s = progenc2progstr be.c_progenc in
+				if b < !image_count then (
+					if be.c_progenc = be.b_progenc then (
+						dreams.(i).decode <- (s :: dreams.(i).decode);
+						dreams.(i).correct_cnt <- dreams.(i).correct_cnt+1;
+						Logs.debug (fun m -> m "dream:%d [%d]->[%d] %s decoded correctly." i a b s)
+					) else (
+						(* if wrong, save one example decode *)
+						if (List.length dreams.(i).decode) = 0 then
+						dreams.(i).decode <- (s :: dreams.(i).decode);
+					)
+				) else (
+					let mid = b - image_alloc in
+					if mid < 60000 && mid >= 0 then (
+						dreams.(i).decode <- (s :: dreams.(i).decode);
+					)
+				) )
+			| None -> () );
+			try_add_program steak be3.c_progenc be3;
+			bd.fresh.(i) <- true;
+			new_batche_dream steak i
+		) else (
+			bd.fresh.(i) <- false;
+			be3
+		) in
+		bd.bea.(i) <- be4;
+	in (* /innerloop *)
+	if !gparallel then (* this might work again? *)
+		Dtask.parallel_for steak.pool ~start:0 ~finish:(!batch_size-1)
+			~body:innerloop
+	else
+		for i = 0 to (!batch_size-1) do (* non-parallel version *)
+			innerloop i done;
+	let fin = Unix.gettimeofday () in
+	Logs.debug (fun m -> m "update_bea_dream time %f" (fin-.sta));
+	Mutex.lock steak.db_mutex;
+(* 	Caml.Gc.major (); (* clean up torch variables *) *)
+	Mutex.unlock steak.db_mutex;
+	(* let fin2 = Unix.gettimeofday () in
+	Logs.debug (fun m -> m "update_bea_dream: Caml.Gc.major time %f;"
+			(fin2 -. fin)); *)
+	(* cannot do this within a parallel for loop!!! *)
+	(* in-place update of bea *)
+	bd
