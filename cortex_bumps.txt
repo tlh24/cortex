@@ -4055,3 +4055,15 @@ Use genetic algorithms (yeah, not the best .. for now) to explore,
 Train on this series & use it to shape the resulting distribution. 
 Admit abiguity / sample accordingly
 	Maybe cache old programs to avoid duplicates & speed up the search! 
+
+++ Every time we add a new program (via dreaming), need to launch a task to update the diff graph!
+++ Need to retrain with variable width pens! 
+		Maybe (later) decouple pen width and alpha?? 
+++ 'Hammer' idea above: 
+	need to also add reinforcement-minded edits to the graph. 
+
+March 3 2023
+Ut Ohs: 
+https://news.ycombinator.com/item?id=34979981
+Considering that OpenAI started instruction following alignment a month ago, with 1k workers, to do engineering tasks, coding might be solved now.
+

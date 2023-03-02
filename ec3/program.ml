@@ -566,7 +566,7 @@ let update_edited be ed =
 		for i = la+pp to p_ctx-2 do (
 			be.edited.(i) <- be.edited.(i+1)
 		) done; 
-		be.edited.(la+pp) <- ( -1.0 ) )
+		be.edited.(la+pp) <- ( -1.0 ) ) FIXMEEEE!!!
 	| "ins" -> (
 		if lc < p_ctx/2 && la+pp < p_ctx then (
 			let pp = if pp > lc then lc else pp in
@@ -1405,7 +1405,7 @@ let make_trains steak =
 				if f then (
 					let indx = Vector.length train in
 					if (indx mod 1000) = 0 then
-						Logs.debug (fun m -> m "trains_sub size %d" indx);
+						Logs.debug (fun m -> m "trains_ size %d" indx);
 					let dt = {indx; dosub=true; dtyp=`Train} in
 					let be = {be2 with dt} in
 					Mutex.lock steak.db_mutex;
@@ -1615,7 +1615,7 @@ let () =
 			
 	(* extra bit of complexity!! if Cuda hangs in one of the domains, e.g. for an out-of-memory error, you won't see it on stdout -- it will just stop. 
 	to properly debug, will need to strip down to one thread, no domainslib *)
-	(*let d = Domain.spawn (fun _ -> 
+	(*let d = Domain.spawn (fun _ ->
 		let pool2 = Dtask.setup_pool ~num_domains:6 () in
 		dreamsteak.pool <- pool2; 
 		servthread dreamsteak () ) in*)
