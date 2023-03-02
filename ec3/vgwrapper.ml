@@ -68,7 +68,6 @@ let rec convert_canvas_alpha c = match c with
 let size = Size2.v d2 d2
 let view = Box2.v P2.o (Size2.v d2 d2)
 let area = `O { P.o with P.width = 0.225 ; P.join = `Round }
-let areaPretty = `O { P.o with P.width = 0.225 ; P.join = `Round ; P.cap = `Round}
 let black = I.const (Color.v_srgb 0. 0. 0.)
 let red = I.const (Color.v_srgb 1. 0. 0.)
 let green = I.const (Color.v_srgb 0. 1. 0.)
@@ -80,12 +79,15 @@ let list_to_image l =
   List.fold_right (fun (path,a) img -> 
     (* if pen pressure is negative, eraser! (white *)
     let r,g,b = if a > 0. then 0.0,0.0,0.0 else 1.0,1.0,1.0 in
-    I.blend img (I.cut ~area:(areaPretty) path 
+    let penwidth = max 0.255 (Float.abs (a /. 4.0)) in
+    let area = `O { P.o with P.width = penwidth ; P.join = `Round ; P.cap = `Round} in
+    I.blend img (I.cut ~area path
       (I.const (Color.v_srgb ?a:(Some a) r g b))) )
     c
     (I.const (Color.v_srgb ?a:(Some(0.)) 0.0 0.0 0.0))
 
 let list_to_image_x pretty l =
+  let areaPretty = `O { P.o with P.width = 0.255 ; P.join = `Round ; P.cap = `Round} in
   let rec build_c c aux = match c with
     | [] -> [],aux
     | (x,l)::r ->

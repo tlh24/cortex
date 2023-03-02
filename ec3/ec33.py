@@ -229,7 +229,10 @@ slowloss = 1.0
 losslog = open("loss_log.txt", "w")
 lr = learning_rate
 tic = time.time()
-print("training...")
+if g_training:
+	print("training...")
+if g_dreaming:
+	print("dreaming...")
 
 # compiling this does not seem to work... 
 def train(mod, bimg, bpro, bedts): 

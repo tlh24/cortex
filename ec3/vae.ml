@@ -65,7 +65,7 @@ let train images device batch_size =
   let vs = Var_store.create ~name:"vae" ~device () in
   let vae = VAE.create vs in
   let opt = Optimizer.adam vs ~learning_rate:1e-3 in
-  for epoch_idx = 1 to 20 do
+  for epoch_idx = 1 to 10 do
     let train_loss = ref 0. in
     let samples = ref 0. in
     for _i=0 to 200 do
@@ -104,6 +104,7 @@ let encode_ext vae v =
 	both
 	
 let encode1_ext vae v = 
+  (* encode a 1d vector *)
 	let mean,logvar = VAE.encode vae v in
 	let std = Tensor.(exp (logvar * f 0.5)) in
 	let cols = Tensor.shape1_exn mean in

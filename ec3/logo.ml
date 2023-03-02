@@ -333,8 +333,6 @@ let rec eval (st0:state) (pr:prog) =
 			let n = iof (snd resa) in
 			let n = if n <= 0 then 1 else n in (* not sure how it gets there.. *)
 			let cntlist = List.init n (fun i -> i) in
-			(*Printf.printf "loop of %d using v%d (%d)\n" n indx (st.r);*) 
-			(*Out_channel.flush stdout;*)
 			List.fold_left (fun (st2,res2,segments) i -> 
 				if st2.r < reclim then (
 					st2.stk.(indx) <- foi i;
@@ -366,7 +364,7 @@ let rec eval (st0:state) (pr:prog) =
 	| `Pen(a,_) -> 
 		let (sta, (_,resa), _) = eval st a in
 		(* you can scale the alpha with fractions .. *)
-		let p = Float.max (Float.min resa 1.0) (-1.0) in
+		let p = Float.max (Float.min resa 5.0) (-5.0) in
 		({sta with p},(true, resa), [])
 	| `Nop -> (st, (false, 0.0), [])
 	) else (st0, (false, 0.0), [])
