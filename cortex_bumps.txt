@@ -4047,3 +4047,11 @@ February 26 2023
 Stop point: need to rejigger dbf_enc to encode new programs as they are added. 
 (Even though, with equivalents, the encoding should not change..)
 Also need to debug that we're training on insdel [0] -> [0] .. ?!!
+
+March 2 2023 
+General idea / things to work on: 
+Use genetic algorithms (yeah, not the best .. for now) to explore, 
+'hammer' on the problem, and admit solutions when they improve. 
+Train on this series & use it to shape the resulting distribution. 
+Admit abiguity / sample accordingly
+	Maybe cache old programs to avoid duplicates & speed up the search! 
