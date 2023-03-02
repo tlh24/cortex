@@ -4061,6 +4061,9 @@ Admit abiguity / sample accordingly
 		Maybe (later) decouple pen width and alpha?? 
 ++ 'Hammer' idea above: 
 	need to also add reinforcement-minded edits to the graph. 
+++ Check trains_insdel.txt and trains_sub.txt -- are they being updated? 
+	Make a diff.  
+		Git seems to think they are not changing, not good. 
 
 March 3 2023
 Ut Ohs: 
