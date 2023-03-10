@@ -350,11 +350,13 @@ let db_len steak =
 
 let dbf_dist steak img = 
 	(* using Cosine Similarity *)
+	let imgcnt = !image_count in 
+	assert (imgcnt > 0); (* torch calls fail ow *)
 	let ir = image_res*image_res in
-	let a = Tensor.narrow steak.dbf ~dim:0 ~start:0 ~length:!image_count
+	let a = Tensor.narrow steak.dbf ~dim:0 ~start:0 ~length:imgcnt
 		|> Tensor.view ~size:[-1;ir] in
 	let b = Tensor.view img ~size:[1;-1] 
-		|> Tensor.expand ~implicit:false ~size:[!image_count; ir] in
+		|> Tensor.expand ~implicit:false ~size:[imgcnt; ir] in
 	let d = Tensor.cosine_similarity ~x1:a ~x2:b ~dim:1 ~eps:1e-7 in
 	let maxdex = Tensor.argmax d ~dim:0 ~keepdim:true 
 		|> Tensor.int_value in
@@ -503,14 +505,15 @@ let new_batche_mnist steak =
 	let mid = Random.int len in
 	(* select a starting point closer to the target, w/threshold.
 		goal is conflated with longer interactions, guess ? *)
+	let imgcnt = !image_count in (* may be updated in other threads *)
 	let _dbfn,cols = Tensor.shape2_exn steak.dbf_enc in
-	let a = Tensor.narrow steak.dbf_enc ~dim:0 ~start:0 ~length:!image_count in
+	let a = Tensor.narrow steak.dbf_enc ~dim:0 ~start:0 ~length:imgcnt in
 	let b = Tensor.narrow steak.mnist_enc ~dim:0 ~start:mid ~length:1 
-			|> Tensor.expand ~implicit:false ~size:[!image_count;cols] in
+			|> Tensor.expand ~implicit:false ~size:[imgcnt;cols] in
 	let d = Tensor.cosine_similarity ~x1:a ~x2:b ~dim:1 ~eps:1e-7 in
 	(* add a bit of noise .. ?? *)
-	let d = Tensor.( d + (f 0.05 * (randn [!image_count;]))) in
-	assert ((Tensor.shape1_exn d) = !image_count) ; (* sanity.. *)
+	let d = Tensor.( d + (f 0.05 * (randn [imgcnt;]))) in
+	assert ((Tensor.shape1_exn d) = imgcnt) ; (* sanity.. *)
 	let indx = Tensor.argmax d ~dim:0 ~keepdim:true |> Tensor.int_value in
 	let a = db_get steak indx in
 	let edited = Array.make p_ctx 0.0 in
@@ -550,8 +553,8 @@ let new_batche_unsup steak bn =
 let update_edited be ed = 
 	(* update the 'edited' array, which indicates what has changed in the program string *)
 	let typ,pp,_chr = ed in 
-	let la = String.length be.a_progenc in
-	let lc = String.length be.c_progenc in
+	let la = min (String.length be.a_progenc) (p_ctx/2) in
+	let lc = min (String.length be.c_progenc) (p_ctx/2) in
 	(* in-place array modification *)
 	(match typ with 
 	| "sub" -> (
@@ -566,7 +569,8 @@ let update_edited be ed =
 		for i = la+pp to p_ctx-2 do (
 			be.edited.(i) <- be.edited.(i+1)
 		) done; 
-		be.edited.(la+pp) <- ( -1.0 ) ) FIXMEEEE!!!
+		assert ((la+pp) < p_ctx); 
+		be.edited.(la+pp) <- ( -1.0 ) ) 
 	| "ins" -> (
 		if lc < p_ctx/2 && la+pp < p_ctx then (
 			let pp = if pp > lc then lc else pp in
@@ -746,7 +750,7 @@ let try_add_program steak be =
 let update_bea steak bd =
 	let sta = Unix.gettimeofday () in
 	let edit_arr = decode_edit bd bd.bedtd in
-	let innerloop bi =
+	let innerloop_update_bea bi =
 		let be = bd.bea.(bi) in
 		let cnt = be.count in
 		let typ,loc,chr = edit_arr.(bi) in
@@ -775,15 +779,17 @@ let update_bea steak bd =
 								else steak.trains_insdel in
 				match train2 with
 				| Some train -> (
-					let a = be3.a_pid in
-					let b = be3.b_pid in
 					let j = be3.dt.indx in
 					let s = progenc2progstr be3.c_progenc in
 					if be3.c_progenc = be3.b_progenc then (
 						train.(j).decode <- (s :: train.(j).decode);
-						train.(j).correct_cnt <- train.(j).correct_cnt + 1;
+						train.(j).correct_cnt <- train.(j).correct_cnt + 1
+						(*
+						let a = be3.a_pid in
+						let b = be3.b_pid in
 						let ss = if be3.dt.dosub then "_dosub" else "_insdel" in
 						Logs.debug (fun m -> m "train%s:%d [%d]->[%d] %s decoded correctly." ss j a b s)
+						*)
 					) else (
 						(* if wrong, save one example decode *)
 						if (List.length train.(j).decode) = 0 then
@@ -829,14 +835,14 @@ let update_bea steak bd =
 				be3
 			) ) in
 		bd.bea.(bi) <- bnew;
-	in (* /innerloop *)
+	in (* /innerloop_update_bea *)
 
 	if !gparallel then
 		Dtask.parallel_for steak.pool ~start:0 ~finish:(!batch_size-1)
-			~body:innerloop
+			~body:innerloop_update_bea
 	else
 		for i=0 to (!batch_size-1) do
-			innerloop i done;
+			innerloop_update_bea i done;
 
 	let fin = Unix.gettimeofday () in
 	Logs.debug (fun m -> m "update_bea time %f" (fin-.sta))
@@ -856,7 +862,7 @@ let bigfill_batchd steak bd =
 	for u = 0 to !batch_size-1 do (
 		bd.bedts.{u,0} <- -1. (* TEST (checked via min, python side) *)
 	) done; 
-	let innerloop u = 
+	let innerloop_bigfill_batchd u = 
 		let be = bd.bea.(u) in
 		(* - bpro - *)
 		let offs = Char.code '0' in
@@ -946,13 +952,13 @@ let bigfill_batchd steak bd =
 			for i = 0 to poslen*2-1 do (
 				bd.bedts.{u,5+toklen+i} <- bd.posenc.{pp,i}
 			) done
-		) in (* /innerloop *)
+		) in (* /il_bigfill_batchd *)
 	if !gparallel then
 		Dtask.parallel_for steak.pool ~start:0 ~finish:(!batch_size-1)
-			~body:innerloop
+			~body:innerloop_bigfill_batchd
 	else
 		for i=0 to (!batch_size-1) do
-			innerloop i done; 
+			innerloop_bigfill_batchd i done; 
 	let fin = Unix.gettimeofday () in
 	Logs.debug (fun m -> m "bigfill_batchd time %f" (fin-.sta))
 	
@@ -1045,7 +1051,8 @@ let init_database steak count =
 			generate_empty_logo !i image_res else
 			generate_random_logo !i image_res in
 		let imgf = tensor_of_bigarray2 data.img steak.device in
-		let dist,mindex = dbf_dist steak imgf in
+		let dist,mindex = if !i = 0 then 0.5,0 
+			else dbf_dist steak imgf in
 		if dist < 0.9999 || !i < 2 then (
 		(* bug: white image sets distance to 1.0 to [0] *)
 		if dist > 0.05 then ( 
@@ -1347,7 +1354,7 @@ let servthread steak () = (* steak = thread state *)
 					0 (String.length resp) [] ) ; 
 				message_loop bd )
 			| _ -> (
-				save_database steak.db "db_prog_new.txt"; 
+				save_database steak.db "db_prog.txt"; 
 				save_dreams steak ;
 			) ) in
 		if !gparallel then (
@@ -1384,7 +1391,7 @@ let make_trains steak =
 	let dba = Vector.to_array steak.db in
 	let dbn = Vector.length steak.db in
 	(*let dba2 = Array.sub dba 0 8192 in*)
-	let innerloop i = 
+	let make_trains_innerloop i = 
 		let a = dba.(i) in
 		Array.iteri (fun j b -> 
 			let dist,edits = pdata_to_edits a b in
@@ -1417,14 +1424,14 @@ let make_trains steak =
 			doadd be2 f trains_sub ;
 			let be2,f = admit false in
 			doadd be2 f trains_insdel ;
-		) dba in (* /innerloop *)
+		) dba in (* /make_trains_innerloop *)
 	if !gparallel then ( 
 		Dtask.run steak.pool (fun () -> 
 			Dtask.parallel_for steak.pool ~start:0 ~finish:(dbn-1) 
-				~body:innerloop )
+				~body:make_trains_innerloop )
 	) else (
 		for i = 0 to (dbn-1) do (* non-parallel version *)
-			innerloop i done );
+			make_trains_innerloop i done );
 	Logs.debug (fun m -> m "Generated %d sub and %d insdel training examples" 
 		(Vector.length trains_sub) (Vector.length trains_insdel)); 
 	(* save them! (can recreate the edits later) *)
@@ -1615,13 +1622,13 @@ let () =
 			
 	(* extra bit of complexity!! if Cuda hangs in one of the domains, e.g. for an out-of-memory error, you won't see it on stdout -- it will just stop. 
 	to properly debug, will need to strip down to one thread, no domainslib *)
-	(*let d = Domain.spawn (fun _ ->
-		let pool2 = Dtask.setup_pool ~num_domains:6 () in
+	let d = Domain.spawn (fun _ ->
+		let pool2 = Dtask.setup_pool ~num_domains:8 () in
 		dreamsteak.pool <- pool2; 
-		servthread dreamsteak () ) in*)
-(* 	servthread supsteak2 () ; *)
-	servthread dreamsteak () ;
-	(*Domain.join d;*)
+		servthread dreamsteak () ) in
+	servthread supsteak2 () ;
+(* 	servthread dreamsteak () ; *)
+	Domain.join d;
 	close_out supfid; 
 	close_out dreamfid; 
 	Dtask.teardown_pool supsteak2.pool ; 

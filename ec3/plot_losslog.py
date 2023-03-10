@@ -42,4 +42,4 @@ while True:
 	fig.canvas.flush_events()
 	time.sleep(0.2)
 	print("tick")
-# plt.show()
+	#plt.show()
