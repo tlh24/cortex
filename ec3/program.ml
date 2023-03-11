@@ -349,19 +349,26 @@ let db_len steak =
 	r
 
 let dbf_dist steak img = 
-	(* using Cosine Similarity *)
-	let imgcnt = !image_count in 
-	assert (imgcnt > 0); (* torch calls fail ow *)
-	let ir = image_res*image_res in
-	let a = Tensor.narrow steak.dbf ~dim:0 ~start:0 ~length:imgcnt
-		|> Tensor.view ~size:[-1;ir] in
-	let b = Tensor.view img ~size:[1;-1] 
-		|> Tensor.expand ~implicit:false ~size:[imgcnt; ir] in
-	let d = Tensor.cosine_similarity ~x1:a ~x2:b ~dim:1 ~eps:1e-7 in
-	let maxdex = Tensor.argmax d ~dim:0 ~keepdim:true 
-		|> Tensor.int_value in
-	let dist = Tensor.get d maxdex |> Tensor.float_value in
-	abs_float (1.0-.dist),maxdex	
+	(* first check that there is an image *)
+	let sum = Tensor.sum img |> Tensor.float_value in
+	let sumt = float_of_int (image_res * image_res) in
+	if (sum > 1.0) && (sum < (0.99 *. sumt)) then (
+		(* using Cosine Similarity *)
+		let imgcnt = !image_count in 
+		assert (imgcnt > 0); (* torch calls fail ow *)
+		let ir = image_res*image_res in
+		let a = Tensor.narrow steak.dbf ~dim:0 ~start:0 ~length:imgcnt
+			|> Tensor.view ~size:[-1;ir] in
+		let b = Tensor.view img ~size:[1;-1] 
+			|> Tensor.expand ~implicit:false ~size:[imgcnt; ir] in
+		let d = Tensor.cosine_similarity ~x1:a ~x2:b ~dim:1 ~eps:1e-7 in
+		let maxdex = Tensor.argmax d ~dim:0 ~keepdim:true 
+			|> Tensor.int_value in
+		let dist = Tensor.get d maxdex |> Tensor.float_value in
+		abs_float (1.0-.dist),maxdex	
+	) else (
+		0.05,0 (* I don't like this... hacky! *)
+	)
 
 let dbf_to_png bigt i filename =
 	let dbfim = Tensor.narrow bigt ~dim:0 ~start:i ~length:1 in
@@ -661,6 +668,7 @@ let better_counter = Atomic.make 0
 let try_add_program steak be = 
 	let good,data = progenc_to_pdata be.c_progenc in
 	if good then (
+		steak.dreamn <- steak.dreamn + 1; 
 		(*Logs.info (fun m -> m "Parsed! [%d]: %s \"%s\"" bi progenc progstr);*)
 		let imgf = tensor_of_bigarray2 data.img steak.device in
 		let dist,mindex = dbf_dist steak imgf in
@@ -845,10 +853,12 @@ let update_bea steak bd =
 			innerloop_update_bea i done;
 
 	let fin = Unix.gettimeofday () in
-	Logs.debug (fun m -> m "update_bea time %f" (fin-.sta))
-	(*Mutex.lock steak.db_mutex;
-	Caml.Gc.major (); (* clean up torch variables *)
-	Mutex.unlock steak.db_mutex*)
+	Logs.debug (fun m -> m "update_bea time %f" (fin-.sta));
+	if (steak.dreamn mod 10) = 9 then (
+		Mutex.lock steak.db_mutex;
+		Caml.Gc.major (); (* clean up torch variables (slow..) *)
+		Mutex.unlock steak.db_mutex
+	)
 
 
 let bigfill_batchd steak bd = 
