@@ -1,0 +1,3 @@
+(executable
+ (name demo_planar)
+ (libraries graphics ocamlgraph unix))

@@ -4064,9 +4064,17 @@ Admit abiguity / sample accordingly
 ++ Check trains_insdel.txt and trains_sub.txt -- are they being updated? 
 	Make a diff.  
 		Git seems to think they are not changing, not good. 
+		Actually git might be ignoring the files.. ? 
 
 March 3 2023
 Ut Ohs: 
 https://news.ycombinator.com/item?id=34979981
 Considering that OpenAI started instruction following alignment a month ago, with 1k workers, to do engineering tasks, coding might be solved now.
+
+March 14 2023
+OK, graph for the edits: needs to be a bidirectional
+	-- Edit refer to the original programs (done)
+		This is one-to-two (source and dest)
+	-- Original programs refer to the edits (not present)
+		This is one-to-many (programs are connected to their neighbors via edits). 
 

@@ -5,6 +5,7 @@ open Printf
 open Logo
 open Ast
 open Torch
+open Graph
 
 module Dtask = Domainslib.Task
 
@@ -27,6 +28,13 @@ type pdata = (* db is a Vector of pdata *)
 	; segs : Logo.segment list
 	; equiv : pequiv list
 	}
+	
+module Pdat = struct
+	type t = pdata
+	let compare a b = String.compare a.progenc b.progenc 
+	let hash a = String.hash a.progenc
+	let equal a b = String.equal a.progenc b.progenc
+end
 	
 let nulpdata = 
 	{ pid = -1
@@ -140,6 +148,8 @@ type tsteak = (* thread state *)
 	; trains_sub : dreamcheck array option
 	; trains_insdel : dreamcheck array option
 	}
+	
+module G = Imperative.Graph.Concrete( Pdat )
 	
 let pi = 3.1415926
 let image_count = ref 0 
