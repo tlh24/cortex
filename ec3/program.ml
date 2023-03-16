@@ -150,6 +150,10 @@ type tsteak = (* thread state *)
 	}
 	
 module G = Imperative.Graph.Concrete( Pdat )
+(* this works!  
+but i think that we only need a graph library if we e.g. don't want to re-implement graph algorithms. 
+ocamlgraph seems to store the vertexes in hashtables.  
+Vector storage is fine, too *)
 	
 let pi = 3.1415926
 let image_count = ref 0 
@@ -1534,6 +1538,19 @@ let speclist =
    ("-o", Arg.Set_string output_file, "Set output file name"); 
    ("-g", Arg.Set g_debug, "Turn on debug");
    ("-p", Arg.Set gparallel, "Turn on parallel");]
+   
+let test_logo () = 
+	let s = "( pen ua ; move 4 - ua , ua ; move 2 - 4 , ul / 2 )" in
+	Printf.printf "%s\n" s ; 
+	let g = parse_logo_string s in
+	match g with
+	| Some g2 -> ( 
+		let ss,qq = encode_ast g2 in
+		Logo.print_encoded_ast ss qq; 
+		(* check the decoding *)
+		let g3 = Logo.decode_ast_struct ss qq in
+		Printf.printf "recon:\n%s\n" (Logo.output_program_pstr g3) )
+	| _ -> ()
 
 let () = 
 	Arg.parse speclist anon_fun usage_msg;
@@ -1560,6 +1577,8 @@ let () =
 	(*for _i = 0 to 4 do 
 		measure_torch_copy_speed device
 	done; *)
+	test_logo (); 
+	
 	
 	let mnistd = Mnist_helper.read_files ~prefix:"../otorch-test/data" () in
 	let mimg = Tensor.reshape mnistd.train_images 

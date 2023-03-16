@@ -3986,23 +3986,23 @@ I'm contiuously reminded of just how complicated the brain is, and how many obvi
 Augmented language models: a survey
 https://arxiv.org/abs/2302.07842 
 
-I hadn't seen that review, thanks for bringing it up -- it's well written.  
+I hadn't seen that review, thanks for bringing it up -- it's well written.  
 
-(What follows is partly for my own mental organization / trying to maintain perspective amid the whirlwind of recent results.  do comment...)
+(What follows is partly for my own mental organization / trying to maintain perspective amid the whirlwind of recent results.  do comment...)
 
-They reference several papers that I was aware of (namely, STaR, bootstrapping reasoning with reasoning -- pertinent to our approach) and several that I hadn't, including Mind's eye, and PAL, which both have access to an external python interpreter & for use as a physical simulator / data oracle (respectively).   These papers are good, impressive, dizzying.    
+They reference several papers that I was aware of (namely, STaR, bootstrapping reasoning with reasoning -- pertinent to our approach) and several that I hadn't, including Mind's eye, and PAL, which both have access to an external python interpreter & for use as a physical simulator / data oracle (respectively).   These papers are good, impressive, dizzying.    
 
-Went for a hike yesterday with the ML engineer I mentioned, Alex Naka (& others) and he brought up a good nugget: nobody expected that, by training on really tremendous quantities of pure text data, transformers would not only get a reasonably grounded model of the world, but also some knowledge of how to interact with it -- without interacting themselves.  This is rather profoundly surprising; transformers are statistical predictors! 
+Went for a hike yesterday with the ML engineer I mentioned, Alex Naka (& others) and he brought up a good nugget: nobody expected that, by training on really tremendous quantities of pure text data, transformers would not only get a reasonably grounded model of the world, but also some knowledge of how to interact with it -- without interacting themselves.  This is rather profoundly surprising; transformers are statistical predictors! 
 
-Surprising or not, people are very rapidly taking advantage of it, as the review shows.  But it still can't be the whole story; somehow that Vaswani 2017 paper is a gift that keeps on giving; not only are these models capable of interacting, they can be 'programmed' through prompts and examples (Brown 2020, [1]) and are themselves optimizers [2].  This might explain why pre-training on internet English helps LLMs do subsequent operations on DNA sequences.  To understand then regurgitate our world, these models learn computational kernels that apply to base pairs.  Insane.  
+Surprising or not, people are very rapidly taking advantage of it, as the review shows.  But it still can't be the whole story; somehow that Vaswani 2017 paper is a gift that keeps on giving; not only are these models capable of interacting, they can be 'programmed' through prompts and examples (Brown 2020, [1]) and are themselves optimizers [2].  This might explain why pre-training on internet English helps LLMs do subsequent operations on DNA sequences.  To understand then regurgitate our world, these models learn computational kernels that apply to base pairs.  Insane.  
 
-Meanwhile, back in program-synthesis land, there is some evidence that stochastic gradient descent (SGD), as is used to train LLMs etc, is rather poor at directly outputting programs [3].  Purpose-built algorithms are orders of magnitude faster, and can solve larger problems. But if transformers are programmable, per above, how can this be?  
+Meanwhile, back in program-synthesis land, there is some evidence that stochastic gradient descent (SGD), as is used to train LLMs etc, is rather poor at directly outputting programs [3].  Purpose-built algorithms are orders of magnitude faster, and can solve larger problems. But if transformers are programmable, per above, how can this be?  
 
-As has been observed elsewhere [], SGD works best in very high dimensional spaces, so the 'programs' implemented within start as relaxations of the discrete, compressed representations typically thought of as programs [4].  These sorts of relaxations are smart, and underly another competitor in the inverse-graphics domain: NeRF, or neural radiance fields, which approximate light radiance fields and signed distance functions (hence surfaces) with neural networks.  
+As has been observed elsewhere [], SGD works best in very high dimensional spaces, so the 'programs' implemented within start as relaxations of the discrete, compressed representations typically thought of as programs [4].  These sorts of relaxations are smart, and underly another competitor in the inverse-graphics domain: NeRF, or neural radiance fields, which approximate light radiance fields and signed distance functions (hence surfaces) with neural networks.  
 
-Why not just ride the gravy train and do everything with LLMs, then?  Well, people still want programs -- small, terse, interpretable, generalizing bits of code -- not always 175 billion weights that can't usually run on a single computer [5].  The Springtail intermediate approach is not to use transformers to approximate the algorithm, but to have them approximate (and relax) the process of generating algorithms: memory that stores itself as a series of computational kernels.  They can be large and messy, so long as we can check the programs against specifications. 
+Why not just ride the gravy train and do everything with LLMs, then?  Well, people still want programs -- small, terse, interpretable, generalizing bits of code -- not always 175 billion weights that can't usually run on a single computer [5].  The Springtail intermediate approach is not to use transformers to approximate the algorithm, but to have them approximate (and relax) the process of generating algorithms: memory that stores itself as a series of computational kernels.  They can be large and messy, so long as we can check the programs against specifications. 
 
-This merely pushes the problem around a bit: you still need to generate examples of working programs to train on.  Presently I'm doing this through random enumeration, which is OK, but certainly not what humans are doing. Human programmers reason about problems; amortized search is a workable approximation, but it leaves me itching, thinking that there certainly is a better way to represent and store cause:effect data.  The intuition there are many models of computation, and that biology still has some deep insights for us.  That intuition will have to wait, until it firms up.  
+This merely pushes the problem around a bit: you still need to generate examples of working programs to train on.  Presently I'm doing this through random enumeration, which is OK, but certainly not what humans are doing. Human programmers reason about problems; amortized search is a workable approximation, but it leaves me itching, thinking that there certainly is a better way to represent and store cause:effect data.  The intuition there are many models of computation, and that biology still has some deep insights for us.  That intuition will have to wait, until it firms up.  
 
 [1] https://arxiv.org/abs/2301.13196 Looped Transformers as Programmable Computers
 [2] https://arxiv.org/abs/2212.10559 Why Can GPT Learn In-Context? Language Models Secretly Perform Gradient Descent as Meta-Optimizers
@@ -4022,9 +4022,9 @@ February 21 2023
 
 To Richard Fuisz: 
 While it's still fresh, let me clarify a thought: 
-Many problem solvers, of which program synthesizers are a special case, rely on bidirectional message-passing schemes (for e.g. constraints) and bespoke (if rigid) datastructures for induction.  They are hence significantly more data and compute efficient than neural networks, but hence also much harder to create / optimize.  Transformers are great in that they *can* approximate arbitrary list manipulation algorithms, and do so emergently from data and SGD, but have limited feedback & could greatly benefit computationally from a more brainlike bidirectionality.  It's also clear that both CS and neuro lean into the idea of 'labeled lines' (the substrate-corollary of datastructures); LLMs find these emergently, but they would have greater data efficiency if more algorithmic structure were built-in.  
+Many problem solvers, of which program synthesizers are a special case, rely on bidirectional message-passing schemes (for e.g. constraints) and bespoke (if rigid) datastructures for induction.  They are hence significantly more data and compute efficient than neural networks, but hence also much harder to create / optimize.  Transformers are great in that they *can* approximate arbitrary list manipulation algorithms, and do so emergently from data and SGD, but have limited feedback & could greatly benefit computationally from a more brainlike bidirectionality.  It's also clear that both CS and neuro lean into the idea of 'labeled lines' (the substrate-corollary of datastructures); LLMs find these emergently, but they would have greater data efficiency if more algorithmic structure were built-in.  
 
-The question is whether we can continue to make progress by fine-tuning LLMs trained on as much data as possible, or if we'll need to make something that looks like a statistical relaxation of a bidirectional constraint-solving 'reasoning' system for an 'artificial scientist'.  I really don't know; both?  Favor the latter, obviously, but that's half because the former is moving too fast to keep up!  
+The question is whether we can continue to make progress by fine-tuning LLMs trained on as much data as possible, or if we'll need to make something that looks like a statistical relaxation of a bidirectional constraint-solving 'reasoning' system for an 'artificial scientist'.  I really don't know; both?  Favor the latter, obviously, but that's half because the former is moving too fast to keep up!  
 
 February 23 2023
 
@@ -4078,3 +4078,56 @@ OK, graph for the edits: needs to be a bidirectional
 	-- Original programs refer to the edits (not present)
 		This is one-to-many (programs are connected to their neighbors via edits). 
 
+March 15 2023
+
+Need to fix the postional encoding!  I think what's needed is AST-aware pos. enc.  
+Spent some time looking at Rotational Position Encoding (RoPE), and that too seems like a good idea; 
+	Maybe could combine the two approaches?  
+	Relative hierarchical positions? 
+	Revisit graph transformers? 
+Yes, seems that the right solution is to appropriately encode the position of any given element as a function of it's location in the AST. 
+This, annoyingly, is another series -- address depends on the depth of the AST / DAG. 
+	(Which is not generally true for graphs.  Generic graphs don't have a root note and are not explicitly tree-like)
+How to encode position within the children?  Binary?  One-hot?  Abbreviated rel position encoding? 
+	Seems that absolute position matters greatly for function calls, 
+	and somewhat for arithmetic, 
+	and certainly for if-statements (conditional argument and called argument). 
+	and probably less so for sequences, where relative position probably matters as much. 
+		Could give both and just let the transformer work out which to use. 
+This definitely requires significant rejiggering of the ocaml code!  (Not python -- stays the same). 
+Probably do a one-hot fixed code or something? 
+	Absolute position but not relative pos. 
+	Definitely need to improve position decoding: it's only ~20% accurate now. 
+
+Hi Alex, 
+
+I’ve been meaning to write you regarding projects; got busy last week (am now married!).  Here is a short synopsis.  
+
+1.  FRO (Future House): Idea is to “drug” (with mRNA / siRNA / TF-RNA) neurons in stroke patients to reinstate the critical period in synaptic plasticity.  We’ve identified a few targets -- there are many in the literature -- but the trick is screening them in an effective way that will translate from mice to monkeys to humans.  For this, our draft plan is to use 2p Ca imaging in-vivo looking at amblyopia and auditory tuning, yet I suspect there are more clever ways of doing it.  
+
+Right now just two of us (myself and Justin Little) working on this project, and it’s one project of ~8 in FH, but super interdisciplinary & fairly open-ended.  Needless to say, the market for *any* drug to treat the neural sequelae of stroke is a $B dollar market, even if it only improves things 10-20%.  (This would be a subsequent spin-off: the role of FH is to do the foundational research.)
+
+2.  Program synthesis, my work-from-home work-for-free hobby project.  It’s inspired / directly based on DreamCoder by Kevin Ellis & collaborators at the Tenenbaum lab at MIT.  Critical changes: 
+2.1 The neural network is changed from a low-data “prototypical network” to a transformer. 
+2.2 The domain-specific language is changed from lambda calculus (which I still find a pain to reason about) to a declarative, imperative version of logo. 
+
+Like DreamCoder, the task is inverse graphics: take an image, and convert it to code which generates it.  
+
+Unlike typical LLM, 
+  (1) The model is entirely self-trained: no data outside of random exploration & search and self-generated programs.  Hence, the dataset is “effectively unlimited” or “bootstrapped”.  
+  (2) The model outputs edits, not next tokens.  The edits can be anywhere.  
+  (3) The model serves as a memory-based inversion: given desired effects, generate edits. 
+
+I’m still grinding my way through making all this bootstrap properly.  Right now I’m thinking of moving to a graph transformer & passing it the AST not an encoded string.  
+Generally have too many ideas and not enough coding throughput, hah!  
+
+3.  The longer I fiddle with transformers, the more itchy I get to try out new representations + algorithms for perceptual-motor learning (which program synthesis is, in a nicely constrained and verifiable way).  Thinking something like a modernized Hofstadter Slipnet / copycat.  Or a statistical relaxation on probabilistic programming.   
+  (1) Allow for multi-pass algorithms - not only unidirectional reasoning ala transformers
+  (2) Update intermediate representations directly - not only by backpropagating gradients
+  (3) Default to memorization, extend to generalization - not the opposite
+  (4) Use non-ergodic information presentation to improve efficiency.  
+
+I don’t know your time availability, but happy to share the code for (2) & chat about any of these! 
+
+Cheers, 
+Tim

@@ -67,7 +67,7 @@ let () =
       ["-v", Arg.Int (fun i -> n_ := i),
        " <int>  number of vertices";
        "-prob", Arg.Float (fun f -> prob_ := f),
-       " <float>  probability to discrad an edge";
+       " <float>  probability to discard an edge";
       ]
       (fun _ -> ())
       "usage: demo_planar <options>"

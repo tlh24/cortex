@@ -74,14 +74,6 @@ let dec_item1 i =
 	| 18 -> "pen "
 	| _ -> " "
 	
-let enc_char c s = 
-	s := (enc_char1 c) :: !s
-	
-let enc_int i s = 
-	let j = if i > 9 then 9 
-		else (if i < 0 then 0 else i) in
-	s := (j - 10) :: !s
-	
 let dec_item i =
 	if i < 0 then 
 		(string_of_int (i + 10))^" "
@@ -91,6 +83,14 @@ let dec_item i =
 let rec enc_prog g s = 
 	(* convert a program to integers.  For the transformer. *)
 	(* output list is in REVERSE order *)
+	let enc_char c s = 
+		s := (enc_char1 c) :: !s in
+		
+	let enc_int i s = 
+		let j = if i > 9 then 9 
+			else (if i < 0 then 0 else i) in
+		s := (j - 10) :: !s in
+	
 	match g with 
 	| `Var(i,_) -> ( 
 		enc_char "var" s; 
@@ -148,6 +148,150 @@ let encode_program g =
 	let s = ref [] in
 	enc_prog g s; 
 	List.rev !s
+	
+let rec enc_ast g s q r = 
+	(* convert a program to int list + list int list addresses. *)
+	(* output list is in REVERSE order *)
+	(* "q" is the list int list of addresses *)
+	(* "r" is the address of the parent *)
+	
+	let enc_char c = 
+		s := (enc_char1 c) :: !s;
+		q := r :: !q in
+		
+	let clip i = if i > 9 then 9 
+			else (if i < 0 then 0 else i) in
+	
+	let enc_int i p = 
+		s := ((clip i) - 10) :: !s; 
+		q := (p::r) :: !q in
+		
+	let enc_int_leaf i = 
+		s := ((clip i) - 10) :: !s; 
+		q := r :: !q in
+	
+	match g with 
+	| `Var(i,_) -> ( 
+		enc_char "var"; 
+		enc_int i 0 )
+	| `Save(i,a,_) -> ( 
+		enc_char "="; 
+		enc_int i 0; 
+		enc_ast a s q (1::r))
+	| `Move(a,b,_) -> (
+		enc_char "move"; 
+		enc_ast a s q (0::r);
+		enc_ast b s q (1::r)) 
+	| `Binop(a,sop,_,b,_) -> (
+		enc_char sop; 
+		enc_ast a s q (0::r);
+		enc_ast b s q (1::r))
+	| `Const(i,_) -> (
+		match i with
+		| x when x > 0.99 && x < 1.01 -> enc_char "ul"; 
+		| x when x > 6.28 && x < 6.29 -> enc_char "ua"; 
+		| x -> enc_int_leaf (iof x); 
+		)
+	| `Seq(l,_) -> (
+		enc_char "("; (* meh *)
+		List.iteri (fun i a -> enc_ast a s q (i::r)) l )
+	| `Loop(i,a,b,_) -> (
+		enc_char "loop"; 
+		enc_int i 0; 
+		enc_ast a s q (1::r); 
+		enc_ast b s q (2::r))
+	| `Call(i,l,_) -> (
+		enc_char "call"; 
+		enc_int i 0; 
+		List.iteri (fun i a -> enc_ast a s q ((i+1)::r)) l )
+	| `Def(i,a,_) -> (
+		enc_char "def"; 
+		enc_int i 0; 
+		enc_ast a s q (1::r))
+	| `Pen(a,_) -> (
+		enc_char "pen";
+		enc_ast a s q (1::r) )
+	| `Nop -> ()
+	
+let encode_ast g = 
+	let s = ref [] in
+	let q = ref [] in
+	enc_ast g s q []; 
+	let ss = List.rev !s in
+	let qq = List.map (fun a -> List.rev a) (List.rev !q) in
+	ss,qq
+	
+let print_encoded_ast ss qq = 
+	let indent l = String.init (List.length l) (fun _ -> ' ') in
+	Printf.printf "element : address\n" ; 
+	List.iter2 (fun a b -> 
+		Printf.printf "%s%s:" (indent b) (dec_item a); 
+		List.iter (fun c -> 
+			Printf.printf "%d," c) b; 
+		Printf.printf "\n") ss qq; 
+	Printf.printf "\n"
+	
+	
+(* for decoding, seems we need to extract the structural information
+to get e.g. children when the # if kids is unknown *)
+type node = 
+	Node of int * node list
+	| Null
+	
+let decode_ast_struct ss qq = 
+	(* convert qq, type int list list, to string list *)
+	let sq = List.map2 (fun s q -> s,q) ss qq in
+	let get_kids prefix = 
+		let pl = List.length prefix in
+		(* first pass: address length is this + 1 *)
+		let fl = List.filter (fun (_s,q) -> List.length q = (pl+1) ) sq in
+		(* filter all that have the same prefix *)
+		List.filter (fun (_s,q) -> 
+			let rq = List.rev q in
+			let q' = match rq with 
+				| _::b -> List.rev b
+				| _ -> List.rev prefix in
+			(List.compare compare prefix q') = 0) fl
+	in
+		
+	let rec build (root,prefix) =
+		`Node(root, (get_kids prefix |> List.map build)) in
+		
+	let tree = build (List.hd sq) in
+	
+	let conv_i h = 
+		match h with
+		| `Node(i,_) -> i
+		| _ -> 0 in
+	
+	let rec conv h = 
+		match h with
+		| `Node(parent,kids) -> (
+			let a = Array.of_list kids in
+			let n = nulptag in
+			match (dec_item1 parent) with 
+			| "v"-> `Var(conv_i a.(0), n)
+			| "= " -> `Save(conv_i a.(0), conv a.(1), n)
+			| "move " -> `Move(conv a.(0), conv a.(1), n)
+			| "+ " -> `Binop(conv a.(0), "+", (fun d e -> d +. e), conv a.(1), n)
+			| "- " -> `Binop(conv a.(0), "-", (fun d e -> d -. e), conv a.(1), n)
+			| "* " -> `Binop(conv a.(0), "*", (fun d e -> d *. e), conv a.(1), n)
+			| "/ " -> `Binop(conv a.(0), "/", (fun d e -> d /. e), conv a.(1), n)
+			| "( " -> `Seq(List.map conv kids, n)
+			| "loop " -> `Loop(conv_i a.(0), conv a.(1), conv a.(2), n)
+			| "c" -> `Call(conv_i a.(0), 
+							(match kids with
+							| _::tl -> List.map conv tl
+							| _ -> [`Nop] ), n)
+			| "d" -> `Def( conv_i a.(0), conv a.(1), n)
+			| "pen "-> `Pen(conv a.(0), n)
+			| "ua "-> `Const(6.283185307179586, n)
+			| "ul "-> `Const(1.0, n)
+			| _ -> `Const(foi (parent+10), n) )
+		| _ -> `Nop
+	in
+	conv tree
+
 	
 let decode_program il = 
 	(* convert a program encoded as a list of ints to a string, 
