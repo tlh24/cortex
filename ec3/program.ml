@@ -29,6 +29,12 @@ type pdata = (* db is a Vector of pdata *)
 	; equiv : pequiv list
 	}
 	
+type gdata = 
+	{ pd : pdata
+	; outgoing : gdata ref list
+	; incoming : gdata ref list
+	}
+	
 module Pdat = struct
 	type t = pdata
 	let compare a b = String.compare a.progenc b.progenc 
