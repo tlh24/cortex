@@ -361,7 +361,6 @@ let has_pen_nop ast =
 			| _ -> false )
 		| _ -> false in
 	ast_has f ast 
-
 	
 let rec compress_ast ast = 
 	let change = ref false in
