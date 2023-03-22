@@ -5,11 +5,12 @@ open Printf
 open Logo
 open Ast
 open Torch
-open Graph
+open Graf
 
 module Dtask = Domainslib.Task
 
-type pequiv = 
+type edata = 
+	(* different signature than Graf.gdata *)
 	{ epro : Logo.prog
 	; eprogenc : string
 	; eimg : (float, Bigarray.float32_elt, Bigarray.c_layout) Bigarray.Array2.t
@@ -17,30 +18,24 @@ type pequiv =
 	; epcost : int
 	; esegs : Logo.segment list
 	}
+	
+let nuledata = 
+	{ epro  = `Nop 
+	; eprogenc = ""
+	; eimg  = Bigarray.Array2.create Bigarray.float32 Bigarray.c_layout 1 1
+	; escost = -1.0 (* sequence cost *)
+	; epcost = -1 (* program cost *)
+	; esegs = [] 
+	}
 
-type pdata = (* db is a Vector of pdata *)
-	{ pid : int
-	; pro  : Logo.prog
+(*type pdata = 
+	{ pro  : Logo.prog
 	; progenc : string
 	; img  : (float, Bigarray.float32_elt, Bigarray.c_layout) Bigarray.Array2.t
 	; scost : float (* segment cost *)
 	; pcost : int (* program cost *)
 	; segs : Logo.segment list
-	; equiv : pequiv list
 	}
-	
-type gdata = 
-	{ pd : pdata
-	; outgoing : gdata ref list
-	; incoming : gdata ref list
-	}
-	
-module Pdat = struct
-	type t = pdata
-	let compare a b = String.compare a.progenc b.progenc 
-	let hash a = String.hash a.progenc
-	let equal a b = String.equal a.progenc b.progenc
-end
 	
 let nulpdata = 
 	{ pid = -1
@@ -60,16 +55,16 @@ let nulpequiv =
 	; escost = -1.0
 	; epcost = -1
 	; esegs = []
-	}
+	}*)
 
 type dreamt = [
 	(* int = index; bool = dosub *)
 	| `Train  (* supervised edit application *)
-	| `Verify  (* decode edit appl. *)
+	| `Verify  decode edit appl.
 	| `Mnist
 	]
 
-type dreamtd =
+(*type dreamtd =
 	{ indx : int
 	; dosub : bool
 	; dtyp : dreamt
@@ -79,7 +74,7 @@ let nuldreamtd =
 	{ indx = 0
 	; dosub = false
 	; dtyp = `Train
-	}
+	}*)
 	
 type batche = (* batch edit structure *)
 	{ a_pid : int 
@@ -90,7 +85,8 @@ type batche = (* batch edit structure *)
 	; edits : (string*int*char) list (* supervised *)
 	; edited : float array (* tell python which chars have been changed*)
 	; count : int (* count & cap total # of edits *)
-	; dt : dreamtd (* store state: where was this batch from ? *)
+	; dt : dreamt
+(*	; dt : dreamtd store state: where was this batch from ? *)
 	}
 	
 let nulbatche = 
@@ -102,7 +98,7 @@ let nulbatche =
 	; edits = []
 	; edited = [| 0.0 |]
 	; count = 0 
-	; dt = nuldreamtd
+	; dt = `Train
 	}
 	
 type batchd = (* batch data structure *)
@@ -137,10 +133,12 @@ let nuldream =
 	
 type tsteak = (* thread state *)
 	{ device : Torch.Device.t
-	; db : pdata Vector.t
+	(*; db : pdata Vector.t*)
+	; g : Graf.gdata Vector.t
 	; dbf : Tensor.t
-	; mnist : Tensor.t
 	; dbf_enc : Tensor.t
+	; dbf_map : int array (* map from dbf index to g index *)
+	; mnist : Tensor.t
 	; mnist_enc : Tensor.t
 	; vae : Vae.VAE.t
 	; db_mutex : Mutex.t
@@ -155,7 +153,14 @@ type tsteak = (* thread state *)
 	; trains_insdel : dreamcheck array option
 	}
 	
-module G = Imperative.Graph.Concrete( Pdat )
+(*open Graph
+module Pdat = struct
+	type t = pdata
+	let compare a b = String.compare a.progenc b.progenc 
+	let hash a = String.hash a.progenc
+	let equal a b = String.equal a.progenc b.progenc
+end
+module G = Imperative.Graph.Concrete( Pdat )*)
 (* this works!  
 but i think that we only need a graph library if we e.g. don't want to re-implement graph algorithms. 
 ocamlgraph seems to store the vertexes in hashtables.  
@@ -251,7 +256,7 @@ let run_logo_file fname =
 let progenc_cost s = 
 	String.fold_left (fun a b -> a + (Char.code b)) 0 s
 	
-let program_to_pdata pro id res = 
+let program_to_pdata pro res = 
 	let progenc = Logo.encode_program_str pro in
 	let (_,_,segs) = Logo.eval (Logo.start_state ()) pro in
 	let scost = segs_to_cost segs in
@@ -263,21 +268,21 @@ let program_to_pdata pro id res =
 	if maxd >= 2. && maxd <= 9. && scost >= 4. && scost <= 64. && List.length segs < 8 && String.length progenc < 24 then (
 		let img, _ = Logo.segs_to_array_and_cost segs res in
 		let equiv = [] in
-		Some {pid=id; pro; progenc; img; 
+		Some {pro; progenc; img; 
 				scost; pcost; segs; equiv}
 	) else None
 
-let progenc2progstr progenc =
+let progenc_to_progstr progenc =
 	progenc |>
 	Logo.string_to_intlist |>
 	Logo.decode_program
 
 let progenc_to_pdata progenc =
-	let progstr = progenc2progstr progenc in
+	let progstr = progenc_to_progstr progenc in
 	let g = parse_logo_string progstr in
 	match g with
 	| Some g2 -> (
-		let pd = program_to_pdata g2 99999 image_res in
+		let d = program_to_pdata g2 99999 image_res in
 		match pd with
 		| Some data -> (true,data)
 		| _ -> (false,nulpdata) )
@@ -327,44 +332,67 @@ let bigarray2_of_tensor m =
 let tensor_of_bigarray2 m device =
 	let o = Tensor.of_bigarray (Bigarray.genarray_of_array2 m) in
 	o |> Tensor.to_device ~device
+	
+(*let tensor_of_bigarray1img img device = 
+	let stride = (Bigarray.Array1.dim img) / image_res in
+	let len = Bigarray.Array1.dim img in
+	assert (len >= image_res * image_res); 
+	let o = Tensor.(zeros [image_res; image_res]) in
+	let l = image_res - 1 in
+	for i = 0 to l do (
+		for j = 0 to l do (
+			let c = Bigarray.Array1.get img ((i*stride)+j) in
+			if c <> 0 then (
+				let cf = foi c in
+				(let open Tensor in
+				o.%.{[i;j]} <- (cf /. 255.0); )
+			)
+		) done 
+	) done;
+	o |> Tensor.to_device ~device*)
 		
 let db_get steak i = 
 	Mutex.lock steak.db_mutex ; 
-	let r = Vector.get steak.db i in
+	let r = Vector.get steak.g i in
 	Mutex.unlock steak.db_mutex ; 
 	r
 	
-let db_set steak i d img = 
+(*let db_set_uniq steak i d img = 
 	Mutex.lock steak.db_mutex ; 
-	Vector.set steak.db i d ;
+	Graf.add_uniq steak.g i d ; 
 	Tensor.copy_ (Tensor.narrow steak.dbf ~dim:0 ~start:i ~length:1) ~src:img; 
-	Mutex.unlock steak.db_mutex
+	Mutex.unlock steak.db_mutex*)
 
 let imgf_to_enc steak imgf =
 	Vae.encode1_ext steak.vae
 		(Tensor.view imgf ~size:[image_res*image_res])
 
-let db_push ?(doenc=true) steak d imgf =
+let db_add_uniq ?(doenc=true) steak d imgf =
 	(*imgf is a tensor on same device as dbf*)
 	let added = ref false in
 	let enc = if doenc then
 		imgf_to_enc steak imgf  else Tensor.( zeros [2] ) in
 	Mutex.lock steak.db_mutex; 
-	let l = Vector.length steak.db in
+	let l = Vector.length steak.g in
 	if l < image_alloc then (
-		Vector.push steak.db d ;
-		Tensor.copy_ ~src:imgf (Tensor.narrow steak.dbf ~dim:0 ~start:l ~length:1);
+		let indx = Graf.add_uniq steak.g i d in
+		Tensor.copy_ ~src:imgf (Tensor.narrow steak.dbf ~dim:0 ~start:indx ~length:1);
 		if doenc then
-			Tensor.copy_ ~src:enc (Tensor.narrow steak.dbf_enc ~dim:0 ~start:l ~length:1) ;
+			Tensor.copy_ ~src:enc (Tensor.narrow steak.dbf_enc ~dim:0 ~start:indx ~length:1) ;
 		added := true
 	); 
 	incr image_count; 
 	Mutex.unlock steak.db_mutex; 
-	!added,l
+	!added,indx
+	
+let db_replace_equiv steak indx d2 = 
+	Mutex.lock steak.db_mutex ; 
+	Graf.replace_equiv steak.g indx d2; 
+	Mutex.unlock steak.db_mutex 
 	
 let db_len steak = 
 	Mutex.lock steak.db_mutex ; 
-	let r = Vector.length steak.db in
+	let r = Vector.length steak.g in
 	Mutex.unlock steak.db_mutex ; 
 	r
 
@@ -393,24 +421,6 @@ let dbf_dist steak img =
 let dbf_to_png bigt i filename =
 	let dbfim = Tensor.narrow bigt ~dim:0 ~start:i ~length:1 in
 	Torch_vision.Image.write_image Tensor.((f 1. - dbfim) * f 255.) ~filename
-
-let tensor_of_bigarray1img img device = 
-	let stride = (Bigarray.Array1.dim img) / image_res in
-	let len = Bigarray.Array1.dim img in
-	assert (len >= image_res * image_res); 
-	let o = Tensor.(zeros [image_res; image_res]) in
-	let l = image_res - 1 in
-	for i = 0 to l do (
-		for j = 0 to l do (
-			let c = Bigarray.Array1.get img ((i*stride)+j) in
-			if c <> 0 then (
-				let cf = foi c in
-				(let open Tensor in
-				o.%.{[i;j]} <- (cf /. 255.0); )
-			)
-		) done 
-	) done;
-	o |> Tensor.to_device ~device
 	
 let normalize_tensor m = 
 	(* normalizes length along dimension 1 *)
@@ -470,7 +480,7 @@ let init_batchd filnum =
 	{bpro; bimg; bedts; bedtd; posenc; posencn; bea; fresh}, 
 	[fd_bpro; fd_bimg; fd_bedts; fd_bedtd; fd_posenc]
 	
-let pdata_to_edits a b = 
+(*let pdata_to_edits a b = 
 	let dist, edits = Levenshtein.distance a.progenc b.progenc true in
 	let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
 	(* verify .. a bit of overhead *)
@@ -483,9 +493,9 @@ let pdata_to_edits a b =
 	(* edits are applied in reverse *)
 	(* & add a 'done' edit/indicator *)
 	let edits = ("fin",0,'0') :: edits in
-	dist, (List.rev edits)
+	dist, (List.rev edits)*)
 	
-let edit_criteria edits dosub = 
+(*let edit_criteria edits dosub = 
 	let count_type typ = 
 		List.fold_left 
 		(fun a (t,_p,_c) -> if t = typ then a+1 else a) 0 edits 
@@ -500,11 +510,41 @@ let edit_criteria edits dosub =
 		if nsub = 0 && ndel <= 6 && nins = 0 then r := true; 
 		if nsub = 0 && ndel = 0 && nins <= 6 then r := true
 	);
-	!r
+	!r*)
+	
+let make_batche_train a ai b bi = 
+	let dist,edits = Graf.get_edits a b in
+	let edited = Array.make p_ctx 0.0 in
+	{ a_pid = ai 
+	; b_pid = bi
+	; a_progenc = a.progenc
+	; b_progenc = b.progenc
+	; c_progenc = a.progenc
+	; edits
+	; edited
+	; count = 0
+	; dt = `Train
+	}
+	
 
-let new_batche steak _bn dosub verify =
+let new_batche_train steak =
 	(* only supervised mode! *)
-	let src = if dosub then steak.trains_sub else steak.trains_insdel in
+	let rec selector () = 
+		(* only target unique nodes, e.g. with an image *)
+		let i = Random.int (!image_count) in
+		let di = steak.dbf_map.(i) in
+		let d = Vector.get steak.g di in
+		let ol = List.length d.outgoing in 
+		if ol > 0 then (
+			let k = Random.int ol in
+			let ei = List.nth d.outgoing k in
+			let e = Vector.get steak.g ei in
+			if e.progt = `Uniq then (
+				make_batche_train d e
+			) else selector ()
+		) else selector ()
+	in
+	(*let src = if dosub then steak.trains_sub else steak.trains_insdel in
 	match src with
 	| Some trains -> (
 		let ndb = Array.length trains in
@@ -516,20 +556,20 @@ let new_batche steak _bn dosub verify =
 		let dt = {indx=i; dosub; dtyp} in
 		{be with edited; count; dt} )
 	| _ -> (
-		assert (0 <> 0); nulbatche ) (* bad data? *)
+		assert (0 <> 0); nulbatche ) (* bad data? *)*)
 	
-let new_batche_sup steak bn verify =
+(*let new_batche_sup steak bn verify =
 	(* supervised only -- use this *)
 	(* generate mode lasts longer, hence probabilities need to be adjusted *)
 	let dosub = (Random.int 10) < 5  in 
-	new_batche steak bn dosub verify
+	new_batche steak bn dosub verify*)
 
 let new_batche_mnist steak =
 	(* for now, just set the target B to a sample from MNIST; ultimately will need to have longer interactions & intermediate starting points *)
-	let len = match steak.dreams with
+	(*let len = match steak.dreams with
 		| Some dream -> Array.length dream
-		| _ -> 1 in
-	let mid = Random.int len in
+		| _ -> 1 in*)
+	let mid = Random.int 128 in
 	(* select a starting point closer to the target, w/threshold.
 		goal is conflated with longer interactions, guess ? *)
 	let imgcnt = !image_count in (* may be updated in other threads *)
@@ -544,7 +584,6 @@ let new_batche_mnist steak =
 	let indx = Tensor.argmax d ~dim:0 ~keepdim:true |> Tensor.int_value in
 	let a = db_get steak indx in
 	let edited = Array.make p_ctx 0.0 in
-	let dt = {indx=mid; dosub=false; dtyp=`Mnist} in
 	(* output these subs for inspection *)
 	(*let filename = Printf.sprintf "/tmp/png/b%05d_target.png" (Atomic.get inspect_counter) in
 	dbf_to_png steak.mnist mid filename; 
@@ -555,12 +594,12 @@ let new_batche_mnist steak =
 		a_progenc = a.progenc; 
 		b_progenc = ""; 
 		c_progenc = a.progenc; 
-		edits = []; edited; count=0; dt}
+		edits = []; edited; count=0; dt=`Mnist}
 	(* note: bd.fresh is set in the calling function (for consistency) *)
 		
 let new_batche_unsup steak bn =
 	if (Random.int 10) < 5 then (
-		new_batche_sup steak bn true
+		new_batche_train steak bn true
 	) else (
 		new_batche_mnist steak
 	)
