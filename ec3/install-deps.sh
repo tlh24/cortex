@@ -23,8 +23,8 @@ eval $(opam env --switch=myswitch)
 dune build
 
 # need to install MNIST data
-mkdir ../otorct-test/data/
-cd ../otorct-test/data/
+mkdir ../otorch-test/data/
+cd ../otorch-test/data/
 wget http://yann.lecun.com/exdb/mnist/train-images-idx3-ubyte.gz
 wget http://yann.lecun.com/exdb/mnist/train-labels-idx1-ubyte.gz
 wget http://yann.lecun.com/exdb/mnist/t10k-images-idx3-ubyte.gz
