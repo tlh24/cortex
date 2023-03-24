@@ -150,7 +150,7 @@ let encode_program g =
 	List.rev !s
 	
 let rec enc_ast g s q r = 
-	(* convert a program to int list + list int list addresses. *)
+	(* convert a program to int list + int list list addresses. *)
 	(* output list is in REVERSE order *)
 	(* "q" is the list int list of addresses *)
 	(* "r" is the address of the parent *)
@@ -332,6 +332,9 @@ let output_program_plg lg g =
 	
 let encode_program_str g = 
 	encode_program g |> intlist_to_string
+	
+let progenc_cost s = 
+	String.fold_left (fun a b -> a + (Char.code b)) 0 s
 
 let rec output_program_h g lg =
 	match g with

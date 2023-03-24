@@ -1,7 +1,6 @@
 open Lexer
 open Lexing
 open Printf
-(*open Unix*)
 open Logo
 open Ast
 open Torch
@@ -19,10 +18,12 @@ type edata =
 	; esegs : Logo.segment list
 	}
 	
+let nulimg = Bigarray.Array2.create Bigarray.float32 Bigarray.c_layout 1 1
+	
 let nuledata = 
 	{ epro  = `Nop 
 	; eprogenc = ""
-	; eimg  = Bigarray.Array2.create Bigarray.float32 Bigarray.c_layout 1 1
+	; eimg  = nulimg
 	; escost = -1.0 (* sequence cost *)
 	; epcost = -1 (* program cost *)
 	; esegs = [] 
@@ -41,7 +42,7 @@ let nulpdata =
 	{ pid = -1
 	; pro  = `Nop 
 	; progenc = ""
-	; img  = Bigarray.Array2.create Bigarray.float32 Bigarray.c_layout 1 1
+	; img  = nulimg
 	; scost = -1.0 (* sequence cost *)
 	; pcost = -1 (* program cost *)
 	; segs = [] 
@@ -51,7 +52,7 @@ let nulpdata =
 let nulpequiv = 
 	{ epro = `Nop
 	; eprogenc = ""
-	; eimg = Bigarray.Array2.create Bigarray.float32 Bigarray.c_layout 1 1
+	; eimg = nulimg
 	; escost = -1.0
 	; epcost = -1
 	; esegs = []
@@ -60,7 +61,7 @@ let nulpequiv =
 type dreamt = [
 	(* int = index; bool = dosub *)
 	| `Train  (* supervised edit application *)
-	| `Verify  decode edit appl.
+	| `Verify (* decode edit appl. *)
 	| `Mnist
 	]
 
@@ -76,9 +77,9 @@ let nuldreamtd =
 	; dtyp = `Train
 	}*)
 	
-type batche = (* batch edit structure *)
-	{ a_pid : int 
-	; b_pid : int
+type batche = (* batch edit structure, aka 'be' variable*)
+	{ a_pid : int (* index to graf *)
+	; b_pid : int (* index to graf *)
 	; a_progenc : string (* from *)
 	; b_progenc : string (* to; something if supervised; blank if dream *)
 	; c_progenc : string (* program being edited *)
@@ -107,9 +108,9 @@ type batchd = (* batch data structure *)
 	; bimg : (float, Bigarray.float32_elt, Bigarray.c_layout) 
 				Bigarray.Array3.t (* btch*3, image_res, image_res *)
 	; bedts : (float, Bigarray.float32_elt, Bigarray.c_layout) 
-				Bigarray.Array2.t (* btch , e_indim *)
+				Bigarray.Array2.t (* btch , e_indim - supervised *)
 	; bedtd : (float, Bigarray.float32_elt, Bigarray.c_layout) 
-				Bigarray.Array2.t (* btch , e_indim *)
+				Bigarray.Array2.t (* btch , e_indim - decode *)
 	; posenc : (float, Bigarray.float32_elt, Bigarray.c_layout) 
 				Bigarray.Array2.t (* p_ctx , poslen*2 *)
 	; posencn : Tensor.t (* normalized position encoding *)
@@ -135,7 +136,7 @@ type tsteak = (* thread state *)
 	{ device : Torch.Device.t
 	(*; db : pdata Vector.t*)
 	; g : Graf.gdata Vector.t
-	; dbf : Tensor.t
+	; dbf : Tensor.t (* on the gpu, so we can run comparisons *)
 	; dbf_enc : Tensor.t
 	; dbf_map : int array (* map from dbf index to g index *)
 	; mnist : Tensor.t
@@ -145,6 +146,7 @@ type tsteak = (* thread state *)
 	; superv : bool (* supervised or generative *)
 	; sockno : int
 	; fid : out_channel (* log for e.g. replacements *)
+	; fid_verify : out_channel (* log for verification *)
 	; mutable batchno : int (* for e.g doing garbage collection *)
 	; mutable pool : Domainslib.Task.pool (* needs to be replaced for dream *)
 	; mutable dreamn : int
@@ -253,23 +255,20 @@ let run_logo_file fname =
 	let prog = parse_logo_file fname in
 	ignore(run_prog prog 256 (fname^".png") )
 	
-let progenc_cost s = 
-	String.fold_left (fun a b -> a + (Char.code b)) 0 s
-	
-let program_to_pdata pro res = 
+let program_to_gdata pro res = 
 	let progenc = Logo.encode_program_str pro in
 	let (_,_,segs) = Logo.eval (Logo.start_state ()) pro in
 	let scost = segs_to_cost segs in
-	let pcost = progenc_cost progenc in
+	let pcost = Logo.progenc_cost progenc in
 	let lx,hx,ly,hy = segs_bbx segs in
 	let dx = hx-.lx in
 	let dy = hy-.ly in
 	let maxd = max dx dy in
 	if maxd >= 2. && maxd <= 9. && scost >= 4. && scost <= 64. && List.length segs < 8 && String.length progenc < 24 then (
-		let img, _ = Logo.segs_to_array_and_cost segs res in
-		let equiv = [] in
-		Some {pro; progenc; img; 
-				scost; pcost; segs; equiv}
+		let img, _ = Logo.segs_to_array_and_cost esegs res in
+		let progt = `Uniq in
+		Some ({Graf.nulgdata with 
+			progt; pro; progenc; scost; pcost; segs}, img)
 	) else None
 
 let progenc_to_progstr progenc =
@@ -277,16 +276,28 @@ let progenc_to_progstr progenc =
 	Logo.string_to_intlist |>
 	Logo.decode_program
 
-let progenc_to_pdata progenc =
+let progenc_to_gdata progenc =
 	let progstr = progenc_to_progstr progenc in
 	let g = parse_logo_string progstr in
 	match g with
 	| Some g2 -> (
-		let d = program_to_pdata g2 99999 image_res in
+		let d = program_to_gdata g2 image_res in
 		match pd with
-		| Some data -> (true,data)
-		| _ -> (false,nulpdata) )
-	| _ -> (false,nulpdata)
+		| Some dataimg -> (true,data,img)
+		| _ -> (false,nulgdata,nulimg) )
+	| _ -> (false,nulgdata,nulimg)
+	
+(*let edata_to_gdata d imgf_indx = 
+	{ progt = `Uniq
+	; pro = d.epro
+	; progenc = d.eprogenc
+	; proaddr = []
+	; scost = d.escost
+	; pcost = d.epcost
+	; img = imgf_indx
+	; outgoing = []
+	; equivalents = []
+	}*)
 
 let render_simplest db =
 	(* render the shortest 4*1024 programs in the database.*)
@@ -375,7 +386,7 @@ let db_add_uniq ?(doenc=true) steak d imgf =
 	Mutex.lock steak.db_mutex; 
 	let l = Vector.length steak.g in
 	if l < image_alloc then (
-		let indx = Graf.add_uniq steak.g i d in
+		let indx = Graf.add_uniq steak.g (edata_to_gdata d) in
 		Tensor.copy_ ~src:imgf (Tensor.narrow steak.dbf ~dim:0 ~start:indx ~length:1);
 		if doenc then
 			Tensor.copy_ ~src:enc (Tensor.narrow steak.dbf_enc ~dim:0 ~start:indx ~length:1) ;
@@ -383,7 +394,7 @@ let db_add_uniq ?(doenc=true) steak d imgf =
 	); 
 	incr image_count; 
 	Mutex.unlock steak.db_mutex; 
-	!added,indx
+	!added,l
 	
 let db_replace_equiv steak indx d2 = 
 	Mutex.lock steak.db_mutex ; 
@@ -413,9 +424,9 @@ let dbf_dist steak img =
 		let maxdex = Tensor.argmax d ~dim:0 ~keepdim:true 
 			|> Tensor.int_value in
 		let dist = Tensor.get d maxdex |> Tensor.float_value in
-		abs_float (1.0-.dist),maxdex	
+		true, dist, maxdex	
 	) else (
-		0.05,0 (* I don't like this... hacky! *)
+		false, 0.0, 0 
 	)
 
 let dbf_to_png bigt i filename =
@@ -725,26 +736,25 @@ let pdata_to_edata p =
 let better_counter = Atomic.make 0
 	
 let try_add_program steak be = 
-	let good,data = progenc_to_pdata be.c_progenc in
+	let good,data,img = progenc_to_gdata be.c_progenc in
 	if good then (
 		steak.dreamn <- steak.dreamn + 1; 
 		(*Logs.info (fun m -> m "Parsed! [%d]: %s \"%s\"" bi progenc progstr);*)
 		let imgf = tensor_of_bigarray2 data.img steak.device in
-		let dist,mindex = dbf_dist steak imgf in
+		let dist,mindexx = dbf_dist steak imgf in
+		let mindex = steak.dbf_map.(mindex) in
 		steak.batchno <- steak.batchno + 1 ;
 		(* idea: if it's similar to a currently stored program, but has been hallucinated by the network, and is not too much more costly than what's there,
 		then replace the entry! *)
-		if dist < 0.006 then (
+		if dist > 0.994 then (
 			let data2 = db_get steak mindex in
-			let c1 = data.pcost in
+			let c1 = data.epcost in
 			let c2 = data2.pcost in
 			if c1 < c2 then (
-				let progstr = progenc2progstr data.progenc in
+				let progstr = progenc2progstr data.eprogenc in
 				let progstr2 = progenc2progstr data2.progenc in
 				Logs.info (fun m -> m "#%d b:%d replacing equivalents [%d] %s with %s" !nreplace steak.batchno mindex progstr2 progstr);
-				let ed = pdata_to_edata data2 in
-				let data = {data with equiv = (ed :: data2.equiv)} in
-				db_set steak mindex data imgf;
+				db_replace_equiv steak.g mindex data; 
 				Printf.fprintf steak.fid
 					"(%d) [%d] d:%f %s --> %s | pcost %d -> %d | scost %f -> %f\n"
 					!nreplace mindex dist progstr2 progstr c2 c1
@@ -752,7 +762,7 @@ let try_add_program steak be =
 				flush steak.fid;
 				Logo.segs_to_png data2.segs 64
 					(Printf.sprintf "/tmp/png/%05d_old.png" !nreplace);
-				Logo.segs_to_png data.segs 64
+				Logo.segs_to_png data.esegs 64
 					(Printf.sprintf "/tmp/png/%05d_new.png" !nreplace);
 				(* get the dbf entry too, to check *)
 				let filename = Printf.sprintf
@@ -762,8 +772,8 @@ let try_add_program steak be =
 				(* those two operations are in-place, so subsequent batches should contain the new program :-) *)
 			)
 		) ;
-		if dist > 0.3 then (
-			let added,l = db_push steak data imgf in
+		if dist < 0.7 then (
+			let added,l = db_add_uniq steak (edata_to_gdata data) imgf in
 			if added then (
 				Logs.info(fun m -> m
 					"try_add_program: adding new [%d] = %s" l
@@ -819,68 +829,54 @@ let update_bea steak bd =
 	let edit_arr = decode_edit bd bd.bedtd in
 	let innerloop_update_bea bi =
 		let be = bd.bea.(bi) in
-		let cnt = be.count in
+		(* check edited array allocation *)
+		let be1 = if Array.length be.edited <> p_ctx
+			then ( let edited = Array.make p_ctx 0.0 in
+				{be with edited} ) else be in
+		let cnt = be1.count in
 		let typ,loc,chr = edit_arr.(bi) in
 		(*assert (Array.length be.edited = p_ctx) ;*)
-		let bnew = match be.dt.dtyp with
+		let bnew = match be1.dt.dtyp with
 		| `Train -> (
 			(* last edit is 'fin', in which case: new batche *)
-			let be2 = if List.length be.edits > 0 then (
-				bd.fresh.(bi) <- false;
-				apply_edits be
-				) else be in
-			if List.length be.edits = 0 then (
+			if List.length be1.edits = 0 then (
 				bd.fresh.(bi) <- true; (* update image flag *)
 				new_batche_sup steak bi false
-				) else be2
-			(* TODO : maybe move decoding verification here? *)
+			) else (
+				bd.fresh.(bi) <- false;
+				apply_edits be1
+			)
+			(* TODO : add decoding verification here? 
+				would require second accumulator string *)
 			)
 		| `Verify -> (
-			let be1 = if Array.length be.edited <> p_ctx
-				then ( let edited = Array.make p_ctx 0.0 in
-					{be with edited} ) else be in
 			let be2 = {be1 with edits=[(typ,loc,chr)];count=cnt+1} in
 			let be3 = apply_edits be2 in
 			if typ = "fin" || be3.count >= p_ctx/2 then (
-				let train2 = if be.dt.dosub then steak.trains_sub
-								else steak.trains_insdel in
-				match train2 with
-				| Some train -> (
-					let j = be3.dt.indx in
-					let s = progenc2progstr be3.c_progenc in
-					if be3.c_progenc = be3.b_progenc then (
-						train.(j).decode <- (s :: train.(j).decode);
-						train.(j).correct_cnt <- train.(j).correct_cnt + 1
-						(*
-						let a = be3.a_pid in
-						let b = be3.b_pid in
-						let ss = if be3.dt.dosub then "_dosub" else "_insdel" in
-						Logs.debug (fun m -> m "train%s:%d [%d]->[%d] %s decoded correctly." ss j a b s)
-						*)
-					) else (
-						(* if wrong, save one example decode *)
-						if (List.length train.(j).decode) = 0 then
-						train.(j).decode <- (s :: train.(j).decode);
-						(* add to db -- might be new? *)
-						try_add_program steak be3
-					) ;
-					bd.fresh.(bi) <- true;
-					new_batche_unsup steak bi )
-				| None -> assert (0 <> 0); nulbatche
+				(* write this to file for now; stats later *)
+				let c = if be3.c_progenc = be3.b_progenc then '+' else '-' in
+				Printf.fprintf steak.fid_verify "[%c] %s -> %s ; decode %s\n" c
+					(progenc2str be3.a_progenc)
+					(progenc2str be3.b_progenc)
+					(progenc2str be3.c_progenc); 
+				if c = '+' then (
+					Graf.incr_good steak.g be3.a_pid; 
+					Graf.incr_good steak.g be3.b_pid 
+				); 
+				bd.fresh.(bi) <- true;
+				new_batche_unsup steak bi 
 			) else (
 				bd.fresh.(bi) <- false;
 				be3
 			) )
 		| `Mnist -> (
-			let be1 = if Array.length be.edited <> p_ctx
-				then ( let edited = Array.make p_ctx 0.0 in
-					{be with edited} ) else be in
 			let be2 = {be1 with edits=[(typ,loc,chr)];count=cnt+1} in
 			let be3 = apply_edits be2 in
 			if typ = "fin" || be3.count >= p_ctx/2 then (
-				let good,data = progenc_to_pdata be3.c_progenc in
+				let good,data,img = progenc_to_gdata be3.c_progenc in
 				if good then (
-					let imgf = tensor_of_bigarray2 data.img steak.device in
+					(* fix this later: keep around programs that improve fit *)
+					(*let imgf = tensor_of_bigarray2 img steak.device in
 					let enc = imgf_to_enc steak imgf in
 					let s = progenc2progstr data.progenc in
 					let j = be3.dt.indx in
@@ -892,8 +888,8 @@ let update_bea steak bd =
 						dreams.(j).decode <- (s :: dreams.(j).decode);
 						dreams.(j).cossim <- (d :: dreams.(j).cossim)
 						)
-					| None -> assert (0 <> 0); () );
-					try_add_program steak be3;
+					| None -> assert (0 <> 0); () );*)
+					try_add_program steak be3
 				);
 				bd.fresh.(bi) <- true;
 				new_batche_unsup steak bi
@@ -938,13 +934,13 @@ let bigfill_batchd steak bd =
 		let llim = (p_ctx/2)-2 in
 		let l = String.length be.a_progenc in
 		if l > llim then 
-			Logs.debug(fun m -> m  "too long(%d):%s" l be.a_progenc);
+			Logs.debug(fun m -> m  "a_progenc too long(%d):%s" l be.a_progenc);
 		String.iteri (fun i c -> 
 			let j = (Char.code c) - offs in
 			if i < llim then bd.bpro.{u,i,j} <- 1.0 ) be.a_progenc ; 
 		let lc = String.length be.c_progenc in
 		if lc > llim then 
-			Logs.debug(fun m -> m  "too long(%d):%s" lc be.c_progenc);
+			Logs.debug(fun m -> m  "c_progenc too long(%d):%s" lc be.c_progenc);
 		String.iteri (fun i c -> 
 			let j = (Char.code c) - offs in
 			if (i+l) < 2*llim then (
@@ -999,7 +995,7 @@ let bigfill_batchd steak bd =
 			bd.fresh.(u) <- false
 		); 
 	  (* - bedts - *)
-		bd.bedts.{u,0} <- 0.0; 
+		bd.bedts.{u,0} <- 0.0; (* TEST python synchronization *)
 		let (typ,pp,c) = if (List.length be.edits) > 0 
 			then List.hd be.edits
 			else ("fin",0,'0') in
@@ -1036,7 +1032,12 @@ let truncate_list n l =
 	let a = Array.of_list l in
 	Array.sub a 0 n |> Array.to_list
 
-let sort_database device db =
+let sort_database steak =
+	(* sort the graph 
+		well, sort the Vector underlying the graph -- since graphs don't really have an order. 
+		leave imgf alone, since now we don't have a dup *)
+	let g = Graf.sort steak.g in
+	let steak' = {steak with g } 
 	(* sorts the database & updates Tensor dbf *)
 	(* sorts both primary keys and equivalent lists *)
 	let dba = Vector.to_array db in (* easier .. *)
@@ -1080,7 +1081,7 @@ let sort_database device db =
 	Logs.debug (fun m -> m "sort_database tensor copy done, %f" (fin-.sta)); 
 	(Vector.of_array ~dummy:nulpdata dba),dbf
 
-let rec generate_random_logo id res =
+let rec generate_random_logo res =
 	let actvar = Array.init 5 (fun _i -> false) in
 	let prog = gen_ast false (3,1,actvar) in
 	let pro = compress_ast prog in
@@ -1089,23 +1090,21 @@ let rec generate_random_logo id res =
 			(Logo.output_program_pstr prog)
 			(Logo.output_program_pstr pro) );
 	);
-	let pd = program_to_pdata pro id res in
-	match pd with
+	let ed = program_to_edata pro res in
+	match ed with
 	| Some q -> q
-	| _ -> generate_random_logo id res
+	| _ -> generate_random_logo res
 
-let generate_empty_logo id res =
+let generate_empty_logo res =
 	(* the first program needs to be empty, for diffing *)
-	let pro = `Nop in
-	let progenc = Logo.encode_program_str pro in
-	Logs.debug(fun m -> m  "empty program encoding: \"%s\"" progenc);
-	let segs = [] in
-	let scost = 0.0 in
-	let pcost = 0 in
-	let img, _ = Logo.segs_to_array_and_cost segs res in
-	let equiv = [] in
-	{pid=id; pro; progenc; img;
-	scost; pcost; segs; equiv}
+	let epro = `Nop in
+	let eprogenc = Logo.encode_program_str pro in
+	let esegs = [] in
+	let escost = 0.0 in
+	let epcost = 0 in
+	let eimg, _ = Logo.segs_to_array_and_cost segs res in
+	{epro; eprogenc; eimg;
+	escost; epcost; esegs}
 
 let init_database steak count = 
 	(* generate 'count' initial program & image pairs *)
@@ -1117,18 +1116,18 @@ let init_database steak count =
 	let equivalents = ref 0 in
 	while !i < count do (
 		let data = if !i = 0 then
-			generate_empty_logo !i image_res else
-			generate_random_logo !i image_res in
-		let imgf = tensor_of_bigarray2 data.img steak.device in
-		let dist,mindex = if !i = 0 then 0.5,0 
+			generate_empty_logo image_res else
+			generate_random_logo image_res in
+		let imgf = tensor_of_bigarray2 data.eimg steak.device in
+		let good,dist,mindex = if !i = 0 then true,0.5,0 
 			else dbf_dist steak imgf in
-		if dist < 0.9999 || !i < 2 then (
+		if good || !i < 2 then (
 		(* bug: white image sets distance to 1.0 to [0] *)
 		if dist > 0.05 then ( 
-			let s = Logo.output_program_pstr data.pro in
+			let s = Logo.output_program_pstr data.epro in
 			Logs.debug(fun m -> m 
 				"%d: adding [%d] = %s" !iters !i s); 
-			ignore( db_push steak data imgf ~doenc:false );
+			ignore( db_add_uniq steak data imgf ~doenc:false );
 			Logo.segs_to_png data.segs 64
 				(Printf.sprintf "/tmp/png/db%05d_.png" !i); 
 			(*dbf_to_png steak.dbf !i
@@ -1233,7 +1232,7 @@ let load_database_line steak s pid equivalent =
 		let progenc = Logo.encode_program_str pro in
 		let (_,_,segs) = Logo.eval (Logo.start_state ()) pro in
 		let scost = segs_to_cost segs in
-		let pcost = progenc_cost progenc in
+		let pcost = Logo.progenc_cost progenc in
 		let img,_ = Logo.segs_to_array_and_cost segs image_res in
 		let equiv = List.map (fun s -> 
 			let g = parse_logo_string s in
@@ -1242,7 +1241,7 @@ let load_database_line steak s pid equivalent =
 				let eprogenc = Logo.encode_program_str epro in
 				let (_,_,esegs) = Logo.eval (Logo.start_state ()) epro in
 				let escost = segs_to_cost esegs in
-				let epcost = progenc_cost eprogenc in
+				let epcost = Logo.progenc_cost eprogenc in
 				let eimg,_ = Logo.segs_to_array_and_cost esegs image_res in
 				Atomic.incr equivalent; 
 				{epro; eprogenc; eimg; escost; epcost; esegs}
