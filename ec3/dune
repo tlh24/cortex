@@ -34,7 +34,7 @@
 (executable
 	(name graf)
 	(modules logo parser lexer vgwrapper colors levenshtein graf)
-	(libraries vg vg.cairo vector) 
+	(libraries vg vg.cairo vector sexplib ) 
 	)
 
 
