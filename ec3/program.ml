@@ -8,7 +8,7 @@ open Graf
 
 module Dtask = Domainslib.Task
 
-type edata = 
+(*type edata = 
 	(* different signature than Graf.gdata *)
 	{ epro : Logo.prog
 	; eprogenc : string
@@ -16,18 +16,18 @@ type edata =
 	; escost : float
 	; epcost : int
 	; esegs : Logo.segment list
-	}
+	}*)
 	
 let nulimg = Bigarray.Array2.create Bigarray.float32 Bigarray.c_layout 1 1
 	
-let nuledata = 
+(*let nuledata = 
 	{ epro  = `Nop 
 	; eprogenc = ""
 	; eimg  = nulimg
 	; escost = -1.0 (* sequence cost *)
 	; epcost = -1 (* program cost *)
 	; esegs = [] 
-	}
+	}*)
 
 (*type pdata = 
 	{ pro  : Logo.prog
@@ -384,17 +384,15 @@ let db_add_uniq ?(doenc=true) steak d imgf =
 	let enc = if doenc then
 		imgf_to_enc steak imgf  else Tensor.( zeros [2] ) in
 	Mutex.lock steak.db_mutex; 
-	let l = Vector.length steak.g in
-	if l < image_alloc then (
-		let indx = Graf.add_uniq steak.g (edata_to_gdata d) in
-		Tensor.copy_ ~src:imgf (Tensor.narrow steak.dbf ~dim:0 ~start:indx ~length:1);
+	let indx,imgi = Graf.add_uniq steak.g (edata_to_gdata d) in
+	if imgi >= 0 then (
+		Tensor.copy_ ~src:imgf (Tensor.narrow steak.dbf ~dim:0 ~start:imgi ~length:1);
 		if doenc then
-			Tensor.copy_ ~src:enc (Tensor.narrow steak.dbf_enc ~dim:0 ~start:indx ~length:1) ;
+			Tensor.copy_ ~src:enc (Tensor.narrow steak.dbf_enc ~dim:0 ~start:imgi ~length:1) ;
 		added := true
 	); 
-	incr image_count; 
 	Mutex.unlock steak.db_mutex; 
-	!added,l
+	!added,indx
 	
 let db_replace_equiv steak indx d2 = 
 	Mutex.lock steak.db_mutex ; 
@@ -1123,7 +1121,7 @@ let init_database steak count =
 			else dbf_dist steak imgf in
 		if good || !i < 2 then (
 		(* bug: white image sets distance to 1.0 to [0] *)
-		if dist > 0.05 then ( 
+		if dist < 0.7 then ( 
 			let s = Logo.output_program_pstr data.epro in
 			Logs.debug(fun m -> m 
 				"%d: adding [%d] = %s" !iters !i s); 
@@ -1134,7 +1132,8 @@ let init_database steak count =
 				(Printf.sprintf "/tmp/png/db%05d_f.png" !i);*)
 			Printf.fprintf fid "[%d] %s (dist:%f to:%d)\n" !i s dist mindex; 
 			incr i;
-		) else (
+		) 
+		if dist > 0.99 then (
 			(* see if there's a replacement *)
 			let data2 = db_get steak mindex in
 			let c1 = data.pcost in (* progenc_cost  *)
@@ -1145,16 +1144,16 @@ let init_database steak count =
 					!iters mindex (List.length data2.equiv)
 					(Logo.output_program_pstr data.pro) 
 					(Logo.output_program_pstr data2.pro));
-				let data = if dist < 0.6 then (
-					let ed = pdata_to_edata data2 in
-					{data with equiv = (ed :: data2.equiv)} 
-					) else data in
-				db_set steak mindex data imgf; 
-				incr replace
+				db_replace_equiv steak mindex data 
 			) else (
+				Logs.debug(fun m -> m 
+					"%d: replacing [%d][%d] = %s ( was %s)" 
+					!iters mindex (List.length data2.equiv)
+					(Logo.output_program_pstr data.pro) 
+					(Logo.output_program_pstr data2.pro));
+				db_replace_equiv steak mindex data 
 				(* they are equivalent; cost >=; see if it's already there *)
 				(* if the list is short, add it; otherwise only add to list if it's better (above)*) 
-				if dist < 0.006 then (
 					if List.length data2.equiv < 32 then (
 						let pres = List.exists (fun a -> a.eprogenc = data.progenc) data2.equiv in
 						if not pres then ( 
