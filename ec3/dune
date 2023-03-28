@@ -33,8 +33,8 @@
 	
 (executable
 	(name graf)
-	(modules logo parser lexer vgwrapper colors levenshtein graf)
-	(libraries vg vg.cairo vector sexplib ) 
+	(modules logo parser lexer vgwrapper colors levenshtein ast graf)
+	(libraries vg vg.cairo vector sexplib logs logs.threaded) 
 	)
 
 
