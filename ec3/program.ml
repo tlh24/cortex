@@ -73,7 +73,6 @@ let nuldream =
 	
 type tsteak = (* thread state *)
 	{ device : Torch.Device.t
-	(*; db : pdata Vector.t*)
 	; gs : Graf.gstat
 	; dbf : Tensor.t (* on the gpu, so we can run fast comparisons *)
 	; dbf_cpu : Tensor.t
@@ -88,10 +87,6 @@ type tsteak = (* thread state *)
 	; fid_verify : out_channel (* log for verification *)
 	; mutable batchno : int (* for e.g doing garbage collection *)
 	; mutable pool : Domainslib.Task.pool (* needs to be replaced for dream *)
-	; mutable dreamn : int
-	; dreams : dreamcheck array option
-	; trains_sub : dreamcheck array option
-	; trains_insdel : dreamcheck array option
 	}
 	
 let pi = 3.1415926
@@ -181,7 +176,7 @@ let run_logo_file fname =
 	let prog = parse_logo_file fname in
 	ignore(run_prog prog 256 (fname^".png") )
 	
-let program_to_gdata pro res = 
+(*let program_to_gdata pro res = 
 	let progenc = Logo.encode_program_str pro in
 	let (_,_,segs) = Logo.eval (Logo.start_state ()) pro in
 	let scost = segs_to_cost segs in
@@ -191,27 +186,27 @@ let program_to_gdata pro res =
 	let dy = hy-.ly in
 	let maxd = max dx dy in
 	if maxd >= 2. && maxd <= 9. && scost >= 4. && scost <= 64. && List.length segs < 8 && String.length progenc < 24 then (
-		let img, _ = Logo.segs_to_array_and_cost esegs res in
+		let img, _ = Logo.segs_to_array_and_cost segs res in
 		let progt = `Uniq in
 		Some ({Graf.nulgdata with 
 			progt; pro; progenc; scost; pcost; segs}, img)
-	) else None
+	) else None*)
 
-let progenc_to_progstr progenc =
+let progenc2str progenc =
 	progenc |>
 	Logo.string_to_intlist |>
 	Logo.decode_program
 
 let progenc_to_edata progenc =
-	let progstr = progenc_to_progstr progenc in
+	let progstr = progenc2str progenc in
 	let g = parse_logo_string progstr in
 	match g with
 	| Some g2 -> (
-		let d = Graf.prog_to_edata_opt g2 image_res in
+		let pd = Graf.pro_to_edata_opt g2 image_res in
 		match pd with
-		| Some data,img -> (true,data,img)
-		| _ -> (false,nulgdata,nulimg) )
-	| _ -> (false,nulgdata,nulimg)
+		| Some(data,img) -> (true,data,img)
+		| _ -> (false,nuledata,nulimg) )
+	| _ -> (false,nuledata,nulimg)
 	
 (*let edata_to_gdata d imgf_indx = 
 	{ progt = `Uniq
@@ -226,13 +221,13 @@ let progenc_to_edata progenc =
 	}*)
 
 let render_simplest steak =
-	(* render the shortest 4*1024 programs in the database.*)
+	(* render the shortest 1024 programs in the database.*)
 	let g = Graf.sort_graph steak.gs.g in
 	let dbl = Vector.length g in
 	let res = 48 in
 	let lg = open_out "/tmp/png/db_init.txt" in
-	for id = 0 to min (4*1024-1) (dbl-1) do (
-		let data = Vector.get db id in
+	for id = 0 to min (1024-1) (dbl-1) do (
+		let data = Vector.get g id in
 		Logo.segs_to_png data.ed.segs res (Printf.sprintf "/tmp/png/test%d.png" id);
 		let bf = Buffer.create 30 in
 		Logo.output_program_p bf data.ed.pro;
@@ -290,7 +285,7 @@ let tensor_of_bigarray2 m device =
 		
 let db_get steak i = 
 	Mutex.lock steak.db_mutex ; 
-	let r = Vector.get steak.g i in
+	let r = Vector.get steak.gs.g i in
 	Mutex.unlock steak.db_mutex ; 
 	r
 
@@ -299,13 +294,13 @@ let imgf_to_enc steak imgf =
 		(Tensor.view imgf ~size:[image_res*image_res])
 		
 
-let db_add_uniq ?(doenc=true) steak d imgf imgf_cpu =
+let db_add_uniq ?(doenc=true) steak ed imgf imgf_cpu =
 	(*imgf is a tensor on same device as dbf*)
 	let added = ref false in
 	let enc = if doenc then
 		imgf_to_enc steak imgf  else Tensor.( zeros [2] ) in
 	Mutex.lock steak.db_mutex; 
-	let indx,imgi = Graf.add_uniq steak.g (edata_to_gdata d) in
+	let indx,imgi = Graf.add_uniq steak.gs ed in
 	if imgi >= 0 then (
 		Tensor.copy_ ~src:imgf (Tensor.narrow steak.dbf ~dim:0 ~start:imgi ~length:1);
 		(*let imgf = Tensor.to_device ~device:steak.device imgf in*)
@@ -321,17 +316,17 @@ let db_add_uniq ?(doenc=true) steak d imgf imgf_cpu =
 (* not sure how to ?functor? compress this *)
 let db_replace_equiv steak indx d2 = 
 	Mutex.lock steak.db_mutex ; 
-	Graf.replace_equiv steak.g indx d2; 
+	ignore( Graf.replace_equiv steak.gs indx d2 ); 
 	Mutex.unlock steak.db_mutex 
 	
 let db_add_equiv steak indx d2 = 
 	Mutex.lock steak.db_mutex ; 
-	Graf.add_equiv steak.g indx d2; 
+	ignore( Graf.add_equiv steak.gs indx d2 ); 
 	Mutex.unlock steak.db_mutex 
 	
 let db_len steak = 
 	Mutex.lock steak.db_mutex ; 
-	let r = Vector.length steak.g in
+	let r = Vector.length steak.gs.g in
 	Mutex.unlock steak.db_mutex ; 
 	r
 
@@ -452,7 +447,7 @@ let init_batchd filnum =
 	!r*)
 	
 let make_batche_train a ai b bi = 
-	let dist,edits = Graf.get_edits a b in
+	let _,edits = Graf.get_edits a.progenc b.progenc in
 	let edited = Array.make p_ctx 0.0 in
 	{ a_pid = ai 
 	; b_pid = bi
@@ -472,18 +467,19 @@ let new_batche_train steak =
 		(* only target unique nodes, e.g. with an image *)
 		let i = Random.int (steak.gs.num_uniq) in
 		let di = steak.gs.img_inv.(i) in
-		let d = Vector.get steak.g di in
-		let o = SI.to_list d.outgoing in
+		let d = Vector.get steak.gs.g di in
+		let o = SI.elements d.outgoing in
 		let ol = List.length o in 
 		if ol > 0 then (
 			let k = Random.int ol in
 			let ei = List.nth o k in
-			let e = Vector.get steak.g ei in
+			let e = Vector.get steak.gs.g ei in
 			if e.progt = `Uniq then (
-				make_batche_train d e
+				make_batche_train d.ed di e.ed ei
 			) else selector ()
 		) else selector ()
 	in
+	selector ()
 
 let new_batche_mnist steak =
 	(* for now, just set the target B to a sample from MNIST; ultimately will need to have longer interactions & intermediate starting points *)
@@ -513,13 +509,13 @@ let new_batche_mnist steak =
 		(Printf.sprintf "/tmp/png/b%05d_closest.png" (Atomic.get inspect_counter));
 	Atomic.incr inspect_counter ; *)
 	{ a_pid = indx; b_pid = mid;
-		a_progenc = a.progenc; 
+		a_progenc = a.ed.progenc; 
 		b_progenc = ""; 
-		c_progenc = a.progenc; 
+		c_progenc = a.ed.progenc; 
 		edits = []; edited; count=0; dt=`Mnist}
 	(* note: bd.fresh is set in the calling function (for consistency) *)
 		
-let new_batche_unsup steak bn =
+let new_batche_unsup steak =
 	if (Random.int 10) < 5 then (
 		new_batche_train steak
 	) else (
@@ -644,101 +640,99 @@ let apply_edits be =
 	; epcost = p.pcost
 	; esegs = p.segs }*)
 	
-(*let better_counter = Atomic.make 0*)
+let better_counter = Atomic.make 0
 
 let img_to_imgf steak img = 
 	let imgf_cpu = tensor_of_bigarray2 img Torch.Device.Cpu in
 	let imgf = Tensor.to_device ~device:steak.device imgf_cpu in
 	imgf_cpu,imgf
 	
-let try_add_program steak be = 
-	let good,data,img = progenc_to_gdata be.c_progenc in
-	if good then (
-		steak.dreamn <- steak.dreamn + 1; 
-		(*Logs.info (fun m -> m "Parsed! [%d]: %s \"%s\"" bi progenc progstr);*)
-		let imgf_cpu,imgf = img_to_imgf steak img in
-		let dist,minde = dbf_dist steak imgf in
-		let mindex = steak.dbf_map.(minde) in
-		steak.batchno <- steak.batchno + 1 ;
-		(* idea: if it's similar to a currently stored program, but has been hallucinated by the network, and is not too much more costly than what's there,
-		then replace the entry! *)
-		if dist > 0.994 then (
-			let data2 = db_get steak mindex in
-			let c1 = data.epcost in
-			let c2 = data2.pcost in
-			if c1 < c2 then (
-				let progstr = progenc2progstr data.eprogenc in
-				let progstr2 = progenc2progstr data2.progenc in
-				Logs.info (fun m -> m "#%d b:%d replacing equivalents [%d] %s with %s" !nreplace steak.batchno mindex progstr2 progstr);
-				db_replace_equiv steak.g mindex data; 
-				Printf.fprintf steak.fid
-					"(%d) [%d] d:%f %s --> %s | pcost %d -> %d | scost %f -> %f\n"
-					!nreplace mindex dist progstr2 progstr c2 c1
-					data2.scost data.scost;
-				flush steak.fid;
-				Logo.segs_to_png data2.segs 64
-					(Printf.sprintf "/tmp/png/%05d_old.png" !nreplace);
-				Logo.segs_to_png data.esegs 64
-					(Printf.sprintf "/tmp/png/%05d_new.png" !nreplace);
-				(* get the dbf entry too, to check *)
-				let filename = Printf.sprintf
-					"/tmp/png/%05d_dbf.png" !nreplace in
-				dbf_to_png steak.dbf mindex filename;
-				incr nreplace
-				(* those two operations are in-place, so subsequent batches should contain the new program :-) *)
-			)
-		) ;
-		if dist < 0.7 then (
-			let added,l = db_add_uniq steak data imgf imgf_cpu in
-			if added then (
-				Logs.info(fun m -> m
-					"try_add_program: adding new [%d] = %s" l
-					(Logo.output_program_pstr data.pro) )
-			) else (
-				Logs.debug(fun m -> m
-					"try_add_program: could not add new, db full. [%d]" l )
-			)
-		) ;
-		if be.dt = `Mnist then (
-			(*let cpu = Torch.Device.Cpu in*)
-			let a = db_get steak be.a_pid in
-			let mid = be.b_pid in
-			let aimg = tensor_of_bigarray2 a.img steak.device in
-			let bimg = Tensor.narrow steak.mnist ~dim:0 ~start:mid ~length:1
-				|> Tensor.to_device ~device:steak.device in
-			let cimg = imgf in
-			let encode v =
-				Tensor.view v ~size:[image_res*image_res;]
-				|> Vae.encode1_ext steak.vae in
-			let aenc = encode aimg in
-			let benc = encode bimg in
-			let cenc = encode cimg in
-			let cos_ab = Tensor.cosine_similarity ~x1:aenc ~x2:benc ~dim:0 ~eps:1e-7 |> Tensor.float_value in
-			let cos_cb = Tensor.cosine_similarity ~x1:cenc ~x2:benc ~dim:0 ~eps:1e-7 |> Tensor.float_value in
-			let ab = Tensor.( mean((aimg - bimg) * (aimg - bimg)) )
-				|> Tensor.float_value in
-			let cb = Tensor.( mean((cimg - bimg) * (cimg - bimg)) )
-				|> Tensor.float_value in
-			if cos_cb > cos_ab then (
-				let q = Atomic.get better_counter in
-				Logs.info (fun m -> m "Made an improvement! see %d; cos: %f --> %f ; mse: %f --> %f" q cos_ab cos_cb ab cb);
-				let filename = Printf.sprintf "/tmp/png/b%05d_a_target.png" q in
-				dbf_to_png steak.mnist mid filename;
-				Logo.segs_to_png a.segs 64
-					(Printf.sprintf "/tmp/png/b%05d_b_old.png" q);
-				Logo.segs_to_png data.segs 64
-					(Printf.sprintf "/tmp/png/b%05d_c_new.png" q);
-				Atomic.incr better_counter
-			)
-		);
-		(*if dist >= 0.6 && dist <= 5.0 then (
-			let data2 = db_get steak mindex in
+let try_add_program steak data img be = 
+	(*Logs.info (fun m -> m "Parsed! [%d]: %s \"%s\"" bi progenc progstr);*)
+	let imgf_cpu,imgf = img_to_imgf steak img in
+	let good2,dist,minde = dbf_dist steak imgf in
+	if good2 then (
+	let mindex = steak.gs.img_inv.(minde) in
+	(* idea: if it's similar to a currently stored program, but has been hallucinated by the network, and is not too much more costly than what's there,
+	then replace the entry! *)
+	if dist > 0.994 then (
+		let data2 = db_get steak mindex in
+		let c1 = data.pcost in
+		let c2 = data2.ed.pcost in
+		if c1 < c2 then (
+			let progstr = progenc2str data.progenc in
+			let progstr2 = progenc2str data2.ed.progenc in
+			Logs.info (fun m -> m "#%d b:%d replacing equivalents [%d] %s with %s" !nreplace steak.batchno mindex progstr2 progstr);
+			db_replace_equiv steak mindex data; 
+			Printf.fprintf steak.fid
+				"(%d) [%d] d:%f %s --> %s | pcost %d -> %d | scost %f -> %f\n"
+				!nreplace mindex dist progstr2 progstr c2 c1
+				data2.ed.scost data.scost;
+			flush steak.fid;
+			Logo.segs_to_png data2.ed.segs 64
+				(Printf.sprintf "/tmp/png/%05d_old.png" !nreplace);
+			Logo.segs_to_png data.segs 64
+				(Printf.sprintf "/tmp/png/%05d_new.png" !nreplace);
+			(* get the dbf entry too, to check *)
+			let filename = Printf.sprintf
+				"/tmp/png/%05d_dbf.png" !nreplace in
+			dbf_to_png steak.dbf mindex filename;
+			incr nreplace
+			(* those two operations are in-place, so subsequent batches should contain the new program :-) *)
+		)
+	) ;
+	if dist < 0.7 then (
+		let added,l = db_add_uniq steak data imgf imgf_cpu in
+		if added then (
 			Logs.info(fun m -> m
-					"try_add_program: new \n\t%s sim existing\n\t%s"
-					(Logo.output_program_pstr data.pro)
-					(Logo.output_program_pstr data2.pro) )
-		)*)
+				"try_add_program: adding new [%d] = %s" l
+				(Logo.output_program_pstr data.pro) )
+		) else (
+			Logs.debug(fun m -> m
+				"try_add_program: could not add new, db full. [%d]" l )
+		)
+	) ;
+	if be.dt = `Mnist then (
+		(*let cpu = Torch.Device.Cpu in*)
+		let a = db_get steak be.a_pid in
+		let mid = be.b_pid in
+		let aimg = Tensor.narrow steak.dbf ~dim:0 ~start:a.imgi ~length:1 in
+		let bimg = Tensor.narrow steak.mnist ~dim:0 ~start:mid ~length:1
+			|> Tensor.to_device ~device:steak.device in
+		let cimg = imgf in
+		let encode v =
+			Tensor.view v ~size:[image_res*image_res;]
+			|> Vae.encode1_ext steak.vae in
+		let aenc = encode aimg in
+		let benc = encode bimg in
+		let cenc = encode cimg in
+		let cos_ab = Tensor.cosine_similarity ~x1:aenc ~x2:benc ~dim:0 ~eps:1e-7 |> Tensor.float_value in
+		let cos_cb = Tensor.cosine_similarity ~x1:cenc ~x2:benc ~dim:0 ~eps:1e-7 |> Tensor.float_value in
+		let ab = Tensor.( mean((aimg - bimg) * (aimg - bimg)) )
+			|> Tensor.float_value in
+		let cb = Tensor.( mean((cimg - bimg) * (cimg - bimg)) )
+			|> Tensor.float_value in
+		if cos_cb > cos_ab then (
+			let q = Atomic.get better_counter in
+			Logs.info (fun m -> m "Made an improvement! see %d; cos: %f --> %f ; mse: %f --> %f" q cos_ab cos_cb ab cb);
+			let filename = Printf.sprintf "/tmp/png/b%05d_a_target.png" q in
+			dbf_to_png steak.mnist mid filename;
+			Logo.segs_to_png a.ed.segs 64
+				(Printf.sprintf "/tmp/png/b%05d_b_old.png" q);
+			Logo.segs_to_png data.segs 64
+				(Printf.sprintf "/tmp/png/b%05d_c_new.png" q);
+			Atomic.incr better_counter
+		)
+	);
+	(*if dist >= 0.6 && dist <= 5.0 then (
+		let data2 = db_get steak mindex in
+		Logs.info(fun m -> m
+				"try_add_program: new \n\t%s sim existing\n\t%s"
+				(Logo.output_program_pstr data.pro)
+				(Logo.output_program_pstr data2.pro) )
+	)*)
 	)
+	(* DANGER not sure if we need to call GC here *)
 
 let update_bea steak bd =
 	let sta = Unix.gettimeofday () in
@@ -752,17 +746,17 @@ let update_bea steak bd =
 		let cnt = be1.count in
 		let typ,loc,chr = edit_arr.(bi) in
 		(*assert (Array.length be.edited = p_ctx) ;*)
-		let bnew = match be1.dtyp with
+		let bnew = match be1.dt with
 		| `Train -> (
 			(* last edit is 'fin', in which case: new batche *)
 			if List.length be1.edits = 0 then (
 				bd.fresh.(bi) <- true; (* update image flag *)
-				new_batche_sup steak bi false
+				new_batche_train steak 
 			) else (
 				bd.fresh.(bi) <- false;
 				apply_edits be1
 			)
-			(* TODO : add decoding verification here? 
+			(* NOTE : add decoding verification here? 
 				would require second accumulator string *)
 			)
 		| `Verify -> (
@@ -776,11 +770,11 @@ let update_bea steak bd =
 					(progenc2str be3.b_progenc)
 					(progenc2str be3.c_progenc); 
 				if c = '+' then (
-					Graf.incr_good steak.g be3.a_pid; 
-					Graf.incr_good steak.g be3.b_pid 
+					Graf.incr_good steak.gs be3.a_pid; 
+					Graf.incr_good steak.gs be3.b_pid 
 				); 
 				bd.fresh.(bi) <- true;
-				new_batche_unsup steak bi 
+				new_batche_unsup steak 
 			) else (
 				bd.fresh.(bi) <- false;
 				be3
@@ -789,12 +783,12 @@ let update_bea steak bd =
 			let be2 = {be1 with edits=[(typ,loc,chr)];count=cnt+1} in
 			let be3 = apply_edits be2 in
 			if typ = "fin" || be3.count >= p_ctx/2 then (
-				let good,data,img = progenc_to_gdata be3.c_progenc in
+				let good,data,img = progenc_to_edata be3.c_progenc in
 				if good then (
 					(* fix this later: keep around programs that improve fit *)
 					(*let imgf = tensor_of_bigarray2 img steak.device in
 					let enc = imgf_to_enc steak imgf in
-					let s = progenc2progstr data.progenc in
+					let s = progenc2str data.progenc in
 					let j = be3.dt.indx in
 					let a = Tensor.narrow steak.mnist_enc ~dim:0 ~start:j ~length:1 in
 					let d = Tensor.cosine_similarity ~x1:a ~x2:enc ~dim:1 ~eps:1e-7
@@ -805,10 +799,10 @@ let update_bea steak bd =
 						dreams.(j).cossim <- (d :: dreams.(j).cossim)
 						)
 					| None -> assert (0 <> 0); () );*)
-					try_add_program steak be3
+					try_add_program steak data img be3
 				);
 				bd.fresh.(bi) <- true;
-				new_batche_unsup steak bi
+				new_batche_unsup steak
 			) else (
 				bd.fresh.(bi) <- false;
 				be3
@@ -825,11 +819,12 @@ let update_bea steak bd =
 
 	let fin = Unix.gettimeofday () in
 	Logs.debug (fun m -> m "update_bea time %f" (fin-.sta));
-	if (steak.dreamn mod 10) = 9 then (
+	if (steak.batchno mod 10) = 9 then (
 		Mutex.lock steak.db_mutex;
 		Caml.Gc.major (); (* clean up torch variables (slow..) *)
 		Mutex.unlock steak.db_mutex
-	)
+	);
+	steak.batchno <- steak.batchno + 1
 
 let bigfill_batchd steak bd = 
 	let sta = Unix.gettimeofday () in
@@ -887,11 +882,12 @@ let bigfill_batchd steak bd =
 				if dt = `Mnist then (
 					assert (pid < 60000) ; 
 					Tensor.narrow steak.mnist ~dim:0 ~start:pid ~length:1 
+					|> Tensor.squeeze |> bigarray2_of_tensor 
 				) else (
-					assert (pid < db.gs.num_uniq) ; 
+					assert (pid < steak.gs.num_uniq) ; 
 					Tensor.narrow steak.dbf_cpu ~dim:0 ~start:pid ~length:1 
-					
-				) |> Tensor.squeeze |> bigarray2_of_tensor 
+					|> Tensor.squeeze |> bigarray2_of_tensor 
+				) 
 			in
 			(* would be good if this didn't require two copy ops *)
 			let aimg = pid_to_ba2 be.a_pid `Train in
@@ -944,13 +940,32 @@ let truncate_list n l =
 	let n = min n (List.length l) in
 	let a = Array.of_list l in
 	Array.sub a 0 n |> Array.to_list
+	
+let render_database steak g = 
+	(* TODO: make the iter parallel *)
+	let dbf_cpu = Tensor.( 
+		( ones [image_alloc; image_res; image_res] ) * (f (-1.0))) in
+	let k = ref 0 in
+	Vector.iter (fun d -> 
+		match d.progt with 
+		| `Uniq -> (
+			let _,img = Graf.pro_to_edata d.ed.pro image_res in
+			let imgf_cpu,_ = img_to_imgf steak img in
+			Tensor.copy_ ~src:imgf_cpu 
+				(Tensor.narrow dbf_cpu ~dim:0 ~start:!k ~length:1); )
+		| _ -> () ) g ; 
+	let dbf = Tensor.to_device ~device:steak.device dbf_cpu in
+	dbf,dbf_cpu
 
 let sort_database steak =
 	(* sort the graph 
 		well, sort the Vector underlying the graph -- since graphs don't really have an order. 
 		leave imgf alone, since now we don't have a dup *)
-	let g = Graf.sort steak.g in
-	{steak with g } 
+	let g = Graf.sort_graph steak.gs.g in
+	let gs = {steak.gs with g} in
+	let dbf,dbf_cpu = render_database steak g in
+	{steak with gs; dbf; dbf_cpu} 
+	
 	(* sorts the database & updates Tensor dbf *)
 	(* sorts both primary keys and equivalent lists *)
 	(*let dba = Vector.to_array db in (* easier .. *)
@@ -999,14 +1014,14 @@ let rec generate_random_logo res =
 	let prog = gen_ast false (3,1,actvar) in
 	let pro = compress_ast prog in
 	if has_pen_nop pro then assert (0 <> 0) ; 
-	let ed = Graf.prog_to_edata_opt pro res in
+	let ed = Graf.pro_to_edata_opt pro res in
 	match ed with
 	| Some q -> q
 	| _ -> generate_random_logo res
 
 let generate_empty_logo res =
 	(* the first program needs to be empty, for diffing *)
-	let epro = `Nop in
+	let pro = `Nop in
 	Graf.pro_to_edata pro res
 
 let init_database steak count = 
@@ -1024,7 +1039,7 @@ let init_database steak count =
 		let imgf_cpu,imgf = img_to_imgf steak img in
 		let good,dist,mindex = if !i = 0 then true,0.5,0 
 			else dbf_dist steak imgf in
-		if good || !i < 2 then (
+		if (good || !i < 2) then (
 		(* bug: white image sets distance to 1.0 to [0] *)
 		if dist < 0.7 then ( 
 			let s = Logo.output_program_pstr data.pro in
@@ -1037,39 +1052,47 @@ let init_database steak count =
 				(Printf.sprintf "/tmp/png/db%05d_f.png" !i);*)
 			Printf.fprintf fid "[%d] %s (dist:%f to:%d)\n" !i s dist mindex; 
 			incr i;
-		) 
+		) ; 
 		if dist > 0.99 then (
 			(* see if there's a replacement *)
 			let data2 = db_get steak mindex in
-			let c1 = data.ed.pcost in (* progenc_cost  *)
+			let c1 = data.pcost in (* progenc_cost  *)
 			let c2 = data2.ed.pcost in
 			if c1 < c2 then (
 				Logs.debug(fun m -> m 
 					"%d: replacing [%d] = %s ( was %s)" 
 					!iters mindex
 					(Logo.output_program_pstr data.pro) 
-					(Logo.output_program_pstr data2.pro));
+					(Logo.output_program_pstr data2.ed.pro));
 				db_replace_equiv steak mindex data 
 			) else (
-				if SI.cardinal data2.equivalents < 32 (
+				if SI.cardinal data2.equivalents < 32 then (
 					Logs.debug(fun m -> m 
 						"%d: adding equiv [%d] = %s ( was %s)" 
 						!iters mindex 
 						(Logo.output_program_pstr data.pro) 
-						(Logo.output_program_pstr data2.pro));
+						(Logo.output_program_pstr data2.ed.pro));
 					db_add_equiv steak mindex data 
 				)
-			)
-		));  
+			); 
+		) );  
 		if !iters mod 40 = 39 then 
 			(* needed to clean up torch allocations *)
 			Caml.Gc.major (); 
 		incr iters
 	) done; 
 	close_out fid; 
-	let db,dbf = sort_database steak.device steak.db in
+	let steak = sort_database steak in
 	Logs.info(fun m -> m  "%d done; %d sampled; %d replacements; %d equivalents" !i !iters !replace !equivalents); 
-	db,dbf
+	steak
+	
+let load_database steak fname = 
+	(* returns a new steak, freshly sizzled *)
+	let gs0 = create image_alloc in
+	let g = Graf.load fname in
+	let gs = {gs0 with g} in
+	let dbf,dbf_cpu = render_database steak g in
+	{steak with gs; dbf; dbf_cpu} 
 	
 let save_database steak fname = 
 	let g = Graf.sort_graph steak.gs.g in
@@ -1098,13 +1121,6 @@ let save_database steak fname =
 	close_out fil; 
 	Logs.debug(fun m -> m  "saved %d to db_human_log.txt" (Array.length dba))
 	(* save the equivalents too? *)*)
-	
-let load_database steak fname = 
-	(* returns a new steak, freshly sizzled *)
-	let g = Graf.load fname |> Graf.sort_graph in
-	let gs0 = create image_alloc in
-	let gs = {gs0 with g} in
-	{steak with gs}
 
 (*let load_database_line steak s pid equivalent =
 	let sl = Pcre.split ~pat:"[\\[\\]]+" s in
@@ -1238,7 +1254,6 @@ let handle_message steak bd msg =
 		(* dreaming : sent when the model has produced edits (maybe old) *)
 		update_bea steak bd;
 		bigfill_batchd steak bd; 
-		steak.batchno <- steak.batchno + 1; 
 		(*Logs.debug(fun m -> m "new batch %d" steak.batchno);*)
 		bd,(Printf.sprintf "ok %d" !nreplace)
 		)
@@ -1315,8 +1330,7 @@ let servthread steak () = (* steak = thread state *)
 					0 (String.length resp) [] ) ; 
 				message_loop bd )
 			| _ -> (
-				save_database steak.db "db_prog.txt"; 
-				save_dreams steak ;
+				save_database steak "db_prog.txt"; 
 			) ) in
 		if !gparallel then (
 			Dtask.run steak.pool (fun () -> message_loop bd )
@@ -1509,13 +1523,10 @@ let () =
 				(Cuda.is_available ()));
 	Logs.info(fun m -> m "cudnn available: %b%!"
 				(Cuda.cudnn_is_available ()));
-	let device = Torch.Device.cuda_if_available () in
-	(*let device = Torch.Device.Cpu in*) (* slower *)
 	(*for _i = 0 to 4 do 
 		measure_torch_copy_speed device
 	done; *)
 	test_logo (); 
-	
 	
 	let mnistd = Mnist_helper.read_files ~prefix:"../otorch-test/data" () in
 	let mimg = Tensor.reshape mnistd.train_images 
@@ -1527,74 +1538,71 @@ let () =
 		Tensor.narrow ~dim:2 ~start:1 ~length:28) ~src:mimg ;
 		(* Tensor.narrow returns a pointer/view; copy_ is in-place. *)
 		(* keep on CPU? *)
-
-	let db = Vector.create ~dummy:nulpdata in
-	let dbf = Tensor.( 
-		( ones [image_alloc; image_res; image_res] ) * (f (-1.0))) 
-		|> Tensor.to_device ~device in
 	
+	(*let device = Torch.Device.Cpu in*) (* slower *)
+	let device = Torch.Device.cuda_if_available () in
+	let gs = Graf.create image_alloc in
+	let dbf = Tensor.zeros [2;2] in
+	let dbf_cpu = Tensor.zeros [2;2] in 
+	let dbf_enc = Tensor.zeros [2;2] in
+	let mnist_enc = Tensor.zeros [2;2] in
+	let vae = Vae.dummy_ext () in
 	let db_mutex = Mutex.create () in
 	let pool = Dtask.setup_pool ~num_domains:12 () in 
 		(* tune this -- 8-12 seems ok *)
 	let supfid = open_out "/tmp/png/replacements_sup.txt" in
 	let dreamfid = open_out "/tmp/png/replacements_dream.txt" in
-	let dbf_enc = Tensor.zeros [2;2] in
-	let mnist_enc = Tensor.zeros [2;2] in
-	let vae = Vae.dummy_ext () in
-	let supsteak = {device; db; dbf; mnist; dbf_enc; mnist_enc; vae; db_mutex;
-			superv=true; sockno=4340; fid=supfid; batchno=0; pool; 
-			dreamn=0; dreams=None; trains_sub=None; trains_insdel=None} in
-			
-	let db,dbf = if Sys.file_exists "db_prog.txt" then ( 
-		if !gparallel then 
-			Dtask.run supsteak.pool (fun () -> load_database supsteak )
-		else 
-			load_database supsteak ; 
-		let db,dbf = sort_database device db in
-		(*render_simplest db;*) 
-		db,dbf
+	let fid_verify = open_out "/tmp/png/verify.txt" in
+	
+	let supstak = 
+		{device; gs; dbf; dbf_cpu; dbf_enc; mnist; mnist_enc; vae; db_mutex;
+		superv=true; sockno=4340; fid=supfid; fid_verify; batchno=0; pool } in
+	
+	let fname = "db_prog.S" in
+	let supsteak = if Sys.file_exists fname then ( 
+		(*Dtask.run supsteak.pool (fun () -> load_database supsteak )*)
+		load_database supstak fname
 	) else ( 
 		Logs.app(fun m -> m "Generating %d programs" (image_alloc/2));
 		let start = Unix.gettimeofday () in
-		let db,dbf = init_database supsteak (image_alloc/2) in
+		let stk = init_database supstak (image_alloc/2) in
 		(* init also sorts. *)
 		let stop = Unix.gettimeofday () in
 		Logs.app(fun m -> m "Execution time: %fs\n%!" (stop -. start)); 
-		Logs.info(fun m -> m "render_simplest: first 10 programs");
+		Logs.info(fun m -> m ":: first 10 programs");
 		for i = 0 to 9 do (
-			let p = Vector.get db i in
+			let p = db_get stk i in
 			Logs.info(fun m -> m "%d: %s" i
-					(Logo.output_program_pstr p.pro)); 
+					(Logo.output_program_pstr p.ed.pro)); 
 		) done; 
-		save_database db "db_prog.txt"; 
-		db,dbf
+		save_database stk fname; 
+		stk
 	) in
+	render_simplest supsteak; 
 	
 	(* try to train the vae? *)
-	let dbfs = Tensor.narrow dbf ~dim:0 ~start:0 ~length:(Vector.length db) in
+	let dbfs = Tensor.narrow supsteak.dbf ~dim:0 ~start:0 ~length:(supsteak.gs.num_uniq) in
 	let vae,dbf_enc',mnist_enc = Vae.train_ext dbfs mnist device !batch_size in
 	(* need to re-expand for future allocation *)
 	let encl,cols = Tensor.shape2_exn dbf_enc' in
 	let dbf_enc = Tensor.( (ones [image_alloc;cols]) * (f (-1.0) ) ) in
 	Tensor.copy_ (Tensor.narrow dbf_enc ~dim:0 ~start:0 ~length:encl) ~src:dbf_enc' ;
 	
-	(* dreams test structure *)
+	(*(* dreams test structure *)
 	let trains_sub, trains_insdel = 
 		if Sys.file_exists "trains_sub.txt" 
 			&& Sys.file_exists "trains_insdel.txt" 
 		then load_trains supsteak 
 		else make_trains supsteak in
 		
-	let dreams = make_dreams () in
+	let dreams = make_dreams () in*)
 	
 	(* update the thread state *)
-	let supsteak2 = {supsteak with db; dbf; dbf_enc; mnist_enc; vae; 
-			trains_sub=(Some trains_sub); trains_insdel=(Some trains_insdel);} in 
-	let dreamsteak = {device; db; dbf; mnist; 
-			dbf_enc; mnist_enc; vae; db_mutex;
-			superv=false; sockno=4341; fid=dreamfid; batchno=0; pool; 
-			dreamn=0; dreams=(Some dreams); 
-			trains_sub=(Some trains_sub); trains_insdel=(Some trains_insdel);} in
+	let supsteak = {supsteak with dbf_enc; mnist_enc; vae } in 
+	let pool2 = Dtask.setup_pool ~num_domains:8 () in
+	let dreamsteak = 
+		{device; gs; dbf; dbf_cpu; dbf_enc; mnist; mnist_enc; vae; db_mutex;
+		superv=false; sockno=4341; fid=dreamfid; fid_verify; batchno=0; pool=pool2 } in
 			
 	(* extra bit of complexity!! if Cuda hangs in one of the domains, e.g. for an out-of-memory error, you won't see it on stdout -- it will just stop. 
 	to properly debug, will need to strip down to one thread, no domainslib *)
@@ -1602,10 +1610,10 @@ let () =
 		let pool2 = Dtask.setup_pool ~num_domains:8 () in
 		dreamsteak.pool <- pool2; 
 		servthread dreamsteak () ) in
-	servthread supsteak2 () ;
+	servthread supsteak () ;
 (* 	servthread dreamsteak () ; *)
 	Domain.join d;
 	close_out supfid; 
 	close_out dreamfid; 
-	Dtask.teardown_pool supsteak2.pool ; 
+	Dtask.teardown_pool supsteak.pool ; 
 	Dtask.teardown_pool dreamsteak.pool ;

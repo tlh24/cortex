@@ -19,8 +19,6 @@ let ios = int_of_string
 
 module SI = Set.Make(Int);;
 
-let nulimg = Bigarray.Array2.create Bigarray.float32 Bigarray.c_layout 1 1
-
 type progtyp = [
 	| `Uniq  (* replace this with Bigarray image + imagef *)
 	| `Equiv (* int = pointer to simplest *)
@@ -130,39 +128,41 @@ let connect_uniq g indx =
 	(* update current node *)
 	Vector.set g indx {d with outgoing=(SI.of_list (!nearby)) }
 	
-let add_uniq gs d = 
+let add_uniq gs ed = 
 	(* add a unique node to the graph structure *)
 	(* returns where it's stored; for now = imgf index *)
 	let l = gs.num_uniq in
 	if l < gs.image_alloc then (
-		let d' = {d with imgi = l } in
-		Vector.push gs.g d'; 
+		let d = {nulgdata with ed; progt = `Uniq; imgi = l} in
+		Vector.push gs.g d; 
 		let ni = (Vector.length gs.g) - 1 in
 		connect_uniq gs.g ni; 
 		gs.num_uniq <- gs.num_uniq + 1; 
 		ni,l (* index to gs.g and dbf respectively *)
 	) else (-1),(-1)
 	
-let replace_equiv gs indx d2 =
+let replace_equiv gs indx ed =
 	(* d2 is equivalent to gs.g[indx], but lower cost *)
 	(* add d2 the end, and update d1 = g[indx]. *)
 	let d1 = Vector.get gs.g indx in
-	let d2' = {d2 with equivalents = (SI.add indx d1.equivalents); 
-							imgi = d1.imgi} in
-	Vector.push gs.g d2';
+	let d2 = {nulgdata with ed; progt = `Uniq; 
+				equivalents = (SI.add indx d1.equivalents); 
+				imgi = d1.imgi} in
+	Vector.push gs.g d2;
 	gs.num_equiv <- gs.num_equiv + 1; 
 	let ni = (Vector.length gs.g) - 1 in (* new index *)
-	gs.img_inv.(d2'.imgi) <- ni ; (* back pointer *)
+	Printf.printf "replace_equiv %d %d\n" d2.imgi ni; 
+	gs.img_inv.(d2.imgi) <- ni ; (* back pointer *)
 	(* update the incoming equivalent pointers; includes d1 !  *)
 	SI.iter (fun i -> 
 		let e = Vector.get gs.g i in
 		let e' = {e with progt = `Equiv; equivroot = ni; equivalents = SI.empty} in
-		Vector.set gs.g i e' ) d2'.equivalents; 
+		Vector.set gs.g i e' ) d2.equivalents; 
 	(* finally, update d2's edit connections *)
 	connect_uniq gs.g ni ; 
 	ni (* return the location of the new node, same as add_uniq *)
 	
-let add_equiv gs indx d2 =
+let add_equiv gs indx ed =
 	(* d2 is equivalent to gs.g[indx], but higher (or equivalent) cost *)
 	(* union-find the root equivalent *)
 	let rec find_root j = 
@@ -176,11 +176,11 @@ let add_equiv gs indx d2 =
 	(* need to verify that this is not in the graph.*)
 	let has = SI.fold (fun j a -> 
 		let d = Vector.get gs.g j in
-		if d.ed.progenc = d2.ed.progenc then true else a) 
+		if d.ed.progenc = ed.progenc then true else a) 
 		d1.equivalents false in
 	if not has then (
-		let d2' = {d2 with equivroot; imgi = d1.imgi} in
-		Vector.push gs.g d2'; 
+		let d2 = {nulgdata with ed; progt = `Equiv; equivroot; imgi = d1.imgi} in
+		Vector.push gs.g d2; 
 		gs.num_equiv <- gs.num_equiv + 1;
 		let ni = (Vector.length gs.g) - 1 in (* new index *)
 		let d1' = {d1 with equivalents = SI.add ni d1.equivalents} in
@@ -189,11 +189,11 @@ let add_equiv gs indx d2 =
 		ni (* return the location of the new node, same as add_uniq *)
 	) else (-1)
 	
-let incr_good g i = 
+let incr_good gs i = 
 	(* hopefully the compiler replaces this with an in-place op *)
-	let d = Vector.get g i in
+	let d = Vector.get gs.g i in
 	let d' = {d with good = (d.good + 1)} in
-	Vector.set g i d' 
+	Vector.set gs.g i d' 
 	
 let sort_graph g = 
 	(* sort the array by scost ascending; return new vector *)
@@ -288,7 +288,8 @@ let save fname g =
 	Sexplib.Sexp.output_hum oc sexp;
 	close_out oc
 
-let load fname res = 
+let load fname = 
+	(* does *not* render the programs *)
 	let open Sexplib in
 	let ic = open_in fname in
 	let sexp = Sexp.input_sexps ic |> List.hd in
@@ -313,16 +314,15 @@ let load fname res =
 				let equivalents = (strip_int equiv) in
 				let equivroot = (ios eqrt) in
 				let good = (ios gd) in
-				let imgi,res2 = match progt with 
-					| `Uniq -> incr num_uniq; (!num_uniq - 1),res
-					| _ -> (-1),4 in
-				let ed,img = pro_to_edata pro res2 in
+				let imgi = match progt with 
+					| `Uniq -> incr num_uniq; (!num_uniq - 1)
+					| _ -> (-1) in
+				let ed,_ = pro_to_edata pro 0 in
 				let d = {progt; ed; imgi ; outgoing; equivalents; equivroot; good} in
-				d,img
-			| _ -> assert(0 <> 0); nulgdata,nulimg) )
+				d
+			| _ -> assert(0 <> 0); nulgdata) )
 		| _ -> failwith "Invalid S-expression format") sexp' in
-	let gll,imgs = List.split gl in
-	let g = Vector.of_list ~dummy:nulgdata gll in
+	let g = Vector.of_list ~dummy:nulgdata gl in
 	Printf.printf "check!!!\n"; 
 	print_graph g; 
 	(* need to go back and fix the imgi indexes *)
@@ -334,7 +334,7 @@ let load fname res =
 		| `Uniq -> ()
 		| _ -> Printf.printf "error at %d %d\n" i d.ed.pcost; assert (0 <> 0);
 		) g; 
-	g,imgs
+	g
 	
 (* test code *)
 let () = 
@@ -344,19 +344,16 @@ let () =
 		let prog = parse_logo_string s in
 		let l = match prog with
 		| Some(pro) -> (
-			let ed,_img = pro_to_edata pro 4 in
+			let ed,_ = pro_to_edata pro 0 in
 			if mode = `Uniq then (
 				if equiv >= 0 then (
-					let d = {nulgdata with ed; progt = mode} in
-					replace_equiv gs equiv d ; (* fills out connectivity *)
+					replace_equiv gs equiv ed ; (* fills out connectivity *)
 				) else (
-					let d = {nulgdata with ed; progt = mode} in
-					let a,_ = add_uniq gs d in (* fills out connectivity *)
+					let a,_ = add_uniq gs ed in (* fills out connectivity *)
 					a
 				) 
 			) else (
-				let d = {nulgdata with ed; progt = mode} in
-					add_equiv gs equiv d ;
+				add_equiv gs equiv ed ;
 			) )
 		| _ -> 0 in
 		if l >= 0 then 
@@ -371,7 +368,7 @@ let () =
 	add_str `Uniq  0   "( move ua , ua / 4 ; move ua , 1 )";
 	add_str `Equiv 0   "( move ua , ua / 4 ; move ua , ul * ul )";
 	add_str `Equiv 0   "( move ua , ua / 4 ; move ua , ul * ul )";
-	incr_good gs.g 0; 
+	incr_good gs 0; 
 	
 	print_graph gs.g; 
 	let sorted = sort_graph gs.g in
@@ -380,6 +377,6 @@ let () =
 	Printf.printf "--- saving & reloaded ---\n"; 
 	let fname = "db_prog.S" in
 	save fname sorted; 
-	let gp,_ = load fname 30 in
+	let gp = load fname in
 	print_graph gp
 	
