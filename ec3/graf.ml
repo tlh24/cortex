@@ -136,6 +136,7 @@ let add_uniq gs ed =
 		let d = {nulgdata with ed; progt = `Uniq; imgi = l} in
 		Vector.push gs.g d; 
 		let ni = (Vector.length gs.g) - 1 in
+		gs.img_inv.(d.imgi) <- ni ; (* back pointer *)
 		connect_uniq gs.g ni; 
 		gs.num_uniq <- gs.num_uniq + 1; 
 		ni,l (* index to gs.g and dbf respectively *)
@@ -152,7 +153,7 @@ let replace_equiv gs indx ed =
 		Vector.push gs.g d2;
 		gs.num_equiv <- gs.num_equiv + 1; 
 		let ni = (Vector.length gs.g) - 1 in (* new index *)
-		Logs.debug (fun m -> m "replace_equiv %d %d" d2.imgi ni); 
+		(*Logs.debug (fun m -> m "replace_equiv %d %d" d2.imgi ni);*) 
 		gs.img_inv.(d2.imgi) <- ni ; (* back pointer *)
 		(* update the incoming equivalent pointers; includes d1 !  *)
 		SI.iter (fun i -> 
@@ -208,8 +209,8 @@ let sort_graph g =
 	(* indxs[i] = original pointer in g *)
 	(* invert the indexes so that mappin[i] points to the sorted array *)
 	let mappin = Array.make (Array.length indxs) 0 in
-	(*Array.iteri (fun i a -> mappin.(a) <- i; 
-		Logs.debug (fun m -> m "old %d -> new %d\n" a i)) indxs;*) 
+	Array.iteri (fun i a -> mappin.(a) <- i; 
+		(*Logs.debug (fun m -> m "old %d -> new %d\n" a i)*)) indxs; 
 	Array.map (fun a -> 
 		let outgoing = SI.map (fun b -> mappin.(b)) a.outgoing in
 		let equivalents = SI.map (fun b -> mappin.(b)) a.equivalents in
@@ -278,21 +279,22 @@ let save fname g =
 		Sexp.List (List.map (fun a -> Sexp.Atom (string_of_int a) )
 			(SI.elements o) ) 
 	in
-	let sexp = Sexp.List ( List.map (fun d -> 
+	let sexp = Sexp.List ( List.mapi (fun i d -> 
 		Sexp.List 
-			[ Sexp.Atom (progt_to_str d.progt) 
+			[ Sexp.Atom (soi i)
+			; Sexp.Atom (progt_to_str d.progt) 
 			; Sexp.Atom (Logo.output_program_pstr d.ed.pro)
 			; (intset_to_sexp d.outgoing)
 			; (intset_to_sexp d.equivalents)
-			; Sexp.Atom (string_of_int d.equivroot)
-			; Sexp.Atom (string_of_int d.good) ] )
+			; Sexp.Atom (soi d.equivroot)
+			; Sexp.Atom (soi d.good) ] )
 			(Vector.to_list g) )
 	in
 	let oc = open_out fname in
 	Sexplib.Sexp.output_hum oc sexp;
 	close_out oc
 
-let load fname = 
+let load gs fname = 
 	(* does *not* render the programs *)
 	let open Sexplib in
 	let ic = open_in fname in
@@ -306,11 +308,14 @@ let load fname =
 		Conv.list_of_sexp (function
 			| Sexp.Atom s -> ios s
 			| _ -> (-1) ) k |> SI.of_list in
-	let num_uniq = ref 0 in
+	gs.num_uniq <- 0; 
+	gs.num_equiv <- 0; 
 	let gl = List.map (function 
-		| [Sexp.Atom pt; Sexp.Atom pstr; out; equiv; 
+		| [Sexp.Atom i; Sexp.Atom pt; Sexp.Atom pstr; out; equiv; 
 							Sexp.Atom eqrt; Sexp.Atom gd] -> (
-			let prog = parse_logo_string pstr in
+			let prog = match pstr with
+				| "" -> Some(`Nop)
+				| _ -> parse_logo_string pstr in
 			(match prog with
 			| Some(pro) -> 
 				let progt = (str_to_progt pt) in
@@ -319,16 +324,21 @@ let load fname =
 				let equivroot = (ios eqrt) in
 				let good = (ios gd) in
 				let imgi = match progt with 
-					| `Uniq -> incr num_uniq; (!num_uniq - 1)
+					| `Uniq -> gs.num_uniq <- gs.num_uniq + 1; (gs.num_uniq - 1)
+					| `Equiv -> gs.num_equiv <- gs.num_equiv + 1; (-1)
 					| _ -> (-1) in
 				let ed,_ = pro_to_edata pro 0 in
 				let d = {progt; ed; imgi ; outgoing; equivalents; equivroot; good} in
+				if imgi >= 0 then gs.img_inv.(imgi) <- (ios i); 
 				d
-			| _ -> assert(0 <> 0); nulgdata) )
+			| _ -> (
+				Logs.err (fun m -> m "Failed to parse pstr \"%s\"" pstr); 
+				assert(0 <> 0); 
+				nulgdata) ) )
 		| _ -> failwith "Invalid S-expression format") sexp' in
 	let g = Vector.of_list ~dummy:nulgdata gl in
-	Printf.printf "check!!!\n"; 
-	print_graph g; 
+	(*Printf.printf "check!!!\n"; 
+	print_graph g; *)
 	(* need to go back and fix the imgi indexes *)
 	Vector.iteri (fun i d -> 
 		match d.progt with 
@@ -338,7 +348,7 @@ let load fname =
 		| `Uniq -> ()
 		| _ -> Logs.err (fun m -> m "Graf.load error at %d %d\n" i d.ed.pcost); assert (0 <> 0);
 		) g; 
-	g
+	{gs with g}
 	
 let () = 
 	let gs = create 5 in
@@ -380,6 +390,6 @@ let () =
 	Printf.printf "--- saving & reloaded ---\n"; 
 	let fname = "test_prog.S" in
 	save fname sorted; 
-	let gp = load fname in
-	print_graph gp
+	let gp = load gs fname in
+	print_graph gp.g
 	

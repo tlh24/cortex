@@ -888,7 +888,7 @@ let bigfill_batchd steak bd =
 					Tensor.narrow steak.mnist ~dim:0 ~start:pid ~length:1 
 					|> Tensor.squeeze |> bigarray2_of_tensor 
 				) else (
-					assert (pid < steak.gs.num_uniq) ; 
+					assert (pid < Vector.length steak.gs.g) ; 
 					Tensor.narrow steak.dbf_cpu ~dim:0 ~start:pid ~length:1 
 					|> Tensor.squeeze |> bigarray2_of_tensor 
 				) 
@@ -1095,9 +1095,9 @@ let init_database steak count =
 					let r = db_add_equiv steak mindex data in
 					if r >= 0 then 
 						Logs.debug(fun m -> m 
-						"%d: added equiv (loc %d) [%d] = %s ( was %s) %s %s %b " 
-						!iters r mindex 
-						(Logo.output_program_pstr data.pro) 
+						"iter %d: added equiv [loc %d] = %s [now loc %d] ( was %s) %s %s %b " 
+						!iters mindex
+						(Logo.output_program_pstr data.pro) r
 						(Logo.output_program_pstr data2.ed.pro)
 						data.progenc data2.ed.progenc
 						(data.progenc = data2.ed.progenc) );
@@ -1117,9 +1117,10 @@ let init_database steak count =
 let load_database steak fname = 
 	(* returns a new steak, freshly sizzled *)
 	let gs0 = create image_alloc in
-	let g = Graf.load fname in
-	let gs = {gs0 with g} in
-	let dbf,dbf_cpu = render_database steak g in
+	let gs = Graf.load gs0 fname in
+	let dbf,dbf_cpu = render_database steak gs.g in
+	Logs.info (fun m -> m "Loaded %d: %d uniq and %d equivalent"
+		(Vector.length gs.g) gs.num_uniq gs.num_equiv ); 
 	{steak with gs; dbf; dbf_cpu} 
 	
 let save_database steak fname = 
@@ -1586,10 +1587,9 @@ let () =
 		{device; gs; dbf; dbf_cpu; dbf_enc; mnist; mnist_enc; vae; db_mutex;
 		superv=true; sockno=4340; fid=supfid; fid_verify; batchno=0; pool } in
 	
-	let fname = "db_prog.S" in
-	let supsteak = if Sys.file_exists fname then ( 
+	let supsteak = if Sys.file_exists "db_sorted.S" then ( 
 		(*Dtask.run supsteak.pool (fun () -> load_database supsteak )*)
-		load_database supstak fname
+		load_database supstak "db_sorted.S"
 	) else ( 
 		Logs.app(fun m -> m "Generating %d programs" (image_alloc/2));
 		let start = Unix.gettimeofday () in
@@ -1603,7 +1603,7 @@ let () =
 			Logs.info(fun m -> m "%d: %s" i
 					(Logo.output_program_pstr p.ed.pro)); 
 		) done; 
-		save_database stk fname; 
+		save_database stk "db_prog.S"; 
 		let stk = sort_database stk in
 		save_database stk "db_sorted.S";
 		stk
