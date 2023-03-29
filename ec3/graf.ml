@@ -93,7 +93,7 @@ let edit_criteria edits =
 		let r = ref false in
 		if nsub <= 3 && ndel = 0 && nins = 0 then r := true;
 		if nsub = 0 && ndel <= 6 && nins = 0 then r := true; 
-		if nsub = 0 && ndel = 0 && nins <= 8 then r := true;
+		if nsub = 0 && ndel = 0 && nins <= 7 then r := true;
 		if nsub <= 1 && ndel = 0 && nins <= 3 then r := true;
 		!r
 	) else false
@@ -112,14 +112,14 @@ let connect_uniq g indx =
 		if i <> indx then (
 		match a.progt with 
 		| `Uniq -> (
-			let dist,edits = get_edits pe a.ed.progenc in
+			let _dist,edits = get_edits pe a.ed.progenc in
 			let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
 			if edit_criteria edits then (
-				Printf.printf "connecting outgoing [%d] to [%d] dist %d\n" i indx dist; 
+				(*Logs.debug (fun m -> m "connecting [%d] to [%d] dist %d" i indx dist); *)
 				nearby := i :: !nearby 
-			) else ( 
-				Printf.printf "not connecting outgoing [%d] to [%d] dist %d \n" i indx dist
-			) )
+			) (*else ( 
+				Logs.debug (fun m -> m "not connecting [%d] to [%d] dist %d" i indx dist)
+			)*) )
 		| _ -> () ) ) g; 
 	List.iter (fun i -> 
 		let d2 = Vector.get g i in
@@ -145,22 +145,24 @@ let replace_equiv gs indx ed =
 	(* d2 is equivalent to gs.g[indx], but lower cost *)
 	(* add d2 the end, and update d1 = g[indx]. *)
 	let d1 = Vector.get gs.g indx in
-	let d2 = {nulgdata with ed; progt = `Uniq; 
-				equivalents = (SI.add indx d1.equivalents); 
-				imgi = d1.imgi} in
-	Vector.push gs.g d2;
-	gs.num_equiv <- gs.num_equiv + 1; 
-	let ni = (Vector.length gs.g) - 1 in (* new index *)
-	Printf.printf "replace_equiv %d %d\n" d2.imgi ni; 
-	gs.img_inv.(d2.imgi) <- ni ; (* back pointer *)
-	(* update the incoming equivalent pointers; includes d1 !  *)
-	SI.iter (fun i -> 
-		let e = Vector.get gs.g i in
-		let e' = {e with progt = `Equiv; equivroot = ni; equivalents = SI.empty} in
-		Vector.set gs.g i e' ) d2.equivalents; 
-	(* finally, update d2's edit connections *)
-	connect_uniq gs.g ni ; 
-	ni (* return the location of the new node, same as add_uniq *)
+	if d1.ed.progenc <> ed.progenc then (
+		let d2 = {nulgdata with ed; progt = `Uniq; 
+					equivalents = (SI.add indx d1.equivalents); 
+					imgi = d1.imgi} in
+		Vector.push gs.g d2;
+		gs.num_equiv <- gs.num_equiv + 1; 
+		let ni = (Vector.length gs.g) - 1 in (* new index *)
+		Logs.debug (fun m -> m "replace_equiv %d %d" d2.imgi ni); 
+		gs.img_inv.(d2.imgi) <- ni ; (* back pointer *)
+		(* update the incoming equivalent pointers; includes d1 !  *)
+		SI.iter (fun i -> 
+			let e = Vector.get gs.g i in
+			let e' = {e with progt = `Equiv; equivroot = ni; equivalents = SI.empty} in
+			Vector.set gs.g i e' ) d2.equivalents; 
+		(* finally, update d2's edit connections *)
+		connect_uniq gs.g ni ; 
+		ni (* return the location of the new node, same as add_uniq *)
+	) else (-1)
 	
 let add_equiv gs indx ed =
 	(* d2 is equivalent to gs.g[indx], but higher (or equivalent) cost *)
@@ -173,20 +175,22 @@ let add_equiv gs indx ed =
 			j in
 	let equivroot = find_root indx in
 	let d1 = Vector.get gs.g equivroot in
-	(* need to verify that this is not in the graph.*)
-	let has = SI.fold (fun j a -> 
-		let d = Vector.get gs.g j in
-		if d.ed.progenc = ed.progenc then true else a) 
-		d1.equivalents false in
-	if not has then (
-		let d2 = {nulgdata with ed; progt = `Equiv; equivroot; imgi = d1.imgi} in
-		Vector.push gs.g d2; 
-		gs.num_equiv <- gs.num_equiv + 1;
-		let ni = (Vector.length gs.g) - 1 in (* new index *)
-		let d1' = {d1 with equivalents = SI.add ni d1.equivalents} in
-		Vector.set gs.g equivroot d1'; 
-		connect_uniq gs.g ni ; 
-		ni (* return the location of the new node, same as add_uniq *)
+	if d1.ed.progenc <> ed.progenc then (
+		(* need to verify that this is not in the graph.*)
+		let has = SI.fold (fun j a -> 
+			let d = Vector.get gs.g j in
+			if d.ed.progenc = ed.progenc then true else a) 
+			d1.equivalents false in
+		if not has then (
+			let d2 = {nulgdata with ed; progt = `Equiv; equivroot; imgi = d1.imgi} in
+			Vector.push gs.g d2; 
+			gs.num_equiv <- gs.num_equiv + 1;
+			let ni = (Vector.length gs.g) - 1 in (* new index *)
+			let d1' = {d1 with equivalents = SI.add ni d1.equivalents} in
+			Vector.set gs.g equivroot d1'; 
+			connect_uniq gs.g ni ; 
+			ni (* return the location of the new node, same as add_uniq *)
+		) else (-1)
 	) else (-1)
 	
 let incr_good gs i = 
@@ -204,8 +208,8 @@ let sort_graph g =
 	(* indxs[i] = original pointer in g *)
 	(* invert the indexes so that mappin[i] points to the sorted array *)
 	let mappin = Array.make (Array.length indxs) 0 in
-	Array.iteri (fun i a -> mappin.(a) <- i; 
-		Printf.printf "old %d -> new %d\n" a i) indxs; 
+	(*Array.iteri (fun i a -> mappin.(a) <- i; 
+		Logs.debug (fun m -> m "old %d -> new %d\n" a i)) indxs;*) 
 	Array.map (fun a -> 
 		let outgoing = SI.map (fun b -> mappin.(b)) a.outgoing in
 		let equivalents = SI.map (fun b -> mappin.(b)) a.equivalents in
@@ -332,11 +336,10 @@ let load fname =
 			let e = Vector.get g d.equivroot in
 			Vector.set g i {d with imgi = e.imgi} )
 		| `Uniq -> ()
-		| _ -> Printf.printf "error at %d %d\n" i d.ed.pcost; assert (0 <> 0);
+		| _ -> Logs.err (fun m -> m "Graf.load error at %d %d\n" i d.ed.pcost); assert (0 <> 0);
 		) g; 
 	g
 	
-(* test code *)
 let () = 
 	let gs = create 5 in
 	
@@ -375,7 +378,7 @@ let () =
 	Printf.printf "--- sorted ---\n"; 
 	print_graph sorted ; 
 	Printf.printf "--- saving & reloaded ---\n"; 
-	let fname = "db_prog.S" in
+	let fname = "test_prog.S" in
 	save fname sorted; 
 	let gp = load fname in
 	print_graph gp

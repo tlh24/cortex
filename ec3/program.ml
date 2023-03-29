@@ -6,6 +6,24 @@ open Ast
 open Torch
 open Graf
 
+let pi = 3.1415926
+(*let image_count = ref 0 *)
+let image_alloc = 64 (*6*2048*2*)
+let image_res = 30
+let batch_size = ref (256*3)
+let toklen = 30
+let poslen = 6
+let p_indim = toklen + 1 + poslen*2 (* 31 + 12 = 43 *)
+let e_indim = 5 + toklen + poslen*2
+let p_ctx = 64
+let nreplace = ref 0 (* number of repalcements during hallucinations *)
+let glive = ref true 
+let gparallel = ref false
+
+let listen_address = Unix.inet_addr_loopback
+let port = 4340
+let backlog = 10
+
 module Dtask = Domainslib.Task
 	
 let nulimg = Bigarray.Array2.create Bigarray.float32 Bigarray.c_layout 1 1
@@ -88,24 +106,6 @@ type tsteak = (* thread state *)
 	; mutable batchno : int (* for e.g doing garbage collection *)
 	; mutable pool : Domainslib.Task.pool (* needs to be replaced for dream *)
 	}
-	
-let pi = 3.1415926
-(*let image_count = ref 0 *)
-let image_alloc = 6*2048*2
-let image_res = 30
-let batch_size = ref (256*3)
-let toklen = 30
-let poslen = 6
-let p_indim = toklen + 1 + poslen*2 (* 31 + 12 = 43 *)
-let e_indim = 5 + toklen + poslen*2
-let p_ctx = 64
-let nreplace = ref 0 (* number of repalcements during hallucinations *)
-let glive = ref true 
-let gparallel = ref false
-
-let listen_address = Unix.inet_addr_loopback
-let port = 4340
-let backlog = 10
 
 let read_lines name : string list =
 	let ic = open_in name in
@@ -316,13 +316,15 @@ let db_add_uniq ?(doenc=true) steak ed imgf imgf_cpu =
 (* not sure how to ?functor? compress this *)
 let db_replace_equiv steak indx d2 = 
 	Mutex.lock steak.db_mutex ; 
-	ignore( Graf.replace_equiv steak.gs indx d2 ); 
-	Mutex.unlock steak.db_mutex 
+	let r = Graf.replace_equiv steak.gs indx d2 in
+	Mutex.unlock steak.db_mutex ; 
+	r
 	
 let db_add_equiv steak indx d2 = 
 	Mutex.lock steak.db_mutex ; 
-	ignore( Graf.add_equiv steak.gs indx d2 ); 
-	Mutex.unlock steak.db_mutex 
+	let r = Graf.add_equiv steak.gs indx d2 in
+	Mutex.unlock steak.db_mutex ; 
+	r
 	
 let db_len steak = 
 	Mutex.lock steak.db_mutex ; 
@@ -662,22 +664,24 @@ let try_add_program steak data img be =
 		if c1 < c2 then (
 			let progstr = progenc2str data.progenc in
 			let progstr2 = progenc2str data2.ed.progenc in
-			Logs.info (fun m -> m "#%d b:%d replacing equivalents [%d] %s with %s" !nreplace steak.batchno mindex progstr2 progstr);
-			db_replace_equiv steak mindex data; 
-			Printf.fprintf steak.fid
-				"(%d) [%d] d:%f %s --> %s | pcost %d -> %d | scost %f -> %f\n"
-				!nreplace mindex dist progstr2 progstr c2 c1
-				data2.ed.scost data.scost;
-			flush steak.fid;
-			Logo.segs_to_png data2.ed.segs 64
-				(Printf.sprintf "/tmp/png/%05d_old.png" !nreplace);
-			Logo.segs_to_png data.segs 64
-				(Printf.sprintf "/tmp/png/%05d_new.png" !nreplace);
-			(* get the dbf entry too, to check *)
-			let filename = Printf.sprintf
-				"/tmp/png/%05d_dbf.png" !nreplace in
-			dbf_to_png steak.dbf mindex filename;
-			incr nreplace
+			let r = db_replace_equiv steak mindex data in
+			if r >= 0 then (
+				Logs.info (fun m -> m "#%d b:%d replacing equivalents [%d] %s with %s" !nreplace steak.batchno mindex progstr2 progstr);
+				Printf.fprintf steak.fid
+					"(%d) [%d] d:%f %s --> %s | pcost %d -> %d | scost %f -> %f\n"
+					!nreplace mindex dist progstr2 progstr c2 c1
+					data2.ed.scost data.scost;
+				flush steak.fid;
+				Logo.segs_to_png data2.ed.segs 64
+					(Printf.sprintf "/tmp/png/%05d_old.png" !nreplace);
+				Logo.segs_to_png data.segs 64
+					(Printf.sprintf "/tmp/png/%05d_new.png" !nreplace);
+				(* get the dbf entry too, to check *)
+				let filename = Printf.sprintf
+					"/tmp/png/%05d_dbf.png" !nreplace in
+				dbf_to_png steak.dbf mindex filename;
+				incr nreplace
+			)
 			(* those two operations are in-place, so subsequent batches should contain the new program :-) *)
 		)
 	) ;
@@ -1009,6 +1013,19 @@ let sort_database steak =
 	Logs.debug (fun m -> m "sort_database tensor copy done, %f" (fin-.sta)); 
 	(Vector.of_array ~dummy:nulpdata dba),dbf*)
 
+(*let rec generate_random_logo res =
+	let s = Printf.sprintf "move ua, %d" (Random.int 8) in
+	let prog = parse_logo_string s in
+	match prog with 
+	| Some p -> (
+		let pro = compress_ast p in
+		if has_pen_nop pro then assert (0 <> 0) ; 
+		let ed = Graf.pro_to_edata_opt pro res in
+		match ed with
+		| Some q -> q
+		| _ -> generate_random_logo res)
+	| _ -> generate_random_logo res*)
+	
 let rec generate_random_logo res =
 	let actvar = Array.init 5 (fun _i -> false) in
 	let prog = gen_ast false (3,1,actvar) in
@@ -1026,6 +1043,10 @@ let generate_empty_logo res =
 
 let init_database steak count = 
 	(* generate 'count' initial program & image pairs *)
+	let dbf_cpu = Tensor.( 
+		( ones [image_alloc; image_res; image_res] ) * (f (-1.0))) in
+	let dbf = Tensor.to_device ~device:steak.device dbf_cpu in
+	let steak = {steak with dbf; dbf_cpu} in
 	Logs.info(fun m -> m  "init_database %d" count); 
 	let fid = open_out "/tmp/png/newdbg.txt" in
 	let i = ref 0 in
@@ -1037,10 +1058,12 @@ let init_database steak count =
 			generate_empty_logo image_res else
 			generate_random_logo image_res in
 		let imgf_cpu,imgf = img_to_imgf steak img in
-		let good,dist,mindex = if !i = 0 then true,0.5,0 
+		let good,dist,minde = if !i = 0 then true,0.5,0 
 			else dbf_dist steak imgf in
+		let mindex = steak.gs.img_inv.(minde) in
 		if (good || !i < 2) then (
 		(* bug: white image sets distance to 1.0 to [0] *)
+		(*Logs.debug (fun m -> m "dbf_dist %f %d" dist mindex);*) 
 		if dist < 0.7 then ( 
 			let s = Logo.output_program_pstr data.pro in
 			Logs.debug(fun m -> m 
@@ -1048,8 +1071,8 @@ let init_database steak count =
 			ignore( db_add_uniq steak data imgf imgf_cpu ~doenc:false );
 			Logo.segs_to_png data.segs 64
 				(Printf.sprintf "/tmp/png/db%05d_.png" !i); 
-			(*dbf_to_png steak.dbf !i
-				(Printf.sprintf "/tmp/png/db%05d_f.png" !i);*)
+			dbf_to_png steak.dbf !i
+				(Printf.sprintf "/tmp/png/db%05d_f.png" !i);
 			Printf.fprintf fid "[%d] %s (dist:%f to:%d)\n" !i s dist mindex; 
 			incr i;
 		) ; 
@@ -1059,20 +1082,25 @@ let init_database steak count =
 			let c1 = data.pcost in (* progenc_cost  *)
 			let c2 = data2.ed.pcost in
 			if c1 < c2 then (
-				Logs.debug(fun m -> m 
+				let r = db_replace_equiv steak mindex data in 
+				if r >= 0 then 
+					Logs.debug(fun m -> m 
 					"%d: replacing [%d] = %s ( was %s)" 
 					!iters mindex
 					(Logo.output_program_pstr data.pro) 
 					(Logo.output_program_pstr data2.ed.pro));
-				db_replace_equiv steak mindex data 
-			) else (
-				if SI.cardinal data2.equivalents < 32 then (
-					Logs.debug(fun m -> m 
-						"%d: adding equiv [%d] = %s ( was %s)" 
-						!iters mindex 
+			); 
+			if c1 > c2 then (
+				if (SI.cardinal data2.equivalents) < 32 then (
+					let r = db_add_equiv steak mindex data in
+					if r >= 0 then 
+						Logs.debug(fun m -> m 
+						"%d: added equiv (loc %d) [%d] = %s ( was %s) %s %s %b " 
+						!iters r mindex 
 						(Logo.output_program_pstr data.pro) 
-						(Logo.output_program_pstr data2.ed.pro));
-					db_add_equiv steak mindex data 
+						(Logo.output_program_pstr data2.ed.pro)
+						data.progenc data2.ed.progenc
+						(data.progenc = data2.ed.progenc) );
 				)
 			); 
 		) );  
@@ -1082,7 +1110,7 @@ let init_database steak count =
 		incr iters
 	) done; 
 	close_out fid; 
-	let steak = sort_database steak in
+	(*let steak = sort_database steak in*)
 	Logs.info(fun m -> m  "%d done; %d sampled; %d replacements; %d equivalents" !i !iters !replace !equivalents); 
 	steak
 	
@@ -1095,8 +1123,8 @@ let load_database steak fname =
 	{steak with gs; dbf; dbf_cpu} 
 	
 let save_database steak fname = 
-	let g = Graf.sort_graph steak.gs.g in
-	Graf.save fname g 
+	(*let g = Graf.sort_graph steak.gs.g in*)
+	Graf.save fname steak.gs.g 
 	(*(* saves in the current state -- not sorted. *)
 	let dba = Vector.to_array db in (* inefficient *)
 	let fil = open_out fname in
@@ -1570,12 +1598,14 @@ let () =
 		let stop = Unix.gettimeofday () in
 		Logs.app(fun m -> m "Execution time: %fs\n%!" (stop -. start)); 
 		Logs.info(fun m -> m ":: first 10 programs");
-		for i = 0 to 9 do (
+		for i = 0 to 7 do (
 			let p = db_get stk i in
 			Logs.info(fun m -> m "%d: %s" i
 					(Logo.output_program_pstr p.ed.pro)); 
 		) done; 
 		save_database stk fname; 
+		let stk = sort_database stk in
+		save_database stk "db_sorted.S";
 		stk
 	) in
 	render_simplest supsteak; 
