@@ -36,7 +36,7 @@ prog_layers = 6
 embed_dim = 256
 
 train_iters = 100000
-learning_rate = 0.00125 # maximum learning rate. scheduled.
+learning_rate = 0.001 # maximum learning rate. scheduled.
 # learning rate of 0.002 is unstable.  Should figure out why. 
 weight_decay = 5e-6
 nreplace = 0
@@ -307,16 +307,17 @@ for u in range(train_iters):
 		print(f'{u} {lr:.6f} loss: {lossflat:.5f}; slowloss {slowloss:.5f}; {rate} samp/sec')
 	
 	# change the learning rate. 
-	lr = learning_rate
-	# # ramp up between 1000 and 11000
-	# if u > 1000:
-	# 	lr = lr * (1 + ((u-1000) / 5000))
-	# lr = min(lr, 0.001) # this seems to be the outright maximum
-	# # decay from 11k to end
-	# if u > 11000: 
-	# 	lr = lr * math.exp((11000-u) / 50000)
-	for g in optimizer.param_groups:
-		g['lr'] = lr
+	if false: 
+		lr = learning_rate
+		# ramp up between 1000 and 11000
+		if u > 1000:
+			lr = lr * (1 + ((u-1000) / 5000))
+		lr = min(lr, 0.001) # this seems to be the outright maximum
+		# decay from 11k to end
+		if u > 11000: 
+			lr = lr * math.exp((11000-u) / 50000)
+		for g in optimizer.param_groups:
+			g['lr'] = lr
 				
 	if u % 1000 == 999 : 
 		if g_training: 

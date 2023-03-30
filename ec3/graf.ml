@@ -101,7 +101,17 @@ let edit_criteria edits =
 let get_edits a_progenc b_progenc = 
 	let dist,edits = Levenshtein.distance a_progenc b_progenc true in
 	let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
-	dist,edits
+	(* verify .. a bit of overhead *)
+	let re = Levenshtein.apply_edits a_progenc edits in
+	if re <> b_progenc then (
+		Logs.err(fun m -> m  
+			"error! %s edits should be %s was %s"
+			a_progenc b_progenc re)
+	);
+	(* edits are applied in reverse order *)
+	(* & add a 'done' edit/indicator *)
+	let edits = ("fin",0,'0') :: edits in
+	dist, (List.rev edits)
 	
 let connect_uniq g indx = 
 	let d = Vector.get g indx in

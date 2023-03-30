@@ -29,6 +29,7 @@
 	(name program)
 	(modules logo parser lexer vgwrapper colors levenshtein vae ast graf program)
 	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib)
+	(modes exe) ; options: byte exe
 	)
 	
 ;(executable
