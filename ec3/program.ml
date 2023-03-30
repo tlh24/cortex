@@ -8,7 +8,7 @@ open Graf
 
 let pi = 3.1415926
 (*let image_count = ref 0 *)
-let image_alloc = 64 (*6*2048*2*)
+let image_alloc = 2048 (*6*2048*2*) (* need to make this a parameter *)
 let image_res = 30
 let batch_size = ref (256*3)
 let toklen = 30
@@ -469,15 +469,42 @@ let make_batche_train a ai b bi =
 	; dt = `Train
 	}
 	
-
-let new_batche_train steak =
-	(* only supervised mode! *)
+let new_batche_train steak = 
+	(* supervised mode, any 'A' -- including eqiv *)
+	let rec selector () = 
+		let di = Random.int (Vector.length steak.gs.g) in 
+		let d = Vector.get steak.gs.g di in
+		match d.progt with
+		| `Uniq -> (
+			let o = SI.elements d.outgoing in
+			let ol = List.length o in
+			if ol > 0 then (
+				let k = Random.int ol in
+				let ei = List.nth o k in
+				let e = Vector.get steak.gs.g ei in
+				if e.progt = `Uniq then (
+					make_batche_train d di e ei
+				) else selector ()
+			) else selector () )
+		| `Equiv -> (
+			(* always simplify to the minimum desc *)
+			let ei = d.equivroot in
+			let e = Vector.get steak.gs.g ei in
+			if e.progt = `Uniq then (
+				make_batche_train d di e ei
+			) else ( assert (0 <> 0); nulbatche ) )
+		| _ -> assert (0 <> 0); nulbatche
+	in
+	selector ()
+	
+(*let new_batche_train steak =
+	(* only supervised mode, only uniq 'A'*)
 	let rec selector () = 
 		(* only target unique nodes, e.g. with an image *)
-		(*let i = Random.int (steak.gs.num_uniq) in 
-		let di = steak.gs.img_inv.(i) in*)
-		let di = 0 in
-		let d = Vector.get steak.gs.g di in (* DEBUG *)
+		let i = Random.int (steak.gs.num_uniq) in 
+		let di = steak.gs.img_inv.(i) in
+		(*let di = 0 in*)
+		let d = Vector.get steak.gs.g di in 
 		let o = SI.elements d.outgoing in
 		let ol = List.length o in 
 		if ol > 0 then (
@@ -489,7 +516,7 @@ let new_batche_train steak =
 			) else selector ()
 		) else selector ()
 	in
-	selector ()
+	selector ()*)
 
 let new_batche_mnist steak =
 	(* for now, just set the target B to a sample from MNIST; ultimately will need to have longer interactions & intermediate starting points *)
@@ -914,6 +941,10 @@ let bigfill_batchd steak bd =
 					Tensor.narrow steak.mnist ~dim:0 ~start:imgi ~length:1 
 					|> Tensor.squeeze |> bigarray2_of_tensor 
 				) else (
+					if imgi >= steak.gs.num_uniq then 
+						Logs.debug (fun m -> m 
+							"%s \n\t>>bigfill_batchd imgi %d gs.num_uniq %d"
+							__LOC__ imgi steak.gs.num_uniq); 
 					assert (imgi < steak.gs.num_uniq) ; 
 					Tensor.narrow steak.dbf_cpu ~dim:0 ~start:imgi ~length:1 
 					|> Tensor.squeeze |> bigarray2_of_tensor 
@@ -924,8 +955,8 @@ let bigfill_batchd steak bd =
 			if u = 0 then (
 				Logs.debug (fun m -> m "bigfill_batchd a g:%d i:%d b g:%d i:%d" 
 				be.a_pid be.a_imgi be.b_pid be.b_imgi)); 
-			let aimg = pid_to_ba2 be.a_pid `Train in
-			let bimg = pid_to_ba2 be.b_pid be.dt in
+			let aimg = pid_to_ba2 be.a_imgi `Train in
+			let bimg = pid_to_ba2 be.b_imgi be.dt in
 			for i=0 to (image_res-1) do (
 				for j=0 to (image_res-1) do (
 					let aif = aimg.{i,j} in
@@ -1007,62 +1038,6 @@ let sort_database steak =
 	let dbf,dbf_cpu = render_database steak g in
 	{steak with gs; dbf; dbf_cpu} 
 	
-	(* sorts the database & updates Tensor dbf *)
-	(* sorts both primary keys and equivalent lists *)
-	(*let dba = Vector.to_array db in (* easier .. *)
-	Array.sort (fun a b -> compare a.pcost b.pcost) dba; 
-	Logs.debug (fun m -> m "sort_database sort dba done.");
-	(* remove duplicate equivalents *)
-	let rec removeDup ls =
-		if List.length ls > 1 then (
-			let b = List.hd ls in
-			let c = List.tl ls in
-			if List.exists (fun d -> d.eprogenc = b.eprogenc) c
-			then removeDup c
-			else b :: (removeDup c)
-		) else ls
-	in
-	(* sort the equivalents *)
-	Array.iteri (fun i data -> 
-		let dedup = removeDup data.equiv in
-		let sl = List.sort (fun a b -> compare a.epcost b.epcost)
-			dedup in
-		(* remove head duplicates *)
-		let sl = List.filter (fun a -> a.eprogenc <> data.progenc) sl in
-		dba.(i) <- {data with equiv=sl} ) dba; 
-	Logs.debug (fun m -> m "sort_database sort equivalents done.");
-	let sta = Unix.gettimeofday () in
-	let dbal = Array.length dba in
-	let dbf = if dbal > image_alloc then (
-		Logs.err (fun m -> m "size of database %d > %d, can't create tensor" dbal image_alloc); 
-		Tensor.ones [1]
-	) else (
-		(* new dbf; otherwise there might be orphan images *)
-		let dbf = Tensor.( 
-			( ones [image_alloc; image_res; image_res] ) * (f (-1.0))) in
-		let cpu = Torch.Device.Cpu in
-		Array.iteri (fun i data -> 
-			let imgf = tensor_of_bigarray2 data.img cpu in
-			Tensor.copy_ (Tensor.narrow dbf ~dim:0 ~start:i ~length:1) ~src:imgf ) dba ; 
-		dbf |> Tensor.to_device ~device 
-	) in
-	let fin = Unix.gettimeofday () in
-	Logs.debug (fun m -> m "sort_database tensor copy done, %f" (fin-.sta)); 
-	(Vector.of_array ~dummy:nulpdata dba),dbf*)
-
-(*let rec generate_random_logo res =
-	let s = Printf.sprintf "move ua, %d" (Random.int 8) in
-	let prog = parse_logo_string s in
-	match prog with 
-	| Some p -> (
-		let pro = compress_ast p in
-		if has_pen_nop pro then assert (0 <> 0) ; 
-		let ed = Graf.pro_to_edata_opt pro res in
-		match ed with
-		| Some q -> q
-		| _ -> generate_random_logo res)
-	| _ -> generate_random_logo res*)
-	
 let rec generate_random_logo res =
 	let actvar = Array.init 5 (fun _i -> false) in
 	let prog = gen_ast false (3,1,actvar) in
@@ -1088,8 +1063,6 @@ let init_database steak count =
 	let fid = open_out "/tmp/png/newdbg.txt" in
 	let i = ref 0 in
 	let iters = ref 0 in
-	let replace = ref 0 in
-	let equivalents = ref 0 in
 	while !i < count do (
 		let data,img = if !i = 0 then
 			generate_empty_logo image_res else
@@ -1147,8 +1120,8 @@ let init_database steak count =
 		incr iters
 	) done; 
 	close_out fid; 
-	(*let steak = sort_database steak in*)
-	Logs.info(fun m -> m  "%d done; %d sampled; %d replacements; %d equivalents" !i !iters !replace !equivalents); 
+	let steak = sort_database steak in
+	Logs.info(fun m -> m  "%d done; %d sampled; %d replacements; %d equivalents" !i !iters steak.gs.num_uniq steak.gs.num_equiv); 
 	steak
 	
 let load_database steak fname = 

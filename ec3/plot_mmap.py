@@ -7,6 +7,9 @@ import matplotlib.pyplot as plt
 from ctypes import * # for c_char
 import time
 
+# remove menubar buttons
+plt.rcParams['toolbar'] = 'None'
+
 def make_mmf(fname): 
 	fd = open(fname, "r+b")
 	return mmap.mmap(fd.fileno(), 0)
@@ -53,7 +56,7 @@ p_ctx = 64
 
 plot_rows = 2
 plot_cols = 3
-figsize = (18, 10)
+figsize = (16, 8)
 plt.ion()
 fig, axs = plt.subplots(plot_rows, plot_cols, figsize=figsize)
 initialized = False
