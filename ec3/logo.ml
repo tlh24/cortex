@@ -4,6 +4,7 @@ open Vgwrapper
 (* names are more interpretable by humans ... but that's a big space *)
 type ptag = int (* future-proof *)
 let nulptag = 0
+let nulimg = Bigarray.Array2.create Bigarray.float32 Bigarray.c_layout 1 1
 
 type prog = [
 	| `Var of int * ptag
@@ -150,7 +151,7 @@ let encode_program g =
 	List.rev !s
 	
 let rec enc_ast g s q r = 
-	(* convert a program to int list + list int list addresses. *)
+	(* convert a program to int list + int list list addresses. *)
 	(* output list is in REVERSE order *)
 	(* "q" is the list int list of addresses *)
 	(* "r" is the address of the parent *)
@@ -332,6 +333,9 @@ let output_program_plg lg g =
 	
 let encode_program_str g = 
 	encode_program g |> intlist_to_string
+	
+let progenc_cost s = 
+	String.fold_left (fun a b -> a + (Char.code b)) 0 s
 
 let rec output_program_h g lg =
 	match g with
@@ -576,16 +580,19 @@ let segs_to_array_and_cost segs resolution =
 	(* outputs a *float* image and cost *)
 	(* float so we don't have to convert all the time.  more mem b/w tho*)
 	let canvas,cost = segs_to_canvas segs in
-	let img = canvas_to_1Darray canvas resolution in
-	(* these sometimes have stride > resolution; pack it *)
-	let stride = (Bigarray.Array1.dim img) / resolution in
-	let len = Bigarray.Array1.dim img in
-	assert (len >= resolution * resolution);
-	let o = Bigarray.Array2.create Bigarray.float32 Bigarray.c_layout resolution resolution in
-	for i = 0 to resolution-1 do (
-		for j = 0 to resolution-1 do (
-			let c = Bigarray.Array1.get img ((i*stride)+j) |> foi in
-			o.{i,j} <- c /. 255.0; 
-		) done; 
-	) done;
-	(o, cost)
+	(* don't render if the resolution is zero, obvi *)
+	if resolution > 0 then (
+		let img = canvas_to_1Darray canvas resolution in
+		(* these sometimes have stride > resolution; pack it *)
+		let stride = (Bigarray.Array1.dim img) / resolution in
+		let len = Bigarray.Array1.dim img in
+		assert (len >= resolution * resolution);
+		let o = Bigarray.Array2.create Bigarray.float32 Bigarray.c_layout resolution resolution in
+		for i = 0 to resolution-1 do (
+			for j = 0 to resolution-1 do (
+				let c = Bigarray.Array1.get img ((i*stride)+j) |> foi in
+				o.{i,j} <- c /. 255.0; 
+			) done; 
+		) done;
+		(o, cost)
+	) else ( nulimg, cost)

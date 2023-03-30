@@ -27,9 +27,16 @@
 
 (executable
 	(name program)
-	(modules logo parser lexer vgwrapper colors levenshtein vae ast program)
-	(libraries vg vg.cairo pbrt vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib ocamlgraph)
+	(modules logo parser lexer vgwrapper colors levenshtein vae ast graf program)
+	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib)
+	(modes exe) ; options: byte exe
 	)
+	
+;(executable
+;	(name graf)
+;	(modules logo parser lexer vgwrapper colors levenshtein ast graf)
+;	(libraries vg vg.cairo vector sexplib logs logs.threaded) 
+;	)
 
 
 ; to install these libraries, run:

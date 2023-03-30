@@ -5,25 +5,43 @@ export OCAMLPARAM='_,rounds=4,O3=1,inline=100,inline-max-unroll=5'
 export CUDA_VISIBLE_DEVICES=0
 debug=false
 parallel=false
+timing=false
 while getopts b:gp flag
 do
 	case "${flag}" in
 		b) batch_size=${OPTARG};;
 		g) debug=true;;
 		p) parallel=true;;
+		t) timing=true;;
 	esac
 done
 if "$debug"; then
 	if "$parallel"; then 
-		_build/default/program.exe -g -p -b $batch_size
+		if "$timing"; then 
+			_build/default/program.exe -g -p -t -b $batch_size
+		else 
+			_build/default/program.exe -g -p -b $batch_size
+		fi
 	else 
-		_build/default/program.exe -g -b $batch_size
+		if "$timing"; then 
+			_build/default/program.exe -g -t -b $batch_size
+		else 
+			_build/default/program.exe -g -b $batch_size
+		fi
 	fi
 else
 	if "$parallel"; then 
-		_build/default/program.exe -p -b $batch_size
+		if "$timing"; then 
+			_build/default/program.exe -p -t -b $batch_size
+		else 
+			_build/default/program.exe -p -b $batch_size
+		fi
 	else 
-		_build/default/program.exe -b $batch_size
+		if "$timing"; then 
+			_build/default/program.exe -t -b $batch_size
+		else 
+			_build/default/program.exe -b $batch_size
+		fi
 	fi
 fi
 # cat logo_log.txt

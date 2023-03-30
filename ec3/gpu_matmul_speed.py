@@ -31,6 +31,7 @@ print("mean:", th.mean(res))
 # GPU # 0 (3090) at 26-40C: 12.4598 (34% faster / 2080 is 53% slower)
 # GPU # 1 (2080) at 60-70C: 19.0269
 # GPU # 2 (2080) at 48-65C: 19.5551 (2.5-2.7% slower)
+# GPU # 0 (4090) at 45C: 4.3517.. really ?!!
 
 # with the monitor at 4k24: 
 # GPU # 1 (2080) 65-72c:  19.0552 (slightly slower, within margin of error)

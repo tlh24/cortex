@@ -97,7 +97,7 @@ while True:
 	fig.tight_layout()
 	fig.canvas.draw()
 	fig.canvas.flush_events()
-	time.sleep(2)
+	# time.sleep(2)
 	print("tick")
 	initialized=True
 
