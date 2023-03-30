@@ -307,7 +307,7 @@ for u in range(train_iters):
 		print(f'{u} {lr:.6f} loss: {lossflat:.5f}; slowloss {slowloss:.5f}; {rate} samp/sec')
 	
 	# change the learning rate. 
-	if false: 
+	if False: 
 		lr = learning_rate
 		# ramp up between 1000 and 11000
 		if u > 1000:
