@@ -293,7 +293,6 @@ let decode_ast_struct ss qq =
 	in
 	conv tree
 
-	
 let decode_program il = 
 	(* convert a program encoded as a list of ints to a string, 
 	and then to the ast *)
@@ -335,7 +334,12 @@ let encode_program_str g =
 	encode_program g |> intlist_to_string
 	
 let progenc_cost s = 
-	String.fold_left (fun a b -> a + (Char.code b)) 0 s
+	(* to break ties, add a slight bias for lower codes first *)
+	let cost,_ = String.fold_left (fun (a,f) b -> 
+		a +. ((foi (Char.code b)) *. f), 
+		f *. 1.00058768275
+		) (0.0,1.0) s in
+	cost
 
 let rec output_program_h g lg =
 	match g with

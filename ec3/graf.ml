@@ -30,7 +30,7 @@ type edata =
 	; progenc : string
 	; progaddr : int list list 
 	; scost : float
-	; pcost : int
+	; pcost : float
 	; segs : Logo.segment list
 	}
 
@@ -54,7 +54,7 @@ let nuledata =
 	; progenc = ""
 	; progaddr = []
 	; scost = 0.0
-	; pcost = 0
+	; pcost = 0.0
 	; segs = []
 	}
 
@@ -211,7 +211,7 @@ let incr_good gs i =
 	Vector.set gs.g i d' 
 	
 let sort_graph g = 
-	(* sort the array by scost ascending; return new vector *)
+	(* sort the array by pcost ascending; return new vector *)
 	let ar = Vector.to_array g |>
 		Array.mapi (fun i a -> (i,a)) in
 	Array.sort (fun (_,a) (_,b) -> compare a.ed.pcost b.ed.pcost) ar ; 
@@ -239,7 +239,7 @@ let str_to_progt = function
 let print_graph g = 
 	let print_node i d = 
 		let c = progt_to_str d.progt in
-		Printf.printf "node [%d] = %s '%s'\n\tcost:%.2f, %d imgi:%d\n"
+		Printf.printf "node [%d] = %s '%s'\n\tcost:%.2f, %.2f imgi:%d\n"
 			i c (Logo.output_program_pstr d.ed.pro) d.ed.scost d.ed.pcost d.imgi; 
 		Printf.printf "\toutgoing: "; 
 		SI.iter (fun j -> Printf.printf "%d," j) d.outgoing;
@@ -264,8 +264,8 @@ let parse_logo_string s =
 let pro_to_edata pro res = 
 	let (_,_,segs) = Logo.eval (Logo.start_state ()) pro in
 	let img,scost = Logo.segs_to_array_and_cost segs res in
-	let proglst,progaddr = Logo.encode_ast pro in
-	let progenc = Logo.intlist_to_string proglst in
+	let _proglst,progaddr = Logo.encode_ast pro in (*!! danger !!*)
+	let progenc = Logo.encode_program pro |> Logo.intlist_to_string in
 	let pcost = Logo.progenc_cost progenc in
 	{pro; progenc; progaddr; scost; pcost; segs },img
 	
@@ -356,7 +356,7 @@ let load gs fname =
 			let e = Vector.get g d.equivroot in
 			Vector.set g i {d with imgi = e.imgi} )
 		| `Uniq -> ()
-		| _ -> Logs.err (fun m -> m "Graf.load error at %d %d\n" i d.ed.pcost); assert (0 <> 0);
+		| _ -> Logs.err (fun m -> m "Graf.load error at %d %.2f\n" i d.ed.pcost); assert (0 <> 0);
 		) g; 
 	{gs with g}
 	

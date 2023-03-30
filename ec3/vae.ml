@@ -83,7 +83,7 @@ let train images device batch_size =
     |> VAE.decode vae
     |> Tensor.to_device ~device:Cpu
     |> Tensor.view ~size:[ -1; 1; image_res; image_res ]
-    |> write_samples ~filename:(Printf.sprintf "/tmp/png/vae_samp_%d.png" epoch_idx)
+    |> write_samples ~filename:(Printf.sprintf "/tmp/png/vae_samp/s_%d.png" epoch_idx)
   done; 
   vae
 
