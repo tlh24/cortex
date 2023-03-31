@@ -8,7 +8,7 @@ open Graf
 
 let pi = 3.1415926
 (*let image_count = ref 0 *)
-let image_alloc = 2048 (*6*2048*2*) (* need to make this a parameter *)
+let image_alloc = 6*2048 (*6*2048*2*) (* need to make this a parameter *)
 let image_res = 30
 let batch_size = ref (256*3)
 let toklen = 30

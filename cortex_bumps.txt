@@ -4131,3 +4131,10 @@ I don’t know your time availability, but happy to share the code for (2) & cha
 
 Cheers, 
 Tim
+
+
+March 30 2023
+
+Making good progress -- got the graph represenation folded in properly, 
+dreaming and training seems to be working well. 
+Need to add some sort of priority queue for pushing the training / dreaming toward 'solving the digits' though.  Hmm. 
