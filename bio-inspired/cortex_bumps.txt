@@ -4098,6 +4098,12 @@ This definitely requires significant rejiggering of the ocaml code!  (Not python
 Probably do a one-hot fixed code or something? 
 	Absolute position but not relative pos. 
 	Definitely need to improve position decoding: it's only ~20% accurate now. 
+		March 30th: that turned out to be a bug!  
+		Cosine distance in positional encoding results in 
+		.. a cosine-shaped distribution of matches
+		.. which means that it only picks the correct position ~20% of the time.  
+		This is now fixed.  
+			But glad it encouraged adding AST encoding! 
 
 Hi Alex, 
 
