@@ -30,21 +30,29 @@ def write_mmap(mmf, data):
 	mmf.seek(0)
 	n = mmf.write(buff.read())
 	return n
-	
-fd_bpro = make_mmf("bpro_0.mmap")
-fd_bimg = make_mmf("bimg_0.mmap")
-fd_bedts = make_mmf("bedts_0.mmap")
-fd_bedtd = make_mmf("bedtd_0.mmap")
-fd_posenc = make_mmf("posenc_0.mmap")
-fd_editdiff = make_mmf("editdiff_0.mmap")
-# fallocate -l 6016 editdiff.mmap for batch size 32
-# 6016 = 32 * 47 * 4
+
 
 parser = argparse.ArgumentParser(description='image mmaped files')
 parser.add_argument("-b", "--batch_size", help="Set the batch size", type=int)
+parser.add_argument("-d", "--dreaming", help="Set the model to dream", action="store_true")
 args = parser.parse_args()
 batch_size = args.batch_size
+g_dreaming = args.dreaming
+if args.dreaming: 
+	filno = 1
+else: 
+	filno = 0
 print(f"batch_size:{batch_size}")
+
+
+fd_bpro = make_mmf(f"bpro_{filno}.mmap")
+fd_bimg = make_mmf(f"bimg_{filno}.mmap")
+fd_bedts = make_mmf(f"bedts_{filno}.mmap")
+fd_bedtd = make_mmf(f"bedtd_{filno}.mmap")
+fd_posenc = make_mmf(f"posenc_{filno}.mmap")
+fd_editdiff = make_mmf(f"editdiff_{filno}.mmap")
+# fallocate -l 6016 editdiff.mmap for batch size 32
+# 6016 = 32 * 47 * 4
 
 image_res = 30
 toklen = 30

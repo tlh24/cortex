@@ -515,7 +515,7 @@ let new_batche_mnist steak =
 	(*let len = match steak.dreams with
 		| Some dream -> Array.length dream
 		| _ -> 1 in*)
-	let mid = Random.int 12 in
+	let mid = 12(* + (Random.int 2)*) in
 	(* select a starting point closer to the target, w/threshold.
 		goal is conflated with longer interactions, guess ? *)
 	let imgcnt = steak.gs.num_uniq in (* may be updated in other threads *)
@@ -525,7 +525,7 @@ let new_batche_mnist steak =
 			|> Tensor.expand ~implicit:true ~size:[imgcnt;cols] in
 	let d = Tensor.cosine_similarity ~x1:a ~x2:b ~dim:1 ~eps:1e-7 in
 	(* add a bit of noise .. ?? *)
-	(*let d = Tensor.( d + (f 0.05 * (randn [imgcnt;]))) in*)
+	let d = Tensor.( d + (f 0.05 * (randn [imgcnt;]))) in
 	assert ((Tensor.shape1_exn d) = imgcnt) ; (* sanity.. *)
 	let _,ind = Tensor.sort d ~dim:0 ~descending:true in
 	(* select the best match that is short enough *)
@@ -549,7 +549,7 @@ let new_batche_mnist steak =
 	(* note: bd.fresh is set in the calling function (for consistency) *)
 		
 let new_batche_unsup steak =
-	if (Random.int 10) < 5 then (
+	if (Random.int 10) < 0 then ( (* FIXME 5 *)
 		new_batche_train steak `Verify
 	) else (
 		new_batche_mnist steak
@@ -683,9 +683,9 @@ let img_to_imgf steak img =
 	imgf_cpu,imgf
 	
 let try_add_program steak data img be = 
-	(*let progstr = Logo.output_program_pstr data.pro in
+	let progstr = Logo.output_program_pstr data.pro in
 	Logs.info (fun m -> m "try_add_program [%d]: %s \"%s\""
-		steak.batchno data.progenc progstr);*)
+		steak.batchno data.progenc progstr);
 	let imgf_cpu,imgf = img_to_imgf steak img in
 	let good2,dist,minde = dbf_dist steak imgf in
 	if good2 then (

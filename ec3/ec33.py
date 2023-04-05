@@ -258,11 +258,17 @@ for u in range(train_iters):
 	
 	if th.min(bedts[:,0]) < 0: 
 		print("bedts synchronization issue!")
+		
+	if g_dreaming: 
+		bimg = bimg.cuda()
+		bimg[:,2,:,:] = bimg[:,2,:,:] * (th.randn(batch_size, image_res, image_res) > 0)
+	else:
+		bimg = bimg.cuda()
 	
 	# with th.autocast(device_type='cuda', dtype=torch.float16):
-	# y,q = train_opt(model, bimg.cuda(), bpro.cuda(), bedts.cuda())
+	# y,q = train_opt(model, bimg, bpro.cuda(), bedts.cuda())
 	model.zero_grad()
-	y,q = model(u, bimg.cuda(), bpro.cuda())
+	y,q = model(u, bimg, bpro.cuda())
 	if g_training: 
 		targ = bedts.cuda()
 		loss = lossfunc_mse(y, targ)
