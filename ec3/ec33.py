@@ -17,22 +17,16 @@ import pdb
 # import torch._dynamo as dynamo
 # dynamo.config.verbose=True
 
-batch_size = 256*3
-image_res = 30
-toklen = 30
-poslen = 6
-p_indim = toklen + 1 + poslen*2 
-e_indim = 5 + toklen + poslen*2
-p_ctx = 64
+from constants import *
 
 patch_size = 5
 v_ctx = int((image_res / patch_size) ** 2 + 1)
 vision_width = 256
-prog_width = 128
+prog_width = 320
 vision_heads = 8
-vision_layers = 4
+vision_layers = 6
 prog_heads = 8
-prog_layers = 6
+prog_layers = 8
 embed_dim = 256
 
 train_iters = 100000
@@ -95,7 +89,7 @@ fd_bedts = make_mmf(f"bedts_{mmapno}.mmap")
 fd_bedtd = make_mmf(f"bedtd_{mmapno}.mmap")
 fd_editdiff = make_mmf(f"editdiff_{mmapno}.mmap")
 fd_posenc = make_mmf(f"posenc_{mmapno}.mmap")
-posenc = read_mmap(fd_posenc, [p_ctx, poslen*2])
+posenc = read_mmap(fd_posenc, [p_ctx, poslen])
 
 torch_device = 0
 print("torch cuda devices", th.cuda.device_count())
@@ -200,7 +194,7 @@ print(f"Number of model parameters:{trainable_params/1e6}M")
 # loss is on the predicted edit: 
 # [0:4] is the categorical edit type, sub del ins fin
 # [4:toklen] is the categorical character/token.  
-# [5+toklen:5+toklen+poslen*2] is the (absolute) position encoding, vectoral.
+# [5+toklen:5+toklen+poslen] is the (absolute) position encoding, vectoral.
 # not sure why there is a 5 in there.
 
 lossfunc_cel = nn.CrossEntropyLoss(label_smoothing = 0.08, reduction='mean')
@@ -261,7 +255,8 @@ for u in range(train_iters):
 		
 	if g_dreaming: 
 		bimg = bimg.cuda()
-		bimg[:,2,:,:] = bimg[:,2,:,:] * (th.randn(batch_size, image_res, image_res) > 0)
+		# bimg[:,2,:,:] = bimg[:,2,:,:] * (th.randn(batch_size, image_res, image_res) > 0) # needs testing.
+		bimg = bimg + th.randn(batch_size, 3, image_res, image_res) * 0.1
 	else:
 		bimg = bimg.cuda()
 	

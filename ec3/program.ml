@@ -12,13 +12,13 @@ let image_alloc = 6*2048 (*6*2048*2*) (* need to make this a parameter *)
 let image_res = 30
 let batch_size = ref (256*3)
 let toklen = 30
-let poslen = 6
-let p_indim = toklen + 1 + poslen*2 (* 31 + 12 = 43 *)
-let e_indim = 5 + toklen + poslen*2
 let p_ctx = 64
-let nreplace = ref 0 (* number of repalcements during hallucinations *)
+let poslen = p_ctx / 2 (* onehot; two programs need to fit into the context *)
+let p_indim = toklen + 1 + poslen (* 31 + 12 = 43 *)
+let e_indim = 5 + toklen + poslen
+let nreplace = ref 0 (* number of replacements during hallucinations *)
 let glive = ref true 
-let g_debug = ref false 
+let gdebug = ref false 
 let gparallel = ref false
 let gdisptime = ref false
 let listen_address = Unix.inet_addr_loopback
@@ -74,7 +74,7 @@ type batchd = (* batch data structure *)
 	; bedtd : (float, Bigarray.float32_elt, Bigarray.c_layout) 
 				Bigarray.Array2.t (* btch , e_indim - decode *)
 	; posenc : (float, Bigarray.float32_elt, Bigarray.c_layout) 
-				Bigarray.Array2.t (* p_ctx , poslen*2 *)
+				Bigarray.Array2.t (* p_ctx , poslen *)
 	; posencn : Tensor.t (* normalized position encoding *)
 	; bea : batche array
 	; fresh : bool array
@@ -324,7 +324,7 @@ let db_len steak =
 	Mutex.unlock steak.db_mutex ; 
 	r
 
-let dbf_dist steak img = 
+(*let dbf_dist steak img = 
 	(* cosine distance between two images *)
 	(* first check that there is an image *)
 	let sum = Tensor.sum img |> Tensor.float_value in
@@ -345,6 +345,26 @@ let dbf_dist steak img =
 		true, dist, maxdex	
 	) else (
 		false, 0.0, 0 
+	)*)
+	
+let dbf_dist steak img = 
+	(* MSE between two images *)
+	(* first check that there is an image *)
+	let sum = Tensor.sum img |> Tensor.float_value in
+	let sumt = float_of_int (image_res * image_res) in
+	if (sum > 1.0) && (sum < (0.99 *. sumt)) then (
+		let imgcnt = steak.gs.num_uniq in 
+		assert (imgcnt > 0); (* torch calls fail ow *)
+		(*let ir = image_res*image_res in*)
+		let a = Tensor.narrow steak.dbf ~dim:0 ~start:0 ~length:imgcnt in
+		let b = Tensor.expand img ~implicit:true ~size:[imgcnt; image_res; image_res] in
+		let d = Tensor.(sum_dim_intlist (square(a - b)) ~dim:(Some [1;2]) ~keepdim:false ~dtype:(T Float)) in
+		let mindex = Tensor.argmin d ~dim:(Some 0) ~keepdim:true 
+			|> Tensor.int_value in
+		let dist = Tensor.get d mindex |> Tensor.float_value in
+		true, (dist /. sumt), mindex	
+	) else (
+		false, 1.0, 0 
 	)
 
 let dbf_to_png bigt i filename =
@@ -384,19 +404,13 @@ let init_batchd superv =
 	let fd_bedtd,bedtd = mmap_bigarray2 (mkfnam "bedtd") 
 			!batch_size e_indim in
 	let fd_posenc,posenc = mmap_bigarray2 (mkfnam "posenc")
-			p_ctx (poslen*2) in
+			p_ctx poslen in
 	let bea,fresh = reset_bea dreaming in
 	(* fill out the posenc matrix *)
-	let scl = 2.0 *. pi /. (foi p_ctx) in
-	for i = 0 to (p_ctx-1) do (
-		(* i is the position *)
-		let fi = foi i in
+	(* just a diagonal matrix w one-hot! *)
+	for i = 0 to (poslen-1) do (
 		for j = 0 to (poslen-1) do (
-			(* j is the frequency; j=0 means once cycle in p_ctx *)
-			(* posenc[i,j*2+0] = sin((2*pi*i / p_ctx) * (j+1)) *)
-			let fj = foi (j+1) in
-			posenc.{i, j*2+0} <- sin(scl *. fi *. fj); 
-			posenc.{i, j*2+1} <- cos(scl *. fi *. fj)
+			posenc.{i,j} <- if i = j then 1.0 else 0.0; 
 		) done
 	) done ;
 	let device = Torch.Device.Cpu in
@@ -515,7 +529,7 @@ let new_batche_mnist steak =
 	(*let len = match steak.dreams with
 		| Some dream -> Array.length dream
 		| _ -> 1 in*)
-	let mid = 12(* + (Random.int 2)*) in
+	let mid = 1 + (Random.int 1000) in
 	(* select a starting point closer to the target, w/threshold.
 		goal is conflated with longer interactions, guess ? *)
 	let imgcnt = steak.gs.num_uniq in (* may be updated in other threads *)
@@ -549,7 +563,7 @@ let new_batche_mnist steak =
 	(* note: bd.fresh is set in the calling function (for consistency) *)
 		
 let new_batche_unsup steak =
-	if (Random.int 10) < 0 then ( (* FIXME 5 *)
+	if (Random.int 10) < 6 then ( (* FIXME 5 *)
 		new_batche_train steak `Verify
 	) else (
 		new_batche_mnist steak
@@ -618,7 +632,7 @@ let sample_dist x =
 let sample_dist_dum x = 
 	Tensor.argmax x ~dim:1 ~keepdim:false
 	
-let decode_edit bd ba_edit = 
+let decode_edit _bd ba_edit = 
 	(* decode model output (from python) *)
 	let sta = Unix.gettimeofday () in
 	let device = Torch.Device.Cpu in
@@ -628,22 +642,22 @@ let decode_edit bd ba_edit =
 	let typ = sample_dist (Tensor.narrow m ~dim:1 ~start:0 ~length:4) in 
 	let chr = sample_dist (Tensor.narrow m ~dim:1 ~start:4 ~length:toklen) in
 	(* now need to compute cosine distance.  normalize vectors first *)
-	let pos = Tensor.narrow m ~dim:1 ~start:(5+toklen) ~length:(poslen*2)
-			|> normalize_tensor in
+	let pos = sample_dist 
+		(Tensor.narrow m ~dim:1 ~start:(5+toklen) ~length:poslen) in
 	(*let pos = Tensor.narrow bd.posencn ~dim:0 ~start:4 ~length:1 in
 	let pos = Tensor.expand pos ~size:[!batch_size;poslen*2] ~implicit:true in
 	Logs.debug (fun m -> m "decode_edit: normalized pos\n"); 
 	Tensor.print pos; *)
 	(* ^^ why 5? 4 edit types, toklen char options, and one for shakes *)
 	(* add a leading p_ctx dimension *)
-	let pos = Tensor.expand pos ~size:[p_ctx;!batch_size;poslen*2] ~implicit:true in
-	let posenc = Tensor.expand bd.posencn ~size:[!batch_size;p_ctx;poslen*2] ~implicit:true in
+	(*let pos = Tensor.expand pos ~size:[p_ctx;!batch_size;poslen*2] ~implicit:true in
+	let posenc = Tensor.expand bd.posencn ~size:[!batch_size;p_ctx;poslen*2] ~implicit:true in*)
 	(*Logs.debug (fun m -> m "decode_edit: bd.posencn\n"); 
 	Tensor.print bd.posencn;*)
-	let sim = Tensor.einsum ~equation:"cbp,bcp -> bc" [pos;posenc] ~path:None in
+	(*let sim = Tensor.einsum ~equation:"cbp,bcp -> bc" [pos;posenc] ~path:None in*)
 	(*Logs.debug (fun m -> m "decode_edit: sim\n"); 
 	Tensor.print sim;*)
-	let loc = sample_dist_dum sim in 
+	(*let loc = sample_dist_dum sim in *)
 	(* cosine similarity is permissive; take top *)
 	(* location must be clipped to within the program. *)
 	let edit_arr = Array.init !batch_size (fun i -> 
@@ -653,7 +667,7 @@ let decode_edit bd ba_edit =
 			| 2 -> "ins"
 			| _ -> "fin" in
 		let echr = (Tensor.get_int1 chr i) + Char.code('0') |> Char.chr in
-		let eloc = Tensor.get_int1 loc i in
+		let eloc = Tensor.get_int1 pos i in
 		(etyp,eloc,echr) ) in
 	(* debug *)
 	(*for i = 0 to (min 1 !batch_size) do (
@@ -683,9 +697,10 @@ let img_to_imgf steak img =
 	imgf_cpu,imgf
 	
 let try_add_program steak data img be = 
-	let progstr = Logo.output_program_pstr data.pro in
-	Logs.info (fun m -> m "try_add_program [%d]: %s \"%s\""
-		steak.batchno data.progenc progstr);
+	if 0 <> 0 then (
+		let progstr = Logo.output_program_pstr data.pro in
+		Logs.info (fun m -> m "try_add_program [%d]: %s \"%s\""
+			steak.batchno data.progenc progstr) );
 	let imgf_cpu,imgf = img_to_imgf steak img in
 	let good2,dist,minde = dbf_dist steak imgf in
 	if good2 then (
@@ -694,7 +709,7 @@ let try_add_program steak data img be =
 		but has been hallucinated by the network, 
 		and is not too much more costly than what's there,
 		then replace the entry! *)
-	if dist > 0.994 then (
+	if dist > 0.02 then (
 		let data2 = db_get steak mindex in
 		let c1 = data.pcost in
 		let c2 = data2.ed.pcost in
@@ -722,7 +737,7 @@ let try_add_program steak data img be =
 			(* those two operations are in-place, so subsequent batches should contain the new program :-) *)
 		)
 	) ;
-	if dist < 0.7 then (
+	if dist < 0.001 then (
 		let added,l = db_add_uniq steak data imgf imgf_cpu in
 		if added then (
 			Logs.info(fun m -> m
@@ -913,12 +928,12 @@ let bigfill_batchd steak bd =
 		let l = if l > llim then llim else l in 
 		let lc = if lc > llim then llim else lc in
 		for i = 0 to l-1 do (
-			for j = 0 to poslen*2-1 do (
+			for j = 0 to poslen-1 do (
 				bd.bpro.{u,i,toklen+1+j} <- bd.posenc.{i,j}
 			) done
 		) done;
 		for i = 0 to lc-1 do (
-			for j = 0 to poslen*2-1 do (
+			for j = 0 to poslen-1 do (
 				bd.bpro.{u,i+l,toklen+1+j} <- bd.posenc.{i,j}
 			) done
 		) done ;
@@ -974,10 +989,10 @@ let bigfill_batchd steak bd =
 			bd.bedts.{u,4+ci} <- 1.0 ; 
 		(* position encoding *)
 		if pp >= 0 && pp < p_ctx then (
-			for i = 0 to poslen*2-1 do (
+			for i = 0 to poslen-1 do (
 				bd.bedts.{u,5+toklen+i} <- bd.posenc.{pp,i}
 			) done
-		) in (* /il_bigfill_batchd *)
+		) in (* /innerloop_bigfill_batchd *)
 	if !gparallel then
 		Dtask.parallel_for steak.pool ~start:0 ~finish:(!batch_size-1)
 			~body:innerloop_bigfill_batchd
@@ -1061,7 +1076,7 @@ let init_database steak count =
 		if (good || !i < 2) then (
 		(* bug: white image sets distance to 1.0 to [0] *)
 		(*Logs.debug (fun m -> m "dbf_dist %f %d" dist mindex);*) 
-		if dist < 0.7 then ( 
+		if dist > 0.02 then ( 
 			let s = Logo.output_program_pstr data.pro in
 			Logs.debug(fun m -> m 
 				"%d: adding [%d] = %s" !iters !i s); 
@@ -1073,7 +1088,7 @@ let init_database steak count =
 			Printf.fprintf fid "[%d] %s (dist:%f to:%d)\n" !i s dist mindex; 
 			incr i;
 		) ; 
-		if dist > 0.99 then (
+		if dist < 0.001 then (
 			(* see if there's a replacement *)
 			let data2 = db_get steak mindex in
 			let c1 = data.pcost in (* progenc_cost  *)
@@ -1092,7 +1107,7 @@ let init_database steak count =
 					let r = db_add_equiv steak mindex data in
 					if r >= 0 then 
 						Logs.debug(fun m -> m 
-						"iter %d: added equiv [loc %d] = %s [now loc %d] ( was %s) %s %s %b " 
+						"iter %d: added equiv [loc %d] = %s [new loc %d] ( simpler %s) %s %s same:%b " 
 						!iters mindex
 						(Logo.output_program_pstr data.pro) r
 						(Logo.output_program_pstr data2.ed.pro)
@@ -1110,7 +1125,88 @@ let init_database steak count =
 	let steak = sort_database steak in
 	Logs.info(fun m -> m  "%d done; %d sampled; %d replacements; %d equivalents" !i !iters steak.gs.num_uniq steak.gs.num_equiv); 
 	steak
-	
+
+let verify_database steak =
+	(* render everything again for sanity *)
+	let root = "/tmp/ec3/verify_database" in
+	let n = Vector.length steak.gs.g in
+	let imf = Tensor.zeros [n; image_res; image_res] in
+	Vector.iteri (fun i d -> 
+		let _,img = Graf.pro_to_edata d.ed.pro image_res in
+		let imgf_cpu,_ = img_to_imgf steak img in
+		Tensor.copy_ (Tensor.narrow imf ~dim:0 ~start:i ~length:1) ~src:imgf_cpu; 
+		Logo.segs_to_png d.ed.segs 64
+			(Printf.sprintf "%s/db%05d_.png" root i); 
+		) steak.gs.g; 
+	let good = ref true in
+	let verify_equivalent i d j e =
+		let u = Tensor.narrow imf ~dim:0 ~start:i ~length:1 in
+		let v = Tensor.narrow imf ~dim:0 ~start:j ~length:1 in
+		let w = Tensor.( sum ( square (u - v) ) ) |> Tensor.float_value in
+		let sumt = float_of_int (image_res * image_res) in
+		let w = w /. sumt in
+		if w > 0.002 then (
+			Logs.err (fun m -> m "%d %d: %s not equiv %s (%f)"
+				i j (Logo.output_program_pstr d.ed.pro) (Logo.output_program_pstr e.ed.pro) w ); 
+			good := false
+		)
+	in
+	let gi = Vector.to_list steak.gs.g |> List.mapi (fun i d -> i,d) in
+	Vector.iteri (fun i d -> 
+		match d.progt with
+		| `Uniq -> (
+			(* verify that all equivalents are actually that. *)
+			SI.iter (fun j -> 
+				let e = Vector.get steak.gs.g j in
+				verify_equivalent i d j e
+				) d.equivalents ; 
+			(* re-create outgoing to verify *)
+			let ii,_ = List.filter (fun (j,e) -> 
+				if j <> i then 
+				let _,edits = Graf.get_edits d.ed.progenc e.ed.progenc in
+				let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
+				Graf.edit_criteria edits else false ) gi
+				|> List.split in
+			let og = SI.of_list ii in
+			if og <> d.outgoing then (
+				let ogl = SI.cardinal og in
+				let doutl = SI.cardinal d.outgoing in
+				Printf.printf "%d %s outgoing wrong! len %d should be %d\n"
+					i (Logo.output_program_pstr d.ed.pro) doutl ogl ; 
+				let print_diff a b =
+					let df = SI.diff a b in
+					Printf.printf "diff:\n"; 
+					SI.iter (fun k -> 
+						let e = Vector.get steak.gs.g k in
+						let dist,edits = Graf.get_edits d.ed.progenc e.ed.progenc in
+						Printf.printf "fwd\t%d, %s -> %s dist %d\n" k d.ed.progenc e.ed.progenc dist; 
+						Levenshtein.print_edits edits; 
+						(* flip it and do it again *)
+						let dist,edits = Graf.get_edits e.ed.progenc d.ed.progenc in
+						Printf.printf "rev\t%d, %s -> %s dist %d\n" k e.ed.progenc d.ed.progenc dist; 
+						Levenshtein.print_edits edits; 
+						) df ;  
+				in
+				if ogl > doutl then print_diff og d.outgoing;
+				if doutl > ogl then print_diff d.outgoing og ; 
+				good := false )
+			)
+		| `Equiv -> (
+			let j = d.equivroot in
+			let e = Vector.get steak.gs.g j in
+			verify_equivalent i d j e)
+		| _ -> () 
+		) steak.gs.g; 
+	if !good then 
+		Logs.info (fun m -> m "database verified.")
+
+let save_database steak fname = 
+	(*let g = Graf.sort_graph steak.gs.g in*)
+	Graf.save fname steak.gs.g; 
+	Logs.info (fun m -> m "saved %d (%d uniq, %d equiv) to %s" 
+		(Vector.length steak.gs.g) 
+		steak.gs.num_uniq steak.gs.num_equiv fname )
+		
 let load_database steak fname = 
 	(* returns a new steak, freshly sizzled *)
 	let gs0 = create image_alloc in
@@ -1118,14 +1214,10 @@ let load_database steak fname =
 	let dbf,dbf_cpu = render_database steak gs.g in
 	Logs.info (fun m -> m "Loaded %d: %d uniq and %d equivalent"
 		(Vector.length gs.g) gs.num_uniq gs.num_equiv ); 
-	{steak with gs; dbf; dbf_cpu} 
-	
-let save_database steak fname = 
-	(*let g = Graf.sort_graph steak.gs.g in*)
-	Graf.save fname steak.gs.g; 
-	Logs.info (fun m -> m "saved %d (%d uniq, %d equiv) to %s" 
-		(Vector.length steak.gs.g) 
-		steak.gs.num_uniq steak.gs.num_equiv fname )
+	let steak = {steak with gs; dbf; dbf_cpu} in
+	verify_database steak ; 
+	save_database steak "db_rewrite.S"; 
+	steak
 	
 let handle_message steak bd msg =
 	(*Logs.debug (fun m -> m "handle_message %s" msg);*)
@@ -1257,7 +1349,7 @@ let anon_fun filename = (* just incase we need later *)
 let speclist =
   [("-b", Arg.Set_int batch_size, "Training batch size");
    ("-o", Arg.Set_string output_file, "Set output file name"); 
-   ("-g", Arg.Set g_debug, "Turn on debug");
+   ("-g", Arg.Set gdebug, "Turn on debug");
    ("-p", Arg.Set gparallel, "Turn on parallel");
    ("-t", Arg.Set gdisptime, "Turn on timing instrumentation");]
    
@@ -1280,8 +1372,8 @@ let () =
 	Logs_threaded.enable ();
 	let () = Logs.set_reporter (Logs.format_reporter ()) in
 	let () = Logs.set_level 
-		(if !g_debug then Some Logs.Debug else Some Logs.Info) in
-	if !g_debug then Logs.debug (fun m -> m "Debug logging enabled.")
+		(if !gdebug then Some Logs.Debug else Some Logs.Info) in
+	if !gdebug then Logs.debug (fun m -> m "Debug logging enabled.")
 	else Logs.info (fun m -> m "Debug logging disabled.") ; 
 	if !gparallel then 
 		Logs.info (fun m -> m "Parallel enabled.")
@@ -1333,9 +1425,10 @@ let () =
 		(*Dtask.run supsteak.pool (fun () -> load_database supsteak )*)
 		load_database supstak "db_sorted.S"
 	) else ( 
-		Logs.app(fun m -> m "Generating %d programs" (image_alloc/2));
+		let nprogs = 1000 in
+		Logs.app(fun m -> m "Generating %d programs" nprogs);
 		let start = Unix.gettimeofday () in
-		let stk = init_database supstak (image_alloc/2) in
+		let stk = init_database supstak nprogs in
 		(* init also sorts. *)
 		let stop = Unix.gettimeofday () in
 		Logs.app(fun m -> m "Execution time: %fs\n%!" (stop -. start)); 

@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from ctypes import * # for c_char
 import time
 
+from constants import *
 # remove menubar buttons
 plt.rcParams['toolbar'] = 'None'
 
@@ -54,13 +55,6 @@ fd_editdiff = make_mmf(f"editdiff_{filno}.mmap")
 # fallocate -l 6016 editdiff.mmap for batch size 32
 # 6016 = 32 * 47 * 4
 
-image_res = 30
-toklen = 30
-poslen = 6
-p_indim = toklen + 1 + poslen*2 
-e_indim = 5 + toklen + poslen*2
-p_ctx = 64
-
 
 plot_rows = 2
 plot_cols = 3
@@ -95,7 +89,7 @@ while True:
 	bimg = read_mmap(fd_bimg, [batch_size, 3, image_res, image_res])
 	bedts = read_mmap(fd_bedts, [batch_size, e_indim])
 	bedtd = read_mmap(fd_bedtd, [batch_size, e_indim])
-	posenc = read_mmap(fd_posenc, [p_ctx, poslen*2])
+	posenc = read_mmap(fd_posenc, [p_ctx, poslen])
 	editdiff = read_mmap(fd_editdiff, [batch_size, e_indim])
 
 	plot_tensor(0, 0, bpro[0,:,:], "bpro[0,:,:]", -1.0, 1.0)

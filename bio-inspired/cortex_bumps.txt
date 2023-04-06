@@ -4164,3 +4164,11 @@ Possible modifications:
 	Random sampling is super inefficient. 
 	Need to think much more about this -- we *have* to be able to account for, and to sample, even improbable regions of space. 
 		This may get back to Schmidhuber's OOPS.. 
+
+April 5 2023
+
+Switching to one-hot position encoding, dumb but efficient. 
+To roll back to fourier series, checkout
+https://github.com/tlh24/cortex/commit/d53e88339fed1a3b7872e255006cdb3bc77c0345
+One-hot makes it much easier to interpolate over decoding alternatives, and hence create a (recursive) search tree for enumeration, not samples.  
+This prevents the transformer from endlessly proposing the same series of edits... 

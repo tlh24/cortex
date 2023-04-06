@@ -91,23 +91,25 @@ let edit_criteria edits =
 		let ndel = count_type "del" in
 		let nins = count_type "ins" in
 		let r = ref false in
+		(* note! these rules must be symmetric for the graph to make sense *)
 		if nsub <= 3 && ndel = 0 && nins = 0 then r := true;
 		if nsub = 0 && ndel <= 6 && nins = 0 then r := true; 
-		if nsub = 0 && ndel = 0 && nins <= 7 then r := true;
-		if nsub <= 1 && ndel = 0 && nins <= 3 then r := true;
+		if nsub = 0 && ndel = 0 && nins <= 6 then r := true;
+		(*if nsub <= 1 && ndel = 0 && nins <= 3 then r := true;
+		if nsub <= 1 && ndel <= 3 && nins <= 0 then r := true;*)
 		!r
 	) else false
 
 let get_edits a_progenc b_progenc = 
 	let dist,edits = Levenshtein.distance a_progenc b_progenc true in
 	let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
-	(* verify .. a bit of overhead *)
-	let re = Levenshtein.apply_edits a_progenc edits in
+	(* verify .. a bit of overhead // NOTE: seems very safe! *)
+	(*let re = Levenshtein.apply_edits a_progenc edits in
 	if re <> b_progenc then (
 		Logs.err(fun m -> m  
 			"error! %s edits should be %s was %s"
 			a_progenc b_progenc re)
-	);
+	);*)
 	(* edits are applied in reverse order *)
 	(* & add a 'done' edit/indicator *)
 	let edits = ("fin",0,'0') :: edits in
@@ -120,17 +122,15 @@ let connect_uniq g indx =
 	let nearby = ref [] in
 	Vector.iteri (fun i a -> 
 		if i <> indx then (
-		match a.progt with 
-		| `Uniq -> (
 			let _dist,edits = get_edits pe a.ed.progenc in
 			let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
 			if edit_criteria edits then (
-				(*Logs.debug (fun m -> m "connecting [%d] to [%d] dist %d" i indx dist); *)
-				nearby := i :: !nearby 
-			) (*else ( 
-				Logs.debug (fun m -> m "not connecting [%d] to [%d] dist %d" i indx dist)
-			)*) )
-		| _ -> () ) ) g; 
+				nearby := i :: !nearby; 
+				(*Printf.printf "connect_uniq: [%d] conn [%d] : %d \n" indx i dist
+			) else (
+				Printf.printf "connect_uniq: [%d] nocon [%d] : %d\n" indx i dist*)
+			)
+		 ) ) g; 
 	List.iter (fun i -> 
 		let d2 = Vector.get g i in
 		let d2o = SI.add indx d2.outgoing in
