@@ -155,6 +155,7 @@ let add_uniq gs ed =
 let replace_equiv gs indx ed =
 	(* d2 is equivalent to gs.g[indx], but lower cost *)
 	(* add d2 the end, and update d1 = g[indx]. *)
+	(* outgoing connections are not changed *)
 	let d1 = Vector.get gs.g indx in
 	if d1.ed.progenc <> ed.progenc then (
 		let d2 = {nulgdata with ed; progt = `Uniq; 
@@ -172,8 +173,8 @@ let replace_equiv gs indx ed =
 			Vector.set gs.g i e' ) d2.equivalents; 
 		(* finally, update d2's edit connections *)
 		connect_uniq gs.g ni ; 
-		ni (* return the location of the new node, same as add_uniq *)
-	) else (-1)
+		ni,d2.imgi (* return the location of the new node, same as add_uniq *)
+	) else (-1),(-1)
 	
 let add_equiv gs indx ed =
 	(* d2 is equivalent to gs.g[indx], but higher (or equivalent) cost *)
@@ -360,7 +361,7 @@ let load gs fname =
 		) g; 
 	{gs with g}
 	
-let () = 
+(*let () = 
 	let gs = create 5 in
 	
 	let add_str mode equiv s = 
@@ -370,7 +371,8 @@ let () =
 			let ed,_ = pro_to_edata pro 0 in
 			if mode = `Uniq then (
 				if equiv >= 0 then (
-					replace_equiv gs equiv ed ; (* fills out connectivity *)
+					let a,_ = replace_equiv gs equiv ed in (* fills out connectivity *)
+					a
 				) else (
 					let a,_ = add_uniq gs ed in (* fills out connectivity *)
 					a
@@ -402,4 +404,4 @@ let () =
 	save fname sorted; 
 	let gp = load gs fname in
 	print_graph gp.g
-	
+	*)

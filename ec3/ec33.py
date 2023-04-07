@@ -14,8 +14,9 @@ import io
 import os
 import pdb
 
-# import torch._dynamo as dynamo
-# dynamo.config.verbose=True
+import torch._dynamo as dynamo
+dynamo.config.verbose=True
+# note: I can't seem to get this to work. tlh April 7 2023
 
 from constants import *
 
@@ -30,9 +31,9 @@ prog_layers = 8
 embed_dim = 256
 
 train_iters = 100000
-learning_rate = 0.0005 # maximum learning rate. scheduled.
+learning_rate = 0.0005 # 1e-3 maximum learning rate. scheduled.
 # learning rate of 0.002 is unstable.  Should figure out why. 
-weight_decay = 5e-6
+weight_decay = 2.5e-6
 nreplace = 0
 
 
@@ -96,7 +97,7 @@ print("torch cuda devices", th.cuda.device_count())
 print("torch device", th.cuda.get_device_name(torch_device))
 th.cuda.set_device(torch_device)
 th.set_default_tensor_type('torch.cuda.FloatTensor')
-# torch.set_float32_matmul_precision('high') # desktop.
+th.set_float32_matmul_precision('high') # desktop.
 
 def build_attention_mask(v_ctx, p_ctx):
 	# allow the model to attend to everything when predicting an edit
@@ -199,7 +200,10 @@ print(f"Number of model parameters:{trainable_params/1e6}M")
 
 lossfunc_cel = nn.CrossEntropyLoss(label_smoothing = 0.08, reduction='mean')
 lossfunc_mse = nn.MSELoss(reduction='mean')
-optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+# optimizer = optim.SGD(model.parameters(), lr=2e-3)
+# !SGD does not work!  AdamW much better.  
+optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+# optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
 def print_model_params(): 
 	print(model.prt_to_tok.weight[0,:])
@@ -231,13 +235,13 @@ if g_dreaming:
 # compiling this does not seem to work... 
 def train(mod, bimg, bpro, bedts): 
 	model.zero_grad()
-	y,q = model(u, bimg.cuda(), bpro.cuda())
-	loss = lossfunc(y, bedts.cuda())
+	y,q = model(u, bimg, bpro)
+	loss = lossfunc(y, bedts)
 	lossflat = th.sum(loss)
 	lossflat.backward()
-	th.nn.utils.clip_grad_norm_(model.parameters(), 0.05)
+	th.nn.utils.clip_grad_norm_(model.parameters(), 0.025)
 	optimizer.step()
-	return y,q
+	return y,q,lossflat
 	
 # train_opt = th.compile(train, mode="reduce-overhead")
 
@@ -260,10 +264,10 @@ for u in range(train_iters):
 		bimg = bimg.cuda()
 	
 	# with th.autocast(device_type='cuda', dtype=torch.float16):
-	# y,q = train_opt(model, bimg, bpro.cuda(), bedts.cuda())
 	model.zero_grad()
 	y,q = model(u, bimg, bpro.cuda())
 	if g_training: 
+		# y,q,lossflat = train(model, bimg, bpro.cuda(), bedts.cuda())
 		targ = bedts.cuda()
 		loss = lossfunc_mse(y, targ)
 		# loss_typ = lossfunc_cel(y[:,0:4], targ[:,0:4])
@@ -272,7 +276,7 @@ for u in range(train_iters):
 		# loss = loss_typ + loss_chr + loss_pos # should be batch_size
 		lossflat = th.sum(loss)
 		lossflat.backward()
-		th.nn.utils.clip_grad_norm_(model.parameters(), 0.05)
+		th.nn.utils.clip_grad_norm_(model.parameters(), 0.025)
 		optimizer.step() 
 		lossflat.detach()
 	else: 

@@ -25,29 +25,29 @@ done
 if "$debug"; then
 	if "$parallel"; then 
 		if "$timing"; then 
-			_build/default/program.exe -g -p -t -b $batch_size
+			_build/default/main.exe -g -p -t -b $batch_size
 		else 
-			_build/default/program.exe -g -p -b $batch_size
+			_build/default/main.exe -g -p -b $batch_size
 		fi
 	else 
 		if "$timing"; then 
-			_build/default/program.exe -g -t -b $batch_size
+			_build/default/main.exe -g -t -b $batch_size
 		else 
-			_build/default/program.exe -g -b $batch_size
+			_build/default/main.exe -g -b $batch_size
 		fi
 	fi
 else
 	if "$parallel"; then 
 		if "$timing"; then 
-			_build/default/program.exe -p -t -b $batch_size
+			_build/default/main.exe -p -t -b $batch_size
 		else 
-			_build/default/program.exe -p -b $batch_size
+			_build/default/main.exe -p -b $batch_size
 		fi
 	else 
 		if "$timing"; then 
-			_build/default/program.exe -t -b $batch_size
+			_build/default/main.exe -t -b $batch_size
 		else 
-			_build/default/program.exe -b $batch_size
+			_build/default/main.exe -b $batch_size
 		fi
 	fi
 fi
