@@ -22,7 +22,7 @@ from constants import *
 patch_size = 5
 v_ctx = int((image_res / patch_size) ** 2 + 1)
 vision_width = 256
-prog_width = 320
+prog_width = 256
 vision_heads = 8
 vision_layers = 6
 prog_heads = 8
@@ -30,7 +30,7 @@ prog_layers = 8
 embed_dim = 256
 
 train_iters = 100000
-learning_rate = 0.001 # maximum learning rate. scheduled.
+learning_rate = 0.0005 # maximum learning rate. scheduled.
 # learning rate of 0.002 is unstable.  Should figure out why. 
 weight_decay = 5e-6
 nreplace = 0
@@ -158,9 +158,9 @@ class ecTransformer(nn.Module):
 		q[5] = th.std(x)
 		# x = self.ln_post(x) # scale the inputs to softmax
 		# x = self.gelu(x)
-		x = th.cat((self.tok_softmax(x[:,0:4]),
-				  self.tok_softmax(x[:,4:4+toklen]), 
-				  x[:,4+toklen:]), dim=1)
+		# x = th.cat((self.tok_softmax(x[:,0:4]),
+		# 		  self.tok_softmax(x[:,4:4+toklen]), 
+		# 		  x[:,4+toklen:]), dim=1) -- this is for fourier position enc. 
 		return x,q
 
 model = ecTransformer(image_resolution = image_res, 
@@ -255,7 +255,6 @@ for u in range(train_iters):
 		
 	if g_dreaming: 
 		bimg = bimg.cuda()
-		# bimg[:,2,:,:] = bimg[:,2,:,:] * (th.randn(batch_size, image_res, image_res) > 0) # needs testing.
 		bimg = bimg + th.randn(batch_size, 3, image_res, image_res) * 0.1
 	else:
 		bimg = bimg.cuda()

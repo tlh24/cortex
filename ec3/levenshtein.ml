@@ -71,20 +71,23 @@ let distance srow scol getedits =
 			if getedits then (
 				let r = ref rlen in
 				let c = ref (clen-1) in
-				while !r > 1 && !c >= 0 do (
-					let rw,cw = (String.get srow (!r-1)),
-								(String.get scol !c) in
-					(*Printf.printf "row %d column %d srow %c scol %c\n"
-								!r !c rw cw;*)
-					let ak,ae = mat.(!r-1).(!c), 1 in
-					let bk,be = if !c>0 then mat.(!r).(!c-1), 2
-									else 1000000, 2 in
-					let ck,ce = if !c>0 then mat.(!r-1).(!c-1), 3
-									else (1000000, 3) in
-					let _dk,de = if ak<bk then (if ak<ck then ak,ae else ck,ce)
-						else ( if bk<ck then bk,be else ck,ce) in
+				while !r > 0 && !c >= 0 do (
+					let rw = if !r>0 then String.get srow (!r-1) else '~' in
+					let cw = String.get scol !c in
+					let ak,ae = if !r>1 then mat.(!r-1).(!c), 1 (* up, del*)
+									else 987654, 1 in 
+					let bk,be = if !c>0 then mat.(!r).(!c-1), 2 (* left, ins*)
+									else 98765, 2 in
+					let ck,ce = if !r>1 && !c>0 then mat.(!r-1).(!c-1), 3
+									else (9876, 3) in (* diag, sub *)
+					let _dk,de = if ak<bk then (
+							if ak<ck then ak,ae else ck,ce
+						) else ( 
+							if bk<ck then bk,be else ck,ce ) in
+					(*Printf.printf "row %d column %d srow %c scol %c dk %d de %d\n"
+								!r !c rw cw dk de;*)
 					let ed,rr,cc = match de with
-						| 1 -> ("del",!r-1, rw), !r-1, !c
+						| 1 -> ( "del", !r-1, rw), !r-1, !c
 						| 2 -> ("ins",!r, cw), !r, !c-1
 						| _ -> if cw = rw then ("con",!r-1, cw), !r-1, !c-1
 								else ( "sub", !r-1, cw), !r-1, !c-1 in
@@ -92,28 +95,7 @@ let distance srow scol getedits =
 					r := rr;
 					c := cc;
 				) done; 
-				(* add in the last edit(s) -- potentially tricky*)
-				(*Printf.printf "final row %d column %d\n" !r !c;*)
-				let rw,cw = (String.get srow (!r-1)),
-								(String.get scol !c) in
-				let ed = match !r,!c with
-					| 2,0 -> ("del",(!r-2), String.get srow (!r-2))
-					| 1,0 -> if rw = cw then ("con",(!r-1), rw)
-								else ("sub",(!r-1),cw)
-					| 1,rr -> (
-						let f = if rw=cw then ("con",(!r-1), rw)
-						else ("sub",(!r-1),cw) in
-						edits := f :: !edits ;
-						(* manage the prefix *)
-						(* in the case of a single fixed prefix, this adds an unecessary sub then insert 0 instead of insert 1 *)
-						for j = rr-1 downto 0 do (
-							let cw = String.get scol j in
-							edits := ("ins",0,cw) :: !edits 
-						) done; 
-						("nul",0,'0') )
-					| _ -> ("nul",0,'0') in
-				edits := ed :: !edits ;
-			); 
+			);
 			v0.(rlen), !edits
 		)
 	)
