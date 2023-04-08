@@ -36,6 +36,10 @@ type dreamt = [
 	| `Mnist
 	]
 	
+type dfsedit = (* for storing state within DFS *)
+	{ c_progenc : string (* program being edited *)
+	; 
+	
 type batche = (* batch edit structure, aka 'be' variable*)
 	{ a_pid : int (* index to graf *)
 	; b_pid : int (* index to graf or MNIST *)
@@ -633,6 +637,64 @@ let sample_dist x =
 
 let sample_dist_dum x = 
 	Tensor.argmax x ~dim:1 ~keepdim:false
+
+let decode_edit_enumerate _bd ba_edit = 
+	(* Rather than sampling the pseudo-probabilities emitted by the model, 
+		make a matrix of them (typ * chr * pos)
+		normalize, sort, emit indicies, store them in a list -- 
+		these are possible edits.  
+		Use them in a DFS tree, trying each program once 'fin' is emitted
+		and stopping the DFS when an improvement on the model is made. 
+		Keep the progam that improved the metric, but not the other ones.
+		This is to solve the problem that sampling
+		can be quite far from the region of space of improvement.
+		DFS is sorta a form of beam search, which DreamCoder
+		& many other models use *)
+	let typ = Tensor.narrow m ~dim:1 ~start:0 ~length:4 in
+	let chr = Tensor.narrow m ~dim:1 ~start:4 ~length:toklen in
+	let pos = Tensor.narrow m ~dim:1 ~start:(5+toklen) ~length:poslen in
+	Tensor.clamp_ typ ~min:(Scalar.float 0.0) ~max:(Scalar.float 1.0);
+	Tensor.clamp_ chr ~min:(Scalar.float 0.0) ~max:(Scalar.float 1.0); 
+	Tensor.clamp_ pos ~min:(Scalar.float 0.0) ~max:(Scalar.float 1.0); 
+	(* outer-product this *)
+	let x = Tensor.einsum ~equation:"bt,bc,bp -> btcp" [typ;chr;pos] 
+				~path:None in
+	let ityp = Tensor.range ~start:(Scalar.int 0) ~end_:(Scalar.int 2) 
+				~options:(T Float,Torch.Device.Cpu) in
+	let ityp = 
+		Tensor.range ~start:(Scalar.int 0) ~end_:(Scalar.int 2) 
+				~options:(T Float,Torch.Device.Cpu)
+		|> Tensor.unsqueeze ~dim:0
+		|> Tensor.unsqueeze ~dim:2
+		|> Tensor.unsqueeze ~dim:3
+		|> Tensor.expand ~size:[6;3;4;5] ~implicit:true in
+	let ichr = 
+		Tensor.range ~start:(Scalar.int 0) ~end_:(Scalar.int 3) 
+				~options:(T Float,Torch.Device.Cpu)
+		|> Tensor.unsqueeze ~dim:0
+		|> Tensor.unsqueeze ~dim:1
+		|> Tensor.unsqueeze ~dim:3
+		|> Tensor.expand ~size:[6;3;4;5] ~implicit:true in
+	let ipos = 
+		Tensor.range ~start:(Scalar.int 0) ~end_:(Scalar.int 4) 
+				~options:(T Float,Torch.Device.Cpu)
+		|> Tensor.unsqueeze ~dim:0
+		|> Tensor.unsqueeze ~dim:1
+		|> Tensor.unsqueeze ~dim:2
+		|> Tensor.expand ~size:[6;3;4;5] ~implicit:true in
+	let shape = [6;3*4*5] in
+	let x2 = Tensor.reshape x ~shape in
+	let ityp2 = Tensor.reshape ityp ~shape in
+	let ichr2 = Tensor.reshape ichr ~shape in
+	let ipos2 = Tensor.reshape ipos ~shape in
+	let index = Tensor.argsort x2 ~dim:1 ~descending:true in
+	let ityps = Tensor.gather ityp2 ~dim:1 ~index ~sparse_grad:false in
+	let ichrs = Tensor.gather ityp2 ~dim:1 ~index ~sparse_grad:false in
+	let iposs = Tensor.gather ityp2 ~dim:1 ~index ~sparse_grad:false in
+	(* now we need to iterate over these tensors
+		-- for each batch element
+		& decide what to do with them. 
+		Maybe another function ? *)
 	
 let decode_edit _bd ba_edit = 
 	(* decode model output (from python) *)
@@ -643,14 +705,15 @@ let decode_edit _bd ba_edit =
 	(* stochastic decoding through sample_dist *)
 	let typ = sample_dist (Tensor.narrow m ~dim:1 ~start:0 ~length:4) in 
 	let chr = sample_dist (Tensor.narrow m ~dim:1 ~start:4 ~length:toklen) in
-	(* now need to compute cosine distance.  normalize vectors first *)
 	let pos = sample_dist 
 		(Tensor.narrow m ~dim:1 ~start:(5+toklen) ~length:poslen) in
+	(* now need to compute cosine distance.  normalize vectors first *)
 	(*let pos = Tensor.narrow bd.posencn ~dim:0 ~start:4 ~length:1 in
 	let pos = Tensor.expand pos ~size:[!batch_size;poslen*2] ~implicit:true in
 	Logs.debug (fun m -> m "decode_edit: normalized pos\n"); 
 	Tensor.print pos; *)
-	(* ^^ why 5? 4 edit types, toklen char options, and one for shakes *)
+	(* ^^ why 5? 4 edit types, toklen char options, 
+		and one for shakes (to go with the steaks) *)
 	(* add a leading p_ctx dimension *)
 	(*let pos = Tensor.expand pos ~size:[p_ctx;!batch_size;poslen*2] ~implicit:true in
 	let posenc = Tensor.expand bd.posencn ~size:[!batch_size;p_ctx;poslen*2] ~implicit:true in*)
