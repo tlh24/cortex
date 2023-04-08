@@ -784,7 +784,8 @@ let try_add_program steak data img be =
 		)
 	);
 	)
-	(* TODO not sure if we need to call GC here *)
+	(* NOTE not sure if we need to call GC here *)
+	(* apparently not? *)
 
 let update_bea steak bd =
 	let sta = Unix.gettimeofday () in

@@ -51,6 +51,6 @@ Yet each of the points in "How might it do this" is at least another degree of f
 
 But it was clear that more intuition was needed, so I moved to Bootstrapped program synthesis, above. 
 
-[^1] DreamCoder itself is the result of decade+ of work, starting (roughly) with the Helmholtz machine, Explore-compress, DeepCoder, Learning to infer handwritten digits, etc.  Much of this work is out of the Tenenbaum lab. 
-[^2] [DreamCoder git repository](https://github.com/ellisk42/ec) was called ec2 -- though now it seems to be 'ec'
-[^3] That said, given: (1) As evolution arrives at systems that *can* be reasoned about, hence have finite interactomes (markov blankets), it's likely that the evolved brain is understandable, albeit likely in a high-dimensional statistical sense & at the right levels of abstraction and (2) Evolution, like human engineers, is faced with exploring infinite-dimensional spaces. To make efficient progress it has to subdivide, re-use, form hierarchies, modularize, limit interactions.  Small, understandable markov blankets are required. 
+[^1]: DreamCoder itself is the result of decade+ of work, starting (roughly) with the Helmholtz machine, Explore-compress, DeepCoder, Learning to infer handwritten digits, etc.  Much of this work is out of the Tenenbaum lab. 
+[^2]: [DreamCoder git repository](https://github.com/ellisk42/ec) was called ec2 -- though now it seems to be 'ec'
+[^3]: That said, given: (1) As evolution arrives at systems that *can* be reasoned about, hence have finite interactomes (markov blankets), it's likely that the evolved brain is understandable, albeit likely in a high-dimensional statistical sense & at the right levels of abstraction and (2) Evolution, like human engineers, is faced with exploring infinite-dimensional spaces. To make efficient progress it has to subdivide, re-use, form hierarchies, modularize, limit interactions.  Small, understandable markov blankets are required. 
