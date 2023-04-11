@@ -101,6 +101,11 @@
 	(modes exe) ; options: byte exe
 	)
 	
+(executable 
+	(name editree)
+	(modules editree)
+	(libraries levenshtein))
+	
 ;(executable
 ;	(name graf)
 ;	(modules logo parser lexer vgwrapper colors levenshtein ast graf)

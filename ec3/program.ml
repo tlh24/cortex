@@ -38,7 +38,7 @@ type dreamt = [
 	
 type dfsedit = (* for storing state within DFS *)
 	{ c_progenc : string (* program being edited *)
-	; 
+	; edstak : 
 	
 type batche = (* batch edit structure, aka 'be' variable*)
 	{ a_pid : int (* index to graf *)
