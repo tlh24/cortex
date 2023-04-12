@@ -33,7 +33,7 @@ type dreamt = [
 	(* int = index; bool = dosub *)
 	| `Train  (* supervised edit application *)
 	| `Verify (* decode edit appl. *)
-	| `Mnist of (Editree.t * int list) option
+	| `Mnist of (Editree.t * int list)
 		(* root node * address being evaled *)
 	| `Nodream
 	]
@@ -596,8 +596,8 @@ let sample_dist_dum x =
 	
 (* fixed tensors for enumeration decoding *)
 let decode_edit_tensors () = 
-	let size = [batch_size; 4; toklen; poslen] in
-	let shape = [batch_size; 4 * toklen * poslen] in
+	let size = [!batch_size; 4; toklen; poslen] in
+	let shape = [!batch_size; 4 * toklen * poslen] in
 	let ityp = 
 		Tensor.range ~start:(Scalar.int 0) ~end_:(Scalar.int 3) 
 				~options:(T Float,Torch.Device.Cpu)
@@ -629,7 +629,7 @@ let decode_edit_tensors () =
 	
 let de_shape,de_typ,de_chr,de_pos = decode_edit_tensors ()
 
-let decode_edit_enumerate _bd ba_edit = 
+let decode_edit_enumerate ba_edit = 
 	(* Rather than sampling the pseudo-probabilities emitted by the model, 
 		make 3 matrices of them.  
 		sorted by probability, descending.
@@ -640,8 +640,7 @@ let decode_edit_enumerate _bd ba_edit =
 	let m = tensor_of_bigarray2 ba_edit device in
 	let select start length = 
 		let o = Tensor.narrow m ~dim:1 ~start ~length in
-		Tensor.clamp_ o ~min:(Scalar.float 0.0) ~max:(Scalar.float 1.0); 
-		o
+		Tensor.clamp_ o ~min:(Scalar.float 0.0) ~max:(Scalar.float 1.0)
 	in
 	let typ = select 0 4 in
 	let chr = select 4 toklen in
@@ -704,7 +703,7 @@ let apply_edits be =
 	(* note: Levenshtein clips the edit positions *)
 	let c = Levenshtein.apply_edits be.c_progenc [ed] in
 	let be2 = { be with c_progenc=c; edits=(List.tl be.edits) } in
-	Editree.update_edited ~inplace:true be2.edited ed (String.length c); 
+	ignore(Editree.update_edited ~inplace:true be2.edited ed (String.length c)); 
 	be2
 	
 let better_counter = Atomic.make 0
@@ -721,6 +720,7 @@ let try_add_program steak data img be =
 			steak.batchno data.progenc progstr) );
 	let imgf_cpu,imgf = img_to_imgf steak img in
 	let good2,dist,minde = dbf_dist steak imgf in
+	let success = ref false in
 	if good2 then (
 	let mindex = steak.gs.img_inv.(minde) in
 	(* idea: if it's similar to a currently stored program, 
@@ -732,7 +732,8 @@ let try_add_program steak data img be =
 		if added then (
 			Logs.info(fun m -> m
 				"try_add_program: adding new [%d] = %s" l
-				(Logo.output_program_pstr data.pro) )
+				(Logo.output_program_pstr data.pro) ); 
+			success := true
 		) else (
 			Logs.debug(fun m -> m
 				"try_add_program: could not add new, db full. [%d]" l )
@@ -761,12 +762,14 @@ let try_add_program steak data img be =
 				let filename = Printf.sprintf
 					"%s/%05d_dbf.png" root !nreplace in
 				dbf_to_png steak.dbf minde filename;
-				incr nreplace
+				incr nreplace; 
+				success := true
 			)
 			(* those two operations are in-place, so subsequent batches should contain the new program :-) *)
 		)
 	) ;
-	if be.dt = `Mnist then (
+	match be.dt with 
+	| `Mnist(_,_) -> ( (* sigh, redundant info *)
 		(*let cpu = Torch.Device.Cpu in*)
 		let a = db_get steak be.a_pid in
 		let mid = be.b_pid in
@@ -796,22 +799,37 @@ let try_add_program steak data img be =
 				(Printf.sprintf "%s/b%05d_b_old.png" root q);
 			Logo.segs_to_png data.segs 64
 				(Printf.sprintf "%s/b%05d_c_new.png" root q);
-			Atomic.incr better_counter
-		)
-	);
-	)
+			Atomic.incr better_counter; 
+			success := true
+		))
+	| _ -> ()
+	); 
+	!success
 	(* NOTE not sure if we need to call GC here *)
 	(* apparently not? *)
 	
-let update_bea_train steak bd = 
+let update_bea_parallel body steak description =
 	let sta = Unix.gettimeofday () in
-	let innerloop_ bi =
+	
+	if !gparallel then
+		Dtask.parallel_for steak.pool 
+			~start:0 ~finish:(!batch_size-1) ~body
+	else
+		for i=0 to (!batch_size-1) do
+			body i done;
+			
+	let fin = Unix.gettimeofday () in
+	if !gdisptime then Logs.debug (fun m -> m "%s time %f" 
+		description (fin-.sta));
+	steak.batchno <- steak.batchno + 1
+	
+let update_bea_train steak bd = 
+	let innerloop_bea_train bi =
 		let be = bd.bea.(bi) in
 		(* check edited array allocation *)
 		let be1 = if Array.length be.edited <> (p_ctx/2)
 			then ( let edited = Array.make (p_ctx/2) 0.0 in
 				{be with edited} ) else be in
-		let cnt = be1.count in
 		(* last edit is 'fin', in which case: new batche *)
 		let bnew = 
 		 if List.length be1.edits <= 1 then (
@@ -823,22 +841,11 @@ let update_bea_train steak bd =
 		) in
 		bd.bea.(bi) <- bnew
 	in
-	if !gparallel then
-		Dtask.parallel_for steak.pool ~start:0 ~finish:(!batch_size-1)
-			~body:innerloop_
-	else
-		for i=0 to (!batch_size-1) do
-			innerloop_ i done;
-			
-	let fin = Unix.gettimeofday () in
-	if !gdisptime then Logs.debug (fun m -> m "update_bea_train time %f" (fin-.sta));
-	steak.batchno <- steak.batchno + 1
-	
+	update_bea_parallel innerloop_bea_train steak "update_bea_train"
 	
 let update_bea_verify steak bd = 
-	let sta = Unix.gettimeofday () in
 	let edit_arr = decode_edit bd.bedtd in
-	let innerloop_ bi =
+	let innerloop_bea_verify bi =
 		let be = bd.bea.(bi) in
 		let typ,loc,chr = edit_arr.(bi) in
 		(* check edited array allocation *)
@@ -862,7 +869,7 @@ let update_bea_verify steak bd =
 			) else (
 				(* might be a simplification ? *)
 				let good,data,img = progenc_to_edata be3.c_progenc in
-				if good then try_add_program steak data img be3
+				if good then ignore( try_add_program steak data img be3 )
 			); 
 			bd.fresh.(bi) <- true;
 			new_batche_unsup steak 
@@ -872,19 +879,9 @@ let update_bea_verify steak bd =
 		) in
 		bd.bea.(bi) <- bnew
 	in
-	if !gparallel then
-		Dtask.parallel_for steak.pool ~start:0 ~finish:(!batch_size-1)
-			~body:innerloop_
-	else
-		for i=0 to (!batch_size-1) do
-			innerloop_ i done;
-			
-	let fin = Unix.gettimeofday () in
-	if !gdisptime then Logs.debug (fun m -> m "update_bea_verify time %f" (fin-.sta));
-	steak.batchno <- steak.batchno + 1
+	update_bea_parallel innerloop_bea_verify steak "update_bea_verify"
 
 let update_bea_mnist steak bd = 
-	let sta = Unix.gettimeofday () in
 	let ba_prob, ba_typ, ba_chr, ba_pos = decode_edit_enumerate bd.bedtd in
 	let decode i j = 
 		let typ = match iof ba_typ.{i,j} with
@@ -892,133 +889,64 @@ let update_bea_mnist steak bd =
 			| 1 -> "del" 
 			| 2 -> "ins"
 			| _ -> "fin" in
-		let chr = ba_chr.{i,j} + Char.code('0') |> Char.chr in
+		let chr = (iof ba_chr.{i,j}) + Char.code('0') |> Char.chr in
 		let pos = iof ba_pos.{i,j} in
-		typ,chr,pos
+		typ,pos,chr
 	in
 	(* these will be sorted, descending *)
-	Printf.print "update_bea_mnist batch 0 edits:\n"; 
+	Logs.debug (fun m -> m "update_bea_mnist batch 0 edits:\n"); 
 	for i = 0 to 9 do (
-		let prob = ba_prob.{i,j} in
-		let typ,chr,pos = decode 0 i in
-		Printf.printf "   p:%0.3f %s %c %p\n" prob typ chr pos; 
+		let prob = ba_prob.{0,i} in
+		let typ,pos,chr = decode 0 i in
+		Logs.debug (fun m -> m "   [%d] p:%0.3f %s %c %d\n" i prob typ chr pos); 
 	) done; 
-	let innerloop_ bi = 
+	let innerloop_bea_mnist bi = 
+		let newdream () = 
+			bd.fresh.(bi) <- true;
+			new_batche_mnist steak
+		in
 		let be = bd.bea.(bi) in
-		match be.dt with 
+		let bnew = match be.dt with 
 		| `Mnist(root,adr) -> (
 			(* model has just been queried about adr *)
 			let eds = List.init 10 (fun j -> decode bi j) in
 			let pr = List.init 10 (fun j -> ba_prob.{bi,j}) in
-			Editree.model_update root adr eds pr
+			Editree.model_update root adr eds pr; 
+			let rec selec () = 
+				let adr,edit,k_progenc,k_edited = Editree.model_select root in
+				let toolong = be.count >= p_ctx/2 - 1 in
+				match toolong,edit with
+				| true,_ 
+				| false,("con",_,_) -> (
+					(* we did not find a suitable edit -- give up *)
+					newdream () )
+				| false,("fin",_,_) -> (
+					(* 'done' this leaf *)
+					Editree.model_done root adr;
+					assert (be.c_progenc = k_progenc); 
+					let good,data,img = progenc_to_edata k_progenc in
+					if good then (
+						if try_add_program steak data img be then (
+							newdream ()
+						) else selec ()
+					) else selec () )
+				| false,_ -> (
+					(* apply the edit *)
+					let count = be.count+1 in
+					{be with c_progenc=k_progenc; edited=k_edited; count})
+			in
+			selec ()
 			)
-		| `Nodream -> (
-			new_batche_mnist steak
-			)
-
-let update_bea steak bd =
-	let sta = Unix.gettimeofday () in
-	let ba_prob, ba_typ, ba_chr, ba_pos 
-			= decode_edit_enumerate bd.bedtd in
-	let innerloop_update_bea bi =
-		let be = bd.bea.(bi) in
-		(* check edited array allocation *)
-		let be1 = if Array.length be.edited <> (p_ctx/2)
-			then ( let edited = Array.make (p_ctx/2) 0.0 in
-				{be with edited} ) else be in
-		let cnt = be1.count in
-		let typ,loc,chr = edit_arr.(bi) in
-		let bnew = match be1.dt with
-		| `Train -> (
-			(* last edit is 'fin', in which case: new batche *)
-			if List.length be1.edits <= 1 then (
-				bd.fresh.(bi) <- true; (* update image flag *)
-				new_batche_train steak `Train
-				(*let bn = new_batche_train steak `Train in
-				if bi = 0 then (
-					Logs.debug (fun m -> m "|b0 new_batche_train; edit length %d"
-						(List.length bn.edits))
-				); 
-				bn*)
-			) else (
-				bd.fresh.(bi) <- false;
-				apply_edits be1
-			)
-			(* decoding verification after "decode_edits" command. *)
-			)
-		| `Verify -> (
-			(*if bi = 0 then (
-				Logs.debug (fun m -> m "update_bea Verify %s" be1.c_progenc)
-			) ;*)
-			let be2 = {be1 with edits=[(typ,loc,chr)];count=cnt+1} in
-			let be3 = apply_edits be2 in
-			if typ = "fin" || be3.count >= p_ctx/2 then (
-				(* write this to file for now; stats later *)
-				let c = if be3.c_progenc = be3.b_progenc then '+' else '-' in
-				Printf.fprintf steak.fid_verify "[%c] %s -> %s ; decode %s\n" c
-					(progenc2str be3.a_progenc)
-					(progenc2str be3.b_progenc)
-					(progenc2str be3.c_progenc); 
-				if c = '+' then (
-					Graf.incr_good steak.gs be3.a_pid; 
-					Graf.incr_good steak.gs be3.b_pid 
-				) else (
-					(* might be a simplification ? *)
-					let good,data,img = progenc_to_edata be3.c_progenc in
-					if good then try_add_program steak data img be3
-				); 
-				bd.fresh.(bi) <- true;
-				new_batche_unsup steak 
-			) else (
-				bd.fresh.(bi) <- false;
-				be3
-			) )
-		| `Mnist -> (
-			let be2 = {be1 with edits=[(typ,loc,chr)];count=cnt+1} in
-			let be3 = apply_edits be2 in
-			if typ = "fin" || be3.count >= p_ctx/2 then (
-				let good,data,img = progenc_to_edata be3.c_progenc in
-				if good then (
-					(* fix this later: keep around programs that improve fit *)
-					(*let imgf = tensor_of_bigarray2 img steak.device in
-					let enc = imgf_to_enc steak imgf in
-					let s = progenc2str data.progenc in
-					let j = be3.dt.indx in
-					let a = Tensor.narrow steak.mnist_enc ~dim:0 ~start:j ~length:1 in
-					let d = Tensor.cosine_similarity ~x1:a ~x2:enc ~dim:1 ~eps:1e-7
-						|> Tensor.float_value in
-					(match steak.dreams with
-					| Some dreams -> (
-						dreams.(j).decode <- (s :: dreams.(j).decode);
-						dreams.(j).cossim <- (d :: dreams.(j).cossim)
-						)
-					| None -> assert (0 <> 0); () );*)
-					try_add_program steak data img be3
-				);
-				bd.fresh.(bi) <- true;
-				new_batche_unsup steak
-			) else (
-				bd.fresh.(bi) <- false;
-				be3
-			) ) in
-		bd.bea.(bi) <- bnew;
-	in (* /innerloop_update_bea *)
-
-	if !gparallel then
-		Dtask.parallel_for steak.pool ~start:0 ~finish:(!batch_size-1)
-			~body:innerloop_update_bea
-	else
-		for i=0 to (!batch_size-1) do
-			innerloop_update_bea i done;
-
-	let fin = Unix.gettimeofday () in
-	if !gdisptime then Logs.debug (fun m -> m "update_bea time %f" (fin-.sta));
+		| _ -> newdream () in
+		bd.bea.(bi) <- bnew
+	in (* / innerloop_ *)
+	update_bea_parallel innerloop_bea_mnist steak "update_bea_mnist"; 
+	(* mnist comparisons generate torch variables that need cleanup *)
 	if (steak.batchno mod 10) = 9 then (
 		Mutex.lock steak.db_mutex;
 		Caml.Gc.major (); (* clean up torch variables (slow..) *)
 		Mutex.unlock steak.db_mutex
-	);
-	steak.batchno <- steak.batchno + 1
+	)
 
 let bigfill_batchd steak bd = 
 	let sta = Unix.gettimeofday () in
@@ -1076,15 +1004,15 @@ let bigfill_batchd steak bd =
 		if bd.fresh.(u) then (
 			let pid_to_ba2 imgi dt = 
 				assert (imgi >= 0) ; 
-				if dt = `Mnist then (
+				match dt with
+				| `Mnist(_,_) -> (
 					assert (imgi < 60000) ; 
 					Tensor.narrow steak.mnist ~dim:0 ~start:imgi ~length:1 
-					|> Tensor.squeeze |> bigarray2_of_tensor 
-				) else (
+					|> Tensor.squeeze |> bigarray2_of_tensor ) 
+				| _ -> (
 					assert (imgi < steak.gs.num_uniq) ; 
 					Tensor.narrow steak.dbf_cpu ~dim:0 ~start:imgi ~length:1 
-					|> Tensor.squeeze |> bigarray2_of_tensor 
-				) 
+					|> Tensor.squeeze |> bigarray2_of_tensor ) 
 			in
 			(* would be good if this didn't require two copy ops *)
 			(* tensor to bigarray, bigarray to bigarray *)
@@ -1361,7 +1289,10 @@ let handle_message steak bd msg =
 	| "update_batch" -> (
 		(* supervised: sent when python has a working copy of data *)
 		(* dreaming : sent when the model has produced edits (maybe old) *)
-		update_bea steak bd;
+		if steak.superv then 
+			update_bea_train steak bd
+		else
+			update_bea_verify steak bd ; 
 		bigfill_batchd steak bd; 
 		(*Logs.debug(fun m -> m "new batch %d" steak.batchno);*)
 		bd,(Printf.sprintf "ok %d" !nreplace)
@@ -1389,8 +1320,8 @@ let handle_message steak bd msg =
 				"decode_edit: correct typ %0.3f chr %0.3f pos %0.3f " 
 				(pctg typright) (pctg chrright) (pctg posright) );
 		in
-		(*let edit_sup = decode_edit bd bd.bedts in *)(* verification *)
-		let edit_dream = decode_edit bd bd.bedtd in
+		(*let edit_sup = decode_edit bd.bedts in *)(* verification *)
+		let edit_dream = decode_edit bd.bedtd in
 		(*decode_edit_accuracy edit_sup "superv"; *)
 		decode_edit_accuracy edit_dream; 
 		bd, "ok" )

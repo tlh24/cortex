@@ -80,11 +80,16 @@
 	(modules vae)
 	(libraries torch torch.vision logs logs.threaded domainslib)
 	)
+	
+(library 
+	(name editree)
+	(modules editree)
+	(libraries levenshtein logs))
 
 (library	
 	(name program)
 	(modules program)
-	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib graf lexer parser logo vgwrapper colors levenshtein ast vae)
+	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib graf lexer parser logo vgwrapper colors levenshtein ast vae editree)
 	)
 
 (executable
@@ -102,9 +107,9 @@
 	)
 	
 (executable 
-	(name editree)
-	(modules editree)
-	(libraries levenshtein))
+	(name editree_test)
+	(modules editree_test)
+	(libraries levenshtein editree))
 	
 ;(executable
 ;	(name graf)
