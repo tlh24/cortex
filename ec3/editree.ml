@@ -1,6 +1,6 @@
 (* module for implementing an iteratively-broaening parse-tree *)
 
-type edtree = 
+type t = 
 	{ progenc : string
 	; edited : float array (* tell python which chars have been changed*)
 	; mutable edits : (string*int*char) list
@@ -20,11 +20,11 @@ let p_ctx = 12
 let soi = string_of_int
 let iof = int_of_float
 	
-let update_edited origed ed lc = 
+let update_edited ?(inplace=false) origed ed lc = 
 	(* update the 'edited' array, which indicates what has changed in the program string *)
 	(* lc is the length of the string being edited *)
 	let typ,pp,_chr = ed in 
-	let edited = Array.copy origed in
+	let edited = if in_place then origed else Array.copy origed in
 	(match typ with 
 	| "sub" -> (
 		let pp = if pp > lc-1 then lc-1 else pp in
@@ -51,6 +51,38 @@ let update_edited origed ed lc =
 			edited.(pp) <- 1.0 ) )
 	| _ -> () ); 
 	edited
+	
+(*let update_edited edited edit la lc = 
+	(* update the 'edited' array, which indicates what has changed in the program string *)
+	let typ,pp,_chr = edit in 
+	(*let la = min (String.length be.a_progenc) (p_ctx/2) in
+	let lc = min (String.length be.c_progenc) (p_ctx/2) in*)
+	(* in-place array modification *)
+	(match typ with 
+	| "sub" -> (
+		let pp = if pp > lc-1 then lc-1 else pp in
+		let pp = if pp < 0 then 0 else pp in
+		edited.(la+pp) <- 0.5 )
+	| "del" -> (
+		(* lc is already one less at this point -- c has been edited *)
+		let pp = if pp > lc-1 then lc-1 else pp in
+		let pp = if pp < 0 then 0 else pp in
+		(* shift left *)
+		for i = la+pp to p_ctx-2 do (
+			edited.(i) <- edited.(i+1)
+		) done; 
+		assert ((la+pp) < p_ctx); 
+		edited.(la+pp) <- ( -1.0 ) ) 
+	| "ins" -> (
+		if lc < p_ctx/2 && la+pp < p_ctx then (
+			let pp = if pp > lc then lc else pp in
+			let pp = if pp < 0 then 0 else pp in
+			(* shift right one *)
+			for i = p_ctx-2 downto la+pp do (
+				edited.(i+1) <- edited.(i)
+			) done; 
+			edited.(la+pp) <- 1.0 ) )
+	| _ -> () )*)
 		
 let rec flatten node adr pr = 
 	(* flatten the node to a list of 
@@ -69,7 +101,7 @@ let rec flatten node adr pr =
 	
 let rec index node targadr curadr out = 
 	(* given an address, out := kid *)
-	(* generate a new one if needed *)
+	(* usually: generate a new node *)
 	List.combine (Array.to_list node.kids) node.edits
 	|> List.iteri (fun i (d,ed) -> 
 		let adr = i :: curadr in
@@ -120,9 +152,9 @@ let rec update node targadr curadr eds pr =
 			) node.kids
 	)
 	
-let model_update node adr eds pr =
+let model_update root adr eds pr =
 	(* update the edit tree based on the model's output *)
-	update node adr [] eds pr
+	update root adr [] eds pr
 	
 let make_root progenc = 
 	{ progenc; 
@@ -169,21 +201,21 @@ let () =
 	
 	let adr,kid = select r in
 	print kid adr "3-" ; 
-	let edits3 = [("fin",1,'y');("fin",0,'o');("fin",2,'u')] in
-	let probs3 = [0.1; 0.15; 0.05] |> List.map log in
+	let edits3 = [("fin",1,'y');("fin",0,'o');("fin",2,'u');("ins",2,'1')] in
+	let probs3 = [0.1; 0.15; 0.05; 0.01] |> List.map log in
 	model_update r adr edits3 probs3; 
 	print r [] "" ; Printf.printf "\n"; 
 	
 	let adr,kid = select r in
 	print kid adr "3-" ; 
-	let edits3 = [("fin",1,'b');("fin",0,'n');("fin",2,'m')] in
-	let probs3 = [0.1; 0.15; 0.05] |> List.map log in
+	let edits3 = [("fin",1,'b');("fin",0,'n')] in
+	let probs3 = [0.1; 0.15] |> List.map log in
 	model_update r adr edits3 probs3; 
 	print r [] "" ; Printf.printf "\n"; 
 	
 	let adr,kid = select r in
 	print kid adr "4-" ; 
-	let edits3 = [("fin",1,'g');("fin",0,'h');("fin",2,'j')] in
-	let probs3 = [0.1; 0.15; 0.05] |> List.map log in
+	let edits3 = [("fin",1,'g');("fin",0,'h')] in
+	let probs3 = [0.1; 0.15] |> List.map log in
 	model_update r adr edits3 probs3; 
 	print r [] "" ; Printf.printf "\n";

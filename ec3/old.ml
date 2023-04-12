@@ -660,3 +660,52 @@ let save_dreams steak =
 let hidden_nodes = 128
 let epochs = 10000
 let learning_rate = 1e-3
+
+
+(* keep the cosine distance calculation -- took a while to get right *)
+let decode_edit ba_edit = 
+	(* decode model output (from python) *)
+	let sta = Unix.gettimeofday () in
+	let device = Torch.Device.Cpu in
+	let m = tensor_of_bigarray2 ba_edit device in
+	(* typ = th.argmax(y[:,0:4], 1)  (0 is the batch dim) *)
+	(* stochastic decoding through sample_dist *)
+	let typ = sample_dist (Tensor.narrow m ~dim:1 ~start:0 ~length:4) in 
+	let chr = sample_dist (Tensor.narrow m ~dim:1 ~start:4 ~length:toklen) in
+	let pos = sample_dist 
+		(Tensor.narrow m ~dim:1 ~start:(5+toklen) ~length:poslen) in
+	(* now need to compute cosine distance.  normalize vectors first *)
+	(*let pos = Tensor.narrow bd.posencn ~dim:0 ~start:4 ~length:1 in
+	let pos = Tensor.expand pos ~size:[!batch_size;poslen*2] ~implicit:true in
+	Logs.debug (fun m -> m "decode_edit: normalized pos\n"); 
+	Tensor.print pos; *)
+	(* ^^ why 5? 4 edit types, toklen char options, 
+		and one for shakes (to go with the steaks) *)
+	(* add a leading p_ctx dimension *)
+	(*let pos = Tensor.expand pos ~size:[p_ctx;!batch_size;poslen*2] ~implicit:true in
+	let posenc = Tensor.expand bd.posencn ~size:[!batch_size;p_ctx;poslen*2] ~implicit:true in*)
+	(*Logs.debug (fun m -> m "decode_edit: bd.posencn\n"); 
+	Tensor.print bd.posencn;*)
+	(*let sim = Tensor.einsum ~equation:"cbp,bcp -> bc" [pos;posenc] ~path:None in*)
+	(*Logs.debug (fun m -> m "decode_edit: sim\n"); 
+	Tensor.print sim;*)
+	(*let loc = sample_dist_dum sim in *)
+	(* cosine similarity is permissive; take top *)
+	(* location must be clipped to within the program. *)
+	let edit_arr = Array.init !batch_size (fun i -> 
+		let etyp = match Tensor.get_int1 typ i with
+			| 0 -> "sub"
+			| 1 -> "del" 
+			| 2 -> "ins"
+			| _ -> "fin" in
+		let echr = (Tensor.get_int1 chr i) + Char.code('0') |> Char.chr in
+		let eloc = Tensor.get_int1 pos i in
+		(etyp,eloc,echr) ) in
+	(* debug *)
+	(*for i = 0 to (min 1 !batch_size) do (
+		let typ,loc,chr = edit_arr.(i) in
+		Logs.debug (fun m -> m "decode_edit %d: %s,%c,%d" i typ chr loc)
+	) done;*)
+	let fin = Unix.gettimeofday () in
+	if !gdisptime then Logs.debug (fun m -> m "decode_edit time %f" (fin-.sta)); 
+	edit_arr

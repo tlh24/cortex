@@ -33,12 +33,10 @@ type dreamt = [
 	(* int = index; bool = dosub *)
 	| `Train  (* supervised edit application *)
 	| `Verify (* decode edit appl. *)
-	| `Mnist
+	| `Mnist of (Editree.t * int list) option
+		(* root node * address being evaled *)
+	| `Nodream
 	]
-	
-type dfsedit = (* for storing state within DFS *)
-	{ c_progenc : string (* program being edited *)
-	; edstak : 
 	
 type batche = (* batch edit structure, aka 'be' variable*)
 	{ a_pid : int (* index to graf *)
@@ -463,7 +461,7 @@ let init_batchd superv =
 	
 let make_batche_train a ai b bi dt = 
 	let _,edits = Graf.get_edits a.ed.progenc b.ed.progenc in
-	let edited = Array.make p_ctx 0.0 in
+	let edited = Array.make (p_ctx/2) 0.0 in
 	{ a_pid = ai 
 	; b_pid = bi
 	; a_progenc = a.ed.progenc
@@ -556,14 +554,16 @@ let new_batche_mnist steak =
 		let a = db_get steak indx in
 		if String.length a.ed.progenc < (p_ctx/2-2) then (
 			assert (h = a.imgi) ; 
-			let edited = Array.make p_ctx 0.0 in
+			let edited = Array.make (p_ctx/2) 0.0 in
+			let root = Editree.make_root a.ed.progenc in
+			let dt = `Mnist(root, []) in
 			{  a_pid = indx; b_pid = mid;
 				a_progenc = a.ed.progenc; 
 				b_progenc = ""; 
 				c_progenc = a.ed.progenc; 
 				a_imgi = a.imgi; 
 				b_imgi = mid; 
-				edits = []; edited; count=0; dt=`Mnist}
+				edits = []; edited; count=0; dt}
 		) else selector (k+1) in
 	selector 0
 	(* note: bd.fresh is set in the calling function (for consistency) *)
@@ -574,50 +574,6 @@ let new_batche_unsup steak =
 	) else (
 		new_batche_mnist steak
 	)
-	
-(*let new_batche_dream_x steak _bn =
-	(* not threaded !! *)
-	match steak.dreams with
-	| Some dreams -> (
-		let i = steak.dreamn in
-		let d = dreams.(i) in
-		steak.dreamn <- (i+1) mod (Array.length dreams); 
-		let edited = Array.make p_ctx 0.0 in (* memory thrash *)
-		let count = 0 in
-		{d.be with edited; count} )
-	| None -> ( nulbatche )*)
-	
-let update_edited be ed = 
-	(* update the 'edited' array, which indicates what has changed in the program string *)
-	let typ,pp,_chr = ed in 
-	let la = min (String.length be.a_progenc) (p_ctx/2) in
-	let lc = min (String.length be.c_progenc) (p_ctx/2) in
-	(* in-place array modification *)
-	(match typ with 
-	| "sub" -> (
-		let pp = if pp > lc-1 then lc-1 else pp in
-		let pp = if pp < 0 then 0 else pp in
-		be.edited.(la+pp) <- 0.5 )
-	| "del" -> (
-		(* lc is already one less at this point -- c has been edited *)
-		let pp = if pp > lc-1 then lc-1 else pp in
-		let pp = if pp < 0 then 0 else pp in
-		(* shift left *)
-		for i = la+pp to p_ctx-2 do (
-			be.edited.(i) <- be.edited.(i+1)
-		) done; 
-		assert ((la+pp) < p_ctx); 
-		be.edited.(la+pp) <- ( -1.0 ) ) 
-	| "ins" -> (
-		if lc < p_ctx/2 && la+pp < p_ctx then (
-			let pp = if pp > lc then lc else pp in
-			let pp = if pp < 0 then 0 else pp in
-			(* shift right one *)
-			for i = p_ctx-2 downto la+pp do (
-				be.edited.(i+1) <- be.edited.(i)
-			) done; 
-			be.edited.(la+pp) <- 1.0 ) )
-	| _ -> () )
 
 let sample_dist x = 
 	(* sample a discrete decoding from the weightings along dim 1 *)
@@ -637,66 +593,86 @@ let sample_dist x =
 
 let sample_dist_dum x = 
 	Tensor.argmax x ~dim:1 ~keepdim:false
-
-let decode_edit_enumerate _bd ba_edit = 
-	(* Rather than sampling the pseudo-probabilities emitted by the model, 
-		make a matrix of them (typ * chr * pos)
-		normalize, sort, emit indicies, store them in a list -- 
-		these are possible edits.  
-		Use them in a DFS tree, trying each program once 'fin' is emitted
-		and stopping the DFS when an improvement on the model is made. 
-		Keep the progam that improved the metric, but not the other ones.
-		This is to solve the problem that sampling
-		can be quite far from the region of space of improvement.
-		DFS is sorta a form of beam search, which DreamCoder
-		& many other models use *)
-	let typ = Tensor.narrow m ~dim:1 ~start:0 ~length:4 in
-	let chr = Tensor.narrow m ~dim:1 ~start:4 ~length:toklen in
-	let pos = Tensor.narrow m ~dim:1 ~start:(5+toklen) ~length:poslen in
-	Tensor.clamp_ typ ~min:(Scalar.float 0.0) ~max:(Scalar.float 1.0);
-	Tensor.clamp_ chr ~min:(Scalar.float 0.0) ~max:(Scalar.float 1.0); 
-	Tensor.clamp_ pos ~min:(Scalar.float 0.0) ~max:(Scalar.float 1.0); 
-	(* outer-product this *)
-	let x = Tensor.einsum ~equation:"bt,bc,bp -> btcp" [typ;chr;pos] 
-				~path:None in
-	let ityp = Tensor.range ~start:(Scalar.int 0) ~end_:(Scalar.int 2) 
-				~options:(T Float,Torch.Device.Cpu) in
+	
+(* fixed tensors for enumeration decoding *)
+let decode_edit_tensors () = 
+	let size = [batch_size; 4; toklen; poslen] in
+	let shape = [batch_size; 4 * toklen * poslen] in
 	let ityp = 
-		Tensor.range ~start:(Scalar.int 0) ~end_:(Scalar.int 2) 
-				~options:(T Float,Torch.Device.Cpu)
-		|> Tensor.unsqueeze ~dim:0
-		|> Tensor.unsqueeze ~dim:2
-		|> Tensor.unsqueeze ~dim:3
-		|> Tensor.expand ~size:[6;3;4;5] ~implicit:true in
-	let ichr = 
 		Tensor.range ~start:(Scalar.int 0) ~end_:(Scalar.int 3) 
 				~options:(T Float,Torch.Device.Cpu)
 		|> Tensor.unsqueeze ~dim:0
+		|> Tensor.unsqueeze ~dim:2
+		|> Tensor.unsqueeze ~dim:3
+		|> Tensor.expand ~size ~implicit:true in
+	let ichr = 
+		Tensor.range ~start:(Scalar.int 0) ~end_:(Scalar.int (toklen-1)) 
+				~options:(T Float,Torch.Device.Cpu)
+		|> Tensor.unsqueeze ~dim:0
 		|> Tensor.unsqueeze ~dim:1
 		|> Tensor.unsqueeze ~dim:3
-		|> Tensor.expand ~size:[6;3;4;5] ~implicit:true in
+		|> Tensor.expand ~size ~implicit:true in
 	let ipos = 
-		Tensor.range ~start:(Scalar.int 0) ~end_:(Scalar.int 4) 
+		Tensor.range ~start:(Scalar.int 0) ~end_:(Scalar.int (poslen-1)) 
 				~options:(T Float,Torch.Device.Cpu)
 		|> Tensor.unsqueeze ~dim:0
 		|> Tensor.unsqueeze ~dim:1
 		|> Tensor.unsqueeze ~dim:2
-		|> Tensor.expand ~size:[6;3;4;5] ~implicit:true in
-	let shape = [6;3*4*5] in
-	let x2 = Tensor.reshape x ~shape in
+		|> Tensor.expand ~size ~implicit:true in
+		
 	let ityp2 = Tensor.reshape ityp ~shape in
 	let ichr2 = Tensor.reshape ichr ~shape in
 	let ipos2 = Tensor.reshape ipos ~shape in
-	let index = Tensor.argsort x2 ~dim:1 ~descending:true in
-	let ityps = Tensor.gather ityp2 ~dim:1 ~index ~sparse_grad:false in
-	let ichrs = Tensor.gather ityp2 ~dim:1 ~index ~sparse_grad:false in
-	let iposs = Tensor.gather ityp2 ~dim:1 ~index ~sparse_grad:false in
+	(* index these tensors with index from argsort *)
+	(* they only need to be created once! *)
+	shape,ityp2,ichr2,ipos2
+	
+let de_shape,de_typ,de_chr,de_pos = decode_edit_tensors ()
+
+let decode_edit_enumerate _bd ba_edit = 
+	(* Rather than sampling the pseudo-probabilities emitted by the model, 
+		make 3 matrices of them.  
+		sorted by probability, descending.
+		This is used like beam search, which DreamCoder
+		& many other models use *)
+	let sta = Unix.gettimeofday () in
+	let device = Torch.Device.Cpu in
+	let m = tensor_of_bigarray2 ba_edit device in
+	let select start length = 
+		let o = Tensor.narrow m ~dim:1 ~start ~length in
+		Tensor.clamp_ o ~min:(Scalar.float 0.0) ~max:(Scalar.float 1.0); 
+		o
+	in
+	let typ = select 0 4 in
+	let chr = select 4 toklen in
+	let pos = select (5+toklen) poslen in
+	(* outer-product this *)
+	let x = Tensor.einsum ~equation:"bt,bc,bp -> btcp" [typ;chr;pos] 
+				~path:None in
+	let x2 = Tensor.reshape x ~shape:de_shape in
+	let index = Tensor.argsort x2 ~dim:1 ~descending:true 
+		|> Tensor.narrow ~dim:1 ~start:0 ~length:10 in
+	let convert w = 
+		Tensor.gather w ~dim:1 ~index ~sparse_grad:false
+		|> Tensor.to_bigarray ~kind:Bigarray.float32 
+		|> Bigarray.array2_of_genarray 
+		(* output is batch_size x 10 *)
+	in
+	let ba_prob = convert x2 in
+	let ba_typ = convert de_typ in (* float -> in conv later *)
+	let ba_chr = convert de_chr in
+	let ba_pos = convert de_pos in
+	
+	let fin = Unix.gettimeofday () in
+	if !gdisptime then 
+		Logs.debug (fun m -> m "decode_edit_enumerate time %f" (fin-.sta)); 
+	ba_prob, ba_typ, ba_chr, ba_pos
 	(* now we need to iterate over these tensors
 		-- for each batch element
 		& decide what to do with them. 
 		Maybe another function ? *)
 	
-let decode_edit _bd ba_edit = 
+let decode_edit ba_edit = 
 	(* decode model output (from python) *)
 	let sta = Unix.gettimeofday () in
 	let device = Torch.Device.Cpu in
@@ -707,24 +683,6 @@ let decode_edit _bd ba_edit =
 	let chr = sample_dist (Tensor.narrow m ~dim:1 ~start:4 ~length:toklen) in
 	let pos = sample_dist 
 		(Tensor.narrow m ~dim:1 ~start:(5+toklen) ~length:poslen) in
-	(* now need to compute cosine distance.  normalize vectors first *)
-	(*let pos = Tensor.narrow bd.posencn ~dim:0 ~start:4 ~length:1 in
-	let pos = Tensor.expand pos ~size:[!batch_size;poslen*2] ~implicit:true in
-	Logs.debug (fun m -> m "decode_edit: normalized pos\n"); 
-	Tensor.print pos; *)
-	(* ^^ why 5? 4 edit types, toklen char options, 
-		and one for shakes (to go with the steaks) *)
-	(* add a leading p_ctx dimension *)
-	(*let pos = Tensor.expand pos ~size:[p_ctx;!batch_size;poslen*2] ~implicit:true in
-	let posenc = Tensor.expand bd.posencn ~size:[!batch_size;p_ctx;poslen*2] ~implicit:true in*)
-	(*Logs.debug (fun m -> m "decode_edit: bd.posencn\n"); 
-	Tensor.print bd.posencn;*)
-	(*let sim = Tensor.einsum ~equation:"cbp,bcp -> bc" [pos;posenc] ~path:None in*)
-	(*Logs.debug (fun m -> m "decode_edit: sim\n"); 
-	Tensor.print sim;*)
-	(*let loc = sample_dist_dum sim in *)
-	(* cosine similarity is permissive; take top *)
-	(* location must be clipped to within the program. *)
 	let edit_arr = Array.init !batch_size (fun i -> 
 		let etyp = match Tensor.get_int1 typ i with
 			| 0 -> "sub"
@@ -734,11 +692,6 @@ let decode_edit _bd ba_edit =
 		let echr = (Tensor.get_int1 chr i) + Char.code('0') |> Char.chr in
 		let eloc = Tensor.get_int1 pos i in
 		(etyp,eloc,echr) ) in
-	(* debug *)
-	(*for i = 0 to (min 1 !batch_size) do (
-		let typ,loc,chr = edit_arr.(i) in
-		Logs.debug (fun m -> m "decode_edit %d: %s,%c,%d" i typ chr loc)
-	) done;*)
 	let fin = Unix.gettimeofday () in
 	if !gdisptime then Logs.debug (fun m -> m "decode_edit time %f" (fin-.sta)); 
 	edit_arr
@@ -751,7 +704,7 @@ let apply_edits be =
 	(* note: Levenshtein clips the edit positions *)
 	let c = Levenshtein.apply_edits be.c_progenc [ed] in
 	let be2 = { be with c_progenc=c; edits=(List.tl be.edits) } in
-	update_edited be2 ed; 
+	Editree.update_edited ~inplace:true be2.edited ed (String.length c); 
 	be2
 	
 let better_counter = Atomic.make 0
@@ -849,19 +802,132 @@ let try_add_program steak data img be =
 	)
 	(* NOTE not sure if we need to call GC here *)
 	(* apparently not? *)
+	
+let update_bea_train steak bd = 
+	let sta = Unix.gettimeofday () in
+	let innerloop_ bi =
+		let be = bd.bea.(bi) in
+		(* check edited array allocation *)
+		let be1 = if Array.length be.edited <> (p_ctx/2)
+			then ( let edited = Array.make (p_ctx/2) 0.0 in
+				{be with edited} ) else be in
+		let cnt = be1.count in
+		(* last edit is 'fin', in which case: new batche *)
+		let bnew = 
+		 if List.length be1.edits <= 1 then (
+			bd.fresh.(bi) <- true; (* update image flag *)
+			new_batche_train steak `Train
+		) else (
+			bd.fresh.(bi) <- false;
+			apply_edits be1
+		) in
+		bd.bea.(bi) <- bnew
+	in
+	if !gparallel then
+		Dtask.parallel_for steak.pool ~start:0 ~finish:(!batch_size-1)
+			~body:innerloop_
+	else
+		for i=0 to (!batch_size-1) do
+			innerloop_ i done;
+			
+	let fin = Unix.gettimeofday () in
+	if !gdisptime then Logs.debug (fun m -> m "update_bea_train time %f" (fin-.sta));
+	steak.batchno <- steak.batchno + 1
+	
+	
+let update_bea_verify steak bd = 
+	let sta = Unix.gettimeofday () in
+	let edit_arr = decode_edit bd.bedtd in
+	let innerloop_ bi =
+		let be = bd.bea.(bi) in
+		let typ,loc,chr = edit_arr.(bi) in
+		(* check edited array allocation *)
+		let be1 = if Array.length be.edited <> (p_ctx/2)
+			then ( let edited = Array.make (p_ctx/2) 0.0 in
+				{be with edited} ) else be in
+		let cnt = be1.count in
+		let be2 = {be1 with edits=[(typ,loc,chr)];count=cnt+1} in
+		let be3 = apply_edits be2 in
+		let bnew = 
+		 if typ = "fin" || be3.count >= p_ctx/2 then (
+			(* write this to file for now; stats later *)
+			let c = if be3.c_progenc = be3.b_progenc then '+' else '-' in
+			Printf.fprintf steak.fid_verify "[%c] %s -> %s ; decode %s\n" c
+				(progenc2str be3.a_progenc)
+				(progenc2str be3.b_progenc)
+				(progenc2str be3.c_progenc); 
+			if c = '+' then (
+				Graf.incr_good steak.gs be3.a_pid; 
+				Graf.incr_good steak.gs be3.b_pid 
+			) else (
+				(* might be a simplification ? *)
+				let good,data,img = progenc_to_edata be3.c_progenc in
+				if good then try_add_program steak data img be3
+			); 
+			bd.fresh.(bi) <- true;
+			new_batche_unsup steak 
+		) else (
+			bd.fresh.(bi) <- false;
+			be3
+		) in
+		bd.bea.(bi) <- bnew
+	in
+	if !gparallel then
+		Dtask.parallel_for steak.pool ~start:0 ~finish:(!batch_size-1)
+			~body:innerloop_
+	else
+		for i=0 to (!batch_size-1) do
+			innerloop_ i done;
+			
+	let fin = Unix.gettimeofday () in
+	if !gdisptime then Logs.debug (fun m -> m "update_bea_verify time %f" (fin-.sta));
+	steak.batchno <- steak.batchno + 1
+
+let update_bea_mnist steak bd = 
+	let sta = Unix.gettimeofday () in
+	let ba_prob, ba_typ, ba_chr, ba_pos = decode_edit_enumerate bd.bedtd in
+	let decode i j = 
+		let typ = match iof ba_typ.{i,j} with
+			| 0 -> "sub"
+			| 1 -> "del" 
+			| 2 -> "ins"
+			| _ -> "fin" in
+		let chr = ba_chr.{i,j} + Char.code('0') |> Char.chr in
+		let pos = iof ba_pos.{i,j} in
+		typ,chr,pos
+	in
+	(* these will be sorted, descending *)
+	Printf.print "update_bea_mnist batch 0 edits:\n"; 
+	for i = 0 to 9 do (
+		let prob = ba_prob.{i,j} in
+		let typ,chr,pos = decode 0 i in
+		Printf.printf "   p:%0.3f %s %c %p\n" prob typ chr pos; 
+	) done; 
+	let innerloop_ bi = 
+		let be = bd.bea.(bi) in
+		match be.dt with 
+		| `Mnist(root,adr) -> (
+			(* model has just been queried about adr *)
+			let eds = List.init 10 (fun j -> decode bi j) in
+			let pr = List.init 10 (fun j -> ba_prob.{bi,j}) in
+			Editree.model_update root adr eds pr
+			)
+		| `Nodream -> (
+			new_batche_mnist steak
+			)
 
 let update_bea steak bd =
 	let sta = Unix.gettimeofday () in
-	let edit_arr = decode_edit bd bd.bedtd in
+	let ba_prob, ba_typ, ba_chr, ba_pos 
+			= decode_edit_enumerate bd.bedtd in
 	let innerloop_update_bea bi =
 		let be = bd.bea.(bi) in
 		(* check edited array allocation *)
-		let be1 = if Array.length be.edited <> p_ctx
-			then ( let edited = Array.make p_ctx 0.0 in
+		let be1 = if Array.length be.edited <> (p_ctx/2)
+			then ( let edited = Array.make (p_ctx/2) 0.0 in
 				{be with edited} ) else be in
 		let cnt = be1.count in
 		let typ,loc,chr = edit_arr.(bi) in
-		(*assert (Array.length be.edited = p_ctx) ;*)
 		let bnew = match be1.dt with
 		| `Train -> (
 			(* last edit is 'fin', in which case: new batche *)
@@ -976,6 +1042,7 @@ let bigfill_batchd steak bd =
 		String.iteri (fun i c -> 
 			let j = (Char.code c) - offs in
 			if i < llim then bd.bpro.{u,i,j} <- 1.0 ) be.a_progenc ; 
+		let la = String.length be.a_progenc in
 		let lc = String.length be.c_progenc in
 		if lc > llim then 
 			Logs.debug(fun m -> m  "c_progenc too long(%d):%s" lc be.c_progenc);
@@ -986,9 +1053,11 @@ let bigfill_batchd steak bd =
 				(* indicate this is c, to be edited *)
 				bd.bpro.{u,i+l,toklen-1} <- 1.0 ) ) be.c_progenc ;
 		(* copy over the edited tags (set in apply_edits) *)
-		assert (Array.length be.edited = p_ctx) ; 
-		for i = 0 to p_ctx-1 do (
-			bd.bpro.{u,i,toklen} <- be.edited.(i)
+		assert (Array.length be.edited = (p_ctx/2)) ; 
+		let lim = if la+lc > p_ctx then p_ctx else la+lc in
+		for i = la to lim-1 do (
+			bd.bpro.{u,i,toklen} <- be.edited.(i-la)
+			(* a_progenc is zeroed via fill above *)
 		) done; 
 		(* position encoding *)
 		let l = if l > llim then llim else l in 

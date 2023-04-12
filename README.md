@@ -9,7 +9,7 @@ See subject heading below for a more complete description.
 
 ## Bootstrapped program synthesis
 
-*Hypothesis: Reasoning can emerge through directed search and memorization -- no human behavioral cloning required*
+*Hypothesis: Reasoning can emerge through directed search, memorization, and compression -- no human behavioral cloning required*
 
 This is directly inspired by the excellent, insightful [DreamCoder paper](http://arxiv.org/abs/2006.08381)[^1].   DreamCoder is a program synthesis tool that aims to approximate the posterior -- the probability of a program given a specification -- based on a perceptual **network** and a **library**.  The perceptual network seeks to take the specification + working hypothesis context and output a new program token; the library seeks to encapsulate useful program primitives such that the search space is smaller.  Library building enables the perceptual network to do more with fewer tokens; perceptual network refinement enables greater search depths.
 
