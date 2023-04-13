@@ -30,7 +30,7 @@ prog_heads = 8
 prog_layers = 8
 embed_dim = 256
 
-train_iters = 100000
+train_iters = 100
 learning_rate = 0.0005 # 1e-3 maximum learning rate. scheduled.
 # learning rate of 0.002 is unstable.  Should figure out why. 
 weight_decay = 2.5e-6
@@ -52,9 +52,6 @@ if g_dreaming:
 	sock.connect(('127.0.0.1', 4341))
 else:
 	sock.connect(('127.0.0.1', 4340))
-sock.sendall(b"update_batch")
-data = sock.recv(1024)
-print(f"Received {data!r}")
 
 def make_mmf(fname): 
 	fd = open(fname, "r+b")
@@ -295,10 +292,9 @@ for u in range(train_iters):
 		losslog.flush()
 	
 	write_mmap(fd_bedtd, y)
-	if g_training: 
-		write_mmap(fd_editdiff, bedts - y.cpu()) # synchronization.
-		sock.sendall(b"decode_edit")
-		data = sock.recv(100)
+	write_mmap(fd_editdiff, bedts - y.cpu()) # synchronization.
+	sock.sendall(b"decode_edit")
+	data = sock.recv(100)
 	# scaler.scale(lossflat).backward()
 	# th.nn.utils.clip_grad_norm_(model.parameters(), 0.05)
 	# scaler.step(optimizer)
@@ -332,6 +328,7 @@ for u in range(train_iters):
 			model.load_state_dict(loaded_dict)
 			print("dreamer reloaded model parameters.")
 	
+	# time.sleep(10)
 
 
 fd_bpro.close()

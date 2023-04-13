@@ -390,50 +390,7 @@ let normalize_tensor m =
 	let len = Tensor.(f 1. / len) in
 	Tensor.einsum ~equation:"ij,i -> ij" [m;len] ~path:None 
 	
-let reset_bea dreaming =
-	(* dt sets the 'mode' of batchd, which persists thru update_bea*)
-	let dt = if dreaming then `Verify else `Train in
-	let bea = Array.init !batch_size
-		(fun _i -> {nulbatche with dt}) in
-	let fresh = Array.init !batch_size (fun _i -> true) in
-	bea,fresh
-	
-let init_batchd superv =
-	Logs.debug (fun m -> m "init_batchd"); 
-	let dreaming = not superv in
-	let filnum = if superv then 0 else 1 in
-	let mkfnam s = 
-		Printf.sprintf "%s_%d.mmap" s filnum in
-	let fd_bpro,bpro = mmap_bigarray3 (mkfnam "bpro") 
-			!batch_size p_ctx p_indim in
-	let fd_bimg,bimg = mmap_bigarray3 (mkfnam "bimg") 
-			(!batch_size*3) image_res image_res in
-			(* note: needs a reshape on python side!! *)
-	(* supervised batch of edits: ocaml to python *)
-	let fd_bedts,bedts = mmap_bigarray2 (mkfnam "bedts") 
-			!batch_size e_indim in
-	(* hallucinated batch of edits: python to ocaml *)
-	let fd_bedtd,bedtd = mmap_bigarray2 (mkfnam "bedtd") 
-			!batch_size e_indim in
-	let fd_posenc,posenc = mmap_bigarray2 (mkfnam "posenc")
-			p_ctx poslen in
-	let bea,fresh = reset_bea dreaming in
-	(* fill out the posenc matrix *)
-	(* just a diagonal matrix w one-hot! *)
-	for i = 0 to (poslen-1) do (
-		for j = 0 to (poslen-1) do (
-			posenc.{i,j} <- if i = j then 1.0 else 0.0; 
-		) done
-	) done ;
-	let device = Torch.Device.Cpu in
-	let posencn = tensor_of_bigarray2 posenc device |> normalize_tensor in
-	Bigarray.Array3.fill bpro 0.0 ;
-	Bigarray.Array3.fill bimg 0.0 ;
-	Bigarray.Array2.fill bedts 0.0 ;
-	Bigarray.Array2.fill bedtd 0.0 ; 
-	(* return batchd struct & list of files to close later *)
-	{bpro; bimg; bedts; bedtd; posenc; posencn; bea; fresh}, 
-	[fd_bpro; fd_bimg; fd_bedts; fd_bedtd; fd_posenc]
+
 	
 (*let pdata_to_edits a b = 
 	let dist, edits = Levenshtein.distance a.progenc b.progenc true in
@@ -646,17 +603,22 @@ let decode_edit_enumerate steak ba_edit =
 	let m = tensor_of_bigarray2 ba_edit device in
 	let select start length = 
 		let o = Tensor.narrow m ~dim:1 ~start ~length in
-		Tensor.clamp_ o ~min:(Scalar.float 0.0) ~max:(Scalar.float 1.0)
+		Tensor.clamp_ o ~min:(Scalar.float 1e-5) ~max:(Scalar.float 1.0)
+		(* clamp above zero prob, so log works *)
 	in
 	let typ = select 0 4 in
 	let chr = select 4 toklen in
 	let pos = select (5+toklen) poslen in
+	(*Printf.printf "decode_edit_enumerate typ:\n"; 
+	Tensor.print typ;*) 
 	(* outer-product this *)
 	let x = Tensor.einsum ~equation:"bt,bc,bp -> btcp" [typ;chr;pos] 
 				~path:None in
 	let x2 = Tensor.reshape x ~shape:steak.de.shape in
 	let index = Tensor.argsort x2 ~dim:1 ~descending:true 
 		|> Tensor.narrow ~dim:1 ~start:0 ~length:32 in
+	(*let typ2 = Tensor.gather steak.de.typ ~dim:1 ~index ~sparse_grad:false in*)
+	(*Tensor.print typ2;*) 
 	let convert w = 
 		Tensor.gather w ~dim:1 ~index ~sparse_grad:false
 		|> Tensor.to_bigarray ~kind:Bigarray.float32 
@@ -895,19 +857,27 @@ module SE = Set.Make(
 	end )
 	
 let update_bea_mnist steak bd = 
+	Logs.debug (fun m -> m "entering update_bea_mnist"); 
 	let ba_prob, ba_typ, ba_chr, ba_pos = 
 		decode_edit_enumerate steak bd.bedtd in
 		
-	let decode i j lc = 
-		let prob = ba_prob.{i,j} in
-		let chr = (iof ba_chr.{i,j}) + Char.code('0') |> Char.chr in
-		let typ,lim,chr = match iof ba_typ.{i,j} with
+	(*for j = 0 to 9 do (
+		for i = 0 to 9 do (
+			Logs.debug (fun m -> m "[%d,%d] pr%0.3f t%0.3f c%0.3f p%0.3f"
+				i j ba_prob.{i,j} ba_typ.{i,j} ba_chr.{i,j} ba_pos.{i,j})
+		) done
+	) done; *) (* looks ok *)
+		
+	let decode bi j lc = 
+		let prob = ba_prob.{bi,j} in
+		let chr = (iof ba_chr.{bi,j}) + Char.code('0') |> Char.chr in
+		let typ,lim,chr = match iof ba_typ.{bi,j} with
 			| 0 -> "sub", lc-1, chr
 			| 1 -> "del", lc-1, '0'
 			| 2 -> "ins", lc, chr
 			| _ -> "fin", 0, '0' in
 		(* pos has to exist within the string *)
-		let pos = iof ba_pos.{i,j} in
+		let pos = iof ba_pos.{bi,j} in
 		let pos = if pos > lim then lim else pos in
 		prob,typ,pos,chr
 	in
@@ -936,19 +906,30 @@ let update_bea_mnist steak bd =
 			let eset = getedits SE.empty lc bi 0 
 					|> SE.elements 
 					|> normedits in
-			if bi = 0 then (
+			(*if bi = 0 then (
 				(* these will be sorted, descending *)
+				Editree.print root [] "" 0.0 ;
 				Logs.debug (fun m -> m "update_bea_mnist batch 0 edits:");
 				List.iteri (fun i (pr,t,p,c) -> 
 					Logs.debug(fun m -> m "  [%d] p:%0.3f %s %d %c"
-						i pr t p c)) eset
-			); 
+						i pr t p c)) eset; 
+			);*) 
 			let eds = List.map (fun (_,t,p,c) -> (t,p,c)) eset in
 			let pr = List.map (fun (p,_,_,_) -> log p) eset in
 			Editree.model_update root adr eds pr; 
 			let rec selec () = 
-				let adr,edit,k_progenc,k_edited = Editree.model_select root in
-				let toolong = be.count >= p_ctx/2 - 1 in
+				let nadr,edit,k_progenc,k_edited = Editree.model_select root in
+				let typ,pos,chr = edit in
+				if bi = -1 then ( 
+					Logs.debug (fun m -> m "[%d] selec'ted %s %d %c  @%s" 
+						bi typ pos chr (Editree.adr2str nadr));
+					Logs.debug (fun m -> m 
+						"[%d] editree \n\tc_ %s \n\tk_ %s\n\tr_ %s\n\ta_ %s count %d"
+						bi be.c_progenc k_progenc
+						(Editree.getprogenc root) be.a_progenc be.count); 
+					Editree.print root [] "" 0.0
+				); 
+				let toolong = be.count > 256 in
 				match toolong,edit with
 				| true,_ 
 				| false,("con",_,_) -> (
@@ -956,26 +937,25 @@ let update_bea_mnist steak bd =
 					newdream () )
 				| false,("fin",_,_) -> (
 					(* label 'done' this leaf *)
-					Editree.model_done root adr;
-					if be.c_progenc <> k_progenc then (
-						Logs.err (fun m -> m 
-							"[%d] editree error @%s \n\tc_ %s \n\tk_ %s\n\tr_ %s\n\ta_ %s count %d"
-							bi (Editree.adr2str adr) be.c_progenc k_progenc
-							(Editree.getprogenc root) be.a_progenc be.count); 
-						Editree.print root [] "" 0.0 ; 
-						assert false
-					); 
+					Editree.model_done root nadr;
 					let good,data,img = progenc_to_edata k_progenc in
 					if good then (
 						if try_add_program steak data img be then (
 							newdream ()
 						) else selec ()
 					) else selec () )
-				| false,(typ,_pos,_chr) -> (
+				| false,(typ,pos,chr) -> (
 					(* apply the edit *)
 					assert (typ <> "fin"); 
+					if bi=0 then (
+						Logs.debug (fun m -> m 
+							"[%d] applied %s %d %c @%s count %d\n\tr_ %s \n\tk_ %s"
+							bi typ pos chr (Editree.adr2str nadr) be.count 
+							(Editree.getprogenc root) k_progenc)
+					); 
 					let count = be.count+1 in
-					{be with c_progenc=k_progenc; edited=k_edited; count})
+					let dt = `Mnist(root,nadr) in (* so we can eval its leaves *)
+					{be with c_progenc=k_progenc; edited=k_edited; count; dt})
 			in
 			selec ()
 			)
@@ -1022,7 +1002,7 @@ let bigfill_batchd steak bd =
 				bd.bpro.{u,i+l,j} <- 1.0; 
 				(* indicate this is c, to be edited *)
 				bd.bpro.{u,i+l,toklen-1} <- 1.0 ) ) be.c_progenc ;
-		(* copy over the edited tags (set in apply_edits) *)
+		(* copy over the edited tags (set in update_edited) *)
 		assert (Array.length be.edited = (p_ctx/2)) ; 
 		let lim = if la+lc > p_ctx then p_ctx else la+lc in
 		for i = la to lim-1 do (
@@ -1107,6 +1087,53 @@ let bigfill_batchd steak bd =
 	let fin = Unix.gettimeofday () in
 	if !gdisptime then 
 		Logs.debug (fun m -> m "bigfill_batchd time %f" (fin-.sta))
+		
+let reset_bea steak dreaming =
+	(* dt sets the 'mode' of batchd, which persists thru update_bea*)
+	let dt = `Train in
+	let bea = Array.init !batch_size
+		(fun _i -> 
+			if dreaming then new_batche_mnist steak
+			else new_batche_train steak dt) in
+	let fresh = Array.init !batch_size (fun _i -> true) in
+	bea,fresh
+	
+let init_batchd steak superv =
+	Logs.debug (fun m -> m "init_batchd"); 
+	let dreaming = not superv in
+	let filnum = if superv then 0 else 1 in
+	let mkfnam s = 
+		Printf.sprintf "%s_%d.mmap" s filnum in
+	let fd_bpro,bpro = mmap_bigarray3 (mkfnam "bpro") 
+			!batch_size p_ctx p_indim in
+	let fd_bimg,bimg = mmap_bigarray3 (mkfnam "bimg") 
+			(!batch_size*3) image_res image_res in
+			(* note: needs a reshape on python side!! *)
+	(* supervised batch of edits: ocaml to python *)
+	let fd_bedts,bedts = mmap_bigarray2 (mkfnam "bedts") 
+			!batch_size e_indim in
+	(* hallucinated batch of edits: python to ocaml *)
+	let fd_bedtd,bedtd = mmap_bigarray2 (mkfnam "bedtd") 
+			!batch_size e_indim in
+	let fd_posenc,posenc = mmap_bigarray2 (mkfnam "posenc")
+			p_ctx poslen in
+	let bea,fresh = reset_bea steak dreaming in
+	(* fill out the posenc matrix *)
+	(* just a diagonal matrix w one-hot! *)
+	for i = 0 to (poslen-1) do (
+		for j = 0 to (poslen-1) do (
+			posenc.{i,j} <- if i = j then 1.0 else 0.0; 
+		) done
+	) done ;
+	let device = Torch.Device.Cpu in
+	let posencn = tensor_of_bigarray2 posenc device |> normalize_tensor in
+	Bigarray.Array3.fill bpro 0.0 ;
+	Bigarray.Array3.fill bimg 0.0 ;
+	Bigarray.Array2.fill bedts 0.0 ;
+	Bigarray.Array2.fill bedtd 0.0 ; 
+	(* return batchd struct & list of files to close later *)
+	{bpro; bimg; bedts; bedtd; posenc; posencn; bea; fresh}, 
+	[fd_bpro; fd_bimg; fd_bedts; fd_bedtd; fd_posenc]
 	
 let truncate_list n l = 
 	let n = min n (List.length l) in
@@ -1331,10 +1358,6 @@ let handle_message steak bd msg =
 	| "update_batch" -> (
 		(* supervised: sent when python has a working copy of data *)
 		(* dreaming : sent when the model has produced edits (maybe old) *)
-		if steak.superv then 
-			update_bea_train steak bd
-		else
-			update_bea_mnist steak bd ; 
 		bigfill_batchd steak bd; 
 		(*Logs.debug(fun m -> m "new batch %d" steak.batchno);*)
 		bd,(Printf.sprintf "ok %d" !nreplace)
@@ -1342,6 +1365,11 @@ let handle_message steak bd msg =
 	| "decode_edit" -> (
 		(* python sets bd.bedtd -- the dreamed edits *)
 		(* read this independently of updating bd.bedts; so as to determine acuracy. *)
+		if steak.superv then 
+			update_bea_train steak bd
+		else
+			update_bea_mnist steak bd ; 
+		
 		let decode_edit_accuracy edit_arr = 
 			let typright, chrright, posright = ref 0, ref 0, ref 0 in
 			let print = ref false in
@@ -1362,10 +1390,10 @@ let handle_message steak bd msg =
 				"decode_edit: correct typ %0.3f chr %0.3f pos %0.3f " 
 				(pctg typright) (pctg chrright) (pctg posright) );
 		in
-		(*let edit_sup = decode_edit bd.bedts in *)(* verification *)
-		let edit_dream = decode_edit bd.bedtd in
-		(*decode_edit_accuracy edit_sup "superv"; *)
-		decode_edit_accuracy edit_dream; 
+		if steak.superv then (
+			let edit_dream = decode_edit bd.bedtd in
+			decode_edit_accuracy edit_dream
+		); 
 		bd, "ok" )
 	| _ -> bd,"Unknown command"
 
@@ -1401,7 +1429,7 @@ let servthread steak () = (* steak = thread state *)
 	bind server_sock (ADDR_INET (listen_address, sockno)) ;
 	listen server_sock 2 ; (* 2 max connections *)
 	while !glive do (
-		let bd,fdlist = init_batchd steak.superv in
+		let bd,fdlist = init_batchd steak steak.superv in
 		let (client_sock, _client_addr) = accept server_sock in
 		Logs.info (fun m -> m "new connection on %d" sockno); 
 		(* make new mmap files & batchd for each connection *)

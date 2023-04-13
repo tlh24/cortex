@@ -65,8 +65,11 @@ let rec flatten node adr pr =
 		match k,ed with 
 		| None,("don",_,_) -> (i+1), a (* don't add 'don' nodes *)
 		| None,_ -> (i+1), (i::adr, (pr +. p))::a
-		| Some k,_ -> ( let _,b = flatten k (i::adr) (pr +. p) in
-			(i+1), (List.rev_append b a) )
+		| Some k,_ -> ( 
+			if String.length k.progenc < p_ctx/2-1 then (
+				let _,b = flatten k (i::adr) (pr +. p) in
+				(i+1), (List.rev_append b a) 
+			) else (i+1,a) )
 		) (0,[])
 	
 let rec index node targadr curadr out = 
@@ -158,6 +161,7 @@ let rec print node adr prefix prob =
 		let adrr = i :: adr in
 		match node.kids.(i) with
 		| Some k -> print k adrr prefixx pp
-		| _ -> () )
+		| _ -> () ); 
+	flush stdout
 
 let getprogenc root = root.progenc

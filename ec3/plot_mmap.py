@@ -6,6 +6,7 @@ import argparse
 import matplotlib.pyplot as plt
 from ctypes import * # for c_char
 import time
+import os
 
 from constants import *
 # remove menubar buttons
@@ -45,6 +46,9 @@ else:
 	filno = 0
 print(f"batch_size:{batch_size}")
 
+if not os.path.exists(f"editdiff_{filno}.mmap"): 
+	os.system(f'fallocate -l {batch_size*e_indim*4} editdiff_{filno}.mmap')
+
 
 fd_bpro = make_mmf(f"bpro_{filno}.mmap")
 fd_bimg = make_mmf(f"bimg_{filno}.mmap")
@@ -52,7 +56,9 @@ fd_bedts = make_mmf(f"bedts_{filno}.mmap")
 fd_bedtd = make_mmf(f"bedtd_{filno}.mmap")
 fd_posenc = make_mmf(f"posenc_{filno}.mmap")
 fd_editdiff = make_mmf(f"editdiff_{filno}.mmap")
-# fallocate -l 6016 editdiff.mmap for batch size 32
+
+
+# fallocate -l 6016 editdiff_0.mmap for batch size 32
 # 6016 = 32 * 47 * 4
 
 
