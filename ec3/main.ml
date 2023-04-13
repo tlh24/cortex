@@ -66,13 +66,14 @@ let () =
 	let db_mutex = Mutex.create () in
 	let pool = Dtask.setup_pool ~num_domains:12 () in 
 		(* tune this -- 8-12 seems ok *)
+	let de = decode_edit_tensors !batch_size in
 	let supfid = open_out "/tmp/ec3/replacements_sup.txt" in
 	let dreamfid = open_out "/tmp/ec3/replacements_dream.txt" in
 	let fid_verify = open_out "/tmp/ec3/verify.txt" in
 	
 	let supstak = 
 		{device; gs; dbf; dbf_cpu; dbf_enc; mnist; mnist_enc; vae; db_mutex;
-		superv=true; fid=supfid; fid_verify; batchno=0; pool } in
+		superv=true; fid=supfid; fid_verify; batchno=0; pool; de} in
 	
 	let supsteak = if Sys.file_exists "db_sorted.S" then ( 
 		(*Dtask.run supsteak.pool (fun () -> load_database supsteak )*)
@@ -119,7 +120,7 @@ let () =
 		Domains (train and dream) 
 		and pools (parfor, basically) *)
 	
-	let threadmode = 2 in
+	let threadmode = 1 in
 	
 	(match threadmode with
 	| 0 -> ( (* train only *)

@@ -99,10 +99,10 @@ let select node =
 	let out = ref (("con",0,'0'),nuledtree) in
 	let _,flat = flatten node [] 0.0 in
 	if (List.length flat) > 0 then (
-		let adr,prob = 
+		let adr,_prob = 
 			List.sort (fun (_,a) (_,b) -> compare b a) flat 
 			|> List.hd in
-		Printf.printf "selected %s %f\n" (adr2str adr) prob; 
+		(*Printf.printf "selected %s %f\n" (adr2str adr) prob;*) 
 		index node adr [] out; 
 		let edit,kid = !out in
 		adr,edit,kid
@@ -136,7 +136,7 @@ let model_update root adr eds pr =
 	update root adr [] eds pr
 	
 let model_done root adr = 
-	update root adr [] [("don",0,'0')] [1.0]
+	update root adr [] [("don",0,'0')] [log 1.0]
 	
 let model_select root = 
 	let adr,edit,kid = select root in
@@ -159,3 +159,5 @@ let rec print node adr prefix prob =
 		match node.kids.(i) with
 		| Some k -> print k adrr prefixx pp
 		| _ -> () )
+
+let getprogenc root = root.progenc

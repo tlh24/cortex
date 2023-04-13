@@ -96,6 +96,13 @@ let nuldream =
 	; correct_cnt = 0
 	}
 	
+type decode_tensors = 
+	{ shape : int list
+	; typ : Tensor.t
+	; chr : Tensor.t
+	; pos : Tensor.t
+	}
+	
 type tsteak = (* thread state *)
 	{ device : Torch.Device.t
 	; gs : Graf.gstat
@@ -112,6 +119,7 @@ type tsteak = (* thread state *)
 	; fid_verify : out_channel (* log for verification *)
 	; mutable batchno : int (* for e.g doing garbage collection *)
 	; mutable pool : Domainslib.Task.pool (* needs to be replaced for dream *)
+	; de : decode_tensors
 	}
 
 let read_lines name : string list =
@@ -595,9 +603,9 @@ let sample_dist_dum x =
 	Tensor.argmax x ~dim:1 ~keepdim:false
 	
 (* fixed tensors for enumeration decoding *)
-let decode_edit_tensors () = 
-	let size = [!batch_size; 4; toklen; poslen] in
-	let shape = [!batch_size; 4 * toklen * poslen] in
+let decode_edit_tensors batchsiz = 
+	let size = [batchsiz; 4; toklen; poslen] in
+	let shape = [batchsiz; 4 * toklen * poslen] in
 	let ityp = 
 		Tensor.range ~start:(Scalar.int 0) ~end_:(Scalar.int 3) 
 				~options:(T Float,Torch.Device.Cpu)
@@ -620,16 +628,14 @@ let decode_edit_tensors () =
 		|> Tensor.unsqueeze ~dim:2
 		|> Tensor.expand ~size ~implicit:true in
 		
-	let ityp2 = Tensor.reshape ityp ~shape in
-	let ichr2 = Tensor.reshape ichr ~shape in
-	let ipos2 = Tensor.reshape ipos ~shape in
+	let typ = Tensor.reshape ityp ~shape in
+	let chr = Tensor.reshape ichr ~shape in
+	let pos = Tensor.reshape ipos ~shape in
 	(* index these tensors with index from argsort *)
 	(* they only need to be created once! *)
-	shape,ityp2,ichr2,ipos2
-	
-let de_shape,de_typ,de_chr,de_pos = decode_edit_tensors ()
+	{shape;typ;chr;pos}
 
-let decode_edit_enumerate ba_edit = 
+let decode_edit_enumerate steak ba_edit = 
 	(* Rather than sampling the pseudo-probabilities emitted by the model, 
 		make 3 matrices of them.  
 		sorted by probability, descending.
@@ -648,9 +654,9 @@ let decode_edit_enumerate ba_edit =
 	(* outer-product this *)
 	let x = Tensor.einsum ~equation:"bt,bc,bp -> btcp" [typ;chr;pos] 
 				~path:None in
-	let x2 = Tensor.reshape x ~shape:de_shape in
+	let x2 = Tensor.reshape x ~shape:steak.de.shape in
 	let index = Tensor.argsort x2 ~dim:1 ~descending:true 
-		|> Tensor.narrow ~dim:1 ~start:0 ~length:10 in
+		|> Tensor.narrow ~dim:1 ~start:0 ~length:32 in
 	let convert w = 
 		Tensor.gather w ~dim:1 ~index ~sparse_grad:false
 		|> Tensor.to_bigarray ~kind:Bigarray.float32 
@@ -658,9 +664,9 @@ let decode_edit_enumerate ba_edit =
 		(* output is batch_size x 10 *)
 	in
 	let ba_prob = convert x2 in
-	let ba_typ = convert de_typ in (* float -> in conv later *)
-	let ba_chr = convert de_chr in
-	let ba_pos = convert de_pos in
+	let ba_typ = convert steak.de.typ in (* float -> in conv later *)
+	let ba_chr = convert steak.de.chr in
+	let ba_pos = convert steak.de.pos in
 	
 	let fin = Unix.gettimeofday () in
 	if !gdisptime then 
@@ -714,7 +720,7 @@ let img_to_imgf steak img =
 	imgf_cpu,imgf
 	
 let try_add_program steak data img be = 
-	if 0 <> 0 then (
+	if true then (
 		let progstr = Logo.output_program_pstr data.pro in
 		Logs.info (fun m -> m "try_add_program [%d]: %s \"%s\""
 			steak.batchno data.progenc progstr) );
@@ -881,25 +887,42 @@ let update_bea_verify steak bd =
 	in
 	update_bea_parallel innerloop_bea_verify steak "update_bea_verify"
 
+module SE = Set.Make(
+	struct
+		let compare (_,at,ap,ac) (_,bt,bp,bc) = 
+			if at=bt && ap=bp && ac=bc then 0 else 1 
+		type t = float * string * int * char
+	end )
+	
 let update_bea_mnist steak bd = 
-	let ba_prob, ba_typ, ba_chr, ba_pos = decode_edit_enumerate bd.bedtd in
-	let decode i j = 
-		let typ = match iof ba_typ.{i,j} with
-			| 0 -> "sub"
-			| 1 -> "del" 
-			| 2 -> "ins"
-			| _ -> "fin" in
+	let ba_prob, ba_typ, ba_chr, ba_pos = 
+		decode_edit_enumerate steak bd.bedtd in
+		
+	let decode i j lc = 
+		let prob = ba_prob.{i,j} in
 		let chr = (iof ba_chr.{i,j}) + Char.code('0') |> Char.chr in
+		let typ,lim,chr = match iof ba_typ.{i,j} with
+			| 0 -> "sub", lc-1, chr
+			| 1 -> "del", lc-1, '0'
+			| 2 -> "ins", lc, chr
+			| _ -> "fin", 0, '0' in
+		(* pos has to exist within the string *)
 		let pos = iof ba_pos.{i,j} in
-		typ,pos,chr
+		let pos = if pos > lim then lim else pos in
+		prob,typ,pos,chr
 	in
-	(* these will be sorted, descending *)
-	Logs.debug (fun m -> m "update_bea_mnist batch 0 edits:\n"); 
-	for i = 0 to 9 do (
-		let prob = ba_prob.{0,i} in
-		let typ,pos,chr = decode 0 i in
-		Logs.debug (fun m -> m "   [%d] p:%0.3f %s %c %d\n" i prob typ chr pos); 
-	) done; 
+	
+	let rec getedits eset lc bi j = 
+		if (j < 32) && (SE.cardinal eset < 10) then (
+			getedits (SE.add ( decode bi j lc ) eset) lc bi (j+1)
+		) else ( eset )
+	in
+	let normedits elist = 
+		let sum = List.fold_left 
+			(fun a (p,_,_,_) -> a +. p) 0.0001 elist in
+		List.map (fun (pr,t,p,c) -> (pr /. sum, t,p,c)) elist
+	in
+	
 	let innerloop_bea_mnist bi = 
 		let newdream () = 
 			bd.fresh.(bi) <- true;
@@ -909,8 +932,19 @@ let update_bea_mnist steak bd =
 		let bnew = match be.dt with 
 		| `Mnist(root,adr) -> (
 			(* model has just been queried about adr *)
-			let eds = List.init 10 (fun j -> decode bi j) in
-			let pr = List.init 10 (fun j -> ba_prob.{bi,j}) in
+			let lc = String.length be.c_progenc in
+			let eset = getedits SE.empty lc bi 0 
+					|> SE.elements 
+					|> normedits in
+			if bi = 0 then (
+				(* these will be sorted, descending *)
+				Logs.debug (fun m -> m "update_bea_mnist batch 0 edits:");
+				List.iteri (fun i (pr,t,p,c) -> 
+					Logs.debug(fun m -> m "  [%d] p:%0.3f %s %d %c"
+						i pr t p c)) eset
+			); 
+			let eds = List.map (fun (_,t,p,c) -> (t,p,c)) eset in
+			let pr = List.map (fun (p,_,_,_) -> log p) eset in
 			Editree.model_update root adr eds pr; 
 			let rec selec () = 
 				let adr,edit,k_progenc,k_edited = Editree.model_select root in
@@ -921,17 +955,25 @@ let update_bea_mnist steak bd =
 					(* we did not find a suitable edit -- give up *)
 					newdream () )
 				| false,("fin",_,_) -> (
-					(* 'done' this leaf *)
+					(* label 'done' this leaf *)
 					Editree.model_done root adr;
-					assert (be.c_progenc = k_progenc); 
+					if be.c_progenc <> k_progenc then (
+						Logs.err (fun m -> m 
+							"[%d] editree error @%s \n\tc_ %s \n\tk_ %s\n\tr_ %s\n\ta_ %s count %d"
+							bi (Editree.adr2str adr) be.c_progenc k_progenc
+							(Editree.getprogenc root) be.a_progenc be.count); 
+						Editree.print root [] "" 0.0 ; 
+						assert false
+					); 
 					let good,data,img = progenc_to_edata k_progenc in
 					if good then (
 						if try_add_program steak data img be then (
 							newdream ()
 						) else selec ()
 					) else selec () )
-				| false,_ -> (
+				| false,(typ,_pos,_chr) -> (
 					(* apply the edit *)
+					assert (typ <> "fin"); 
 					let count = be.count+1 in
 					{be with c_progenc=k_progenc; edited=k_edited; count})
 			in
@@ -1292,7 +1334,7 @@ let handle_message steak bd msg =
 		if steak.superv then 
 			update_bea_train steak bd
 		else
-			update_bea_verify steak bd ; 
+			update_bea_mnist steak bd ; 
 		bigfill_batchd steak bd; 
 		(*Logs.debug(fun m -> m "new batch %d" steak.batchno);*)
 		bd,(Printf.sprintf "ok %d" !nreplace)

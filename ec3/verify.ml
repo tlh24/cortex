@@ -32,13 +32,14 @@ let () =
 	let db_mutex = Mutex.create () in
 	let pool = Dtask.setup_pool ~num_domains:12 () in 
 		(* tune this -- 8-12 seems ok *)
+	let de = decode_edit_tensors 4 in (* dummy *)
 	let supfid = open_out "/tmp/ec3/replacements_sup.txt" in
 	let dreamfid = open_out "/tmp/ec3/replacements_dream.txt" in
 	let fid_verify = open_out "/tmp/ec3/verify.txt" in
 	
 	let supstak = 
 		{device; gs; dbf; dbf_cpu; dbf_enc; mnist; mnist_enc; vae; db_mutex;
-		superv=true; fid=supfid; fid_verify; batchno=0; pool } in
+		superv=true; fid=supfid; fid_verify; batchno=0; pool; de} in
 	
 	let supsteak = load_database supstak "db_sorted.S" in
 	verify_database supsteak; 
