@@ -44,19 +44,20 @@ let () =
 	done; *)
 	test_logo (); 
 	
+	(*let device = Torch.Device.Cpu in*) (* slower *)
+	let device = Torch.Device.cuda_if_available () in
+	
 	let mnistd = Mnist_helper.read_files ~prefix:"../otorch-test/data" () in
 	let mimg = Tensor.reshape mnistd.train_images 
 		~shape:[60000; 28; 28] in
 	(* need to pad to 30 x 30, one pixel on each side *)
-	let mnist = Tensor.zeros [60000; 30; 30] in
+	let mnist_cpu = Tensor.zeros [60000; 30; 30] in
 	Tensor.copy_ (
-		Tensor.narrow mnist ~dim:1 ~start:1 ~length:28 |> 
+		Tensor.narrow mnist_cpu ~dim:1 ~start:1 ~length:28 |> 
 		Tensor.narrow ~dim:2 ~start:1 ~length:28) ~src:mimg ;
 		(* Tensor.narrow returns a pointer/view; copy_ is in-place. *)
-		(* keep on CPU? *)
-	
-	(*let device = Torch.Device.Cpu in*) (* slower *)
-	let device = Torch.Device.cuda_if_available () in
+	let mnist = Tensor.to_device mnist_cpu ~device in
+
 	let gs = Graf.create image_alloc in
 	let dbf = Tensor.zeros [2;2] in
 	let dbf_cpu = Tensor.zeros [2;2] in 
@@ -72,7 +73,7 @@ let () =
 	let fid_verify = open_out "/tmp/ec3/verify.txt" in
 	
 	let supstak = 
-		{device; gs; dbf; dbf_cpu; dbf_enc; mnist; mnist_enc; vae; db_mutex;
+		{device; gs; dbf; dbf_cpu; dbf_enc; mnist; mnist_cpu; mnist_enc; vae; db_mutex;
 		superv=true; fid=supfid; fid_verify; batchno=0; pool; de} in
 	
 	let supsteak = if Sys.file_exists "db_sorted.S" then ( 
@@ -120,7 +121,7 @@ let () =
 		Domains (train and dream) 
 		and pools (parfor, basically) *)
 	
-	let threadmode = 1 in
+	let threadmode = 2 in
 	
 	(match threadmode with
 	| 0 -> ( (* train only *)

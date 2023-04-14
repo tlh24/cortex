@@ -27,6 +27,7 @@ let () =
 	let dbf_cpu = Torch.Tensor.zeros [2;2] in 
 	let dbf_enc = Torch.Tensor.zeros [2;2] in
 	let mnist = Torch.Tensor.zeros [2;2] in
+	let mnist_cpu = Torch.Tensor.zeros [2;2] in
 	let mnist_enc = Torch.Tensor.zeros [2;2] in
 	let vae = Vae.dummy_ext () in
 	let db_mutex = Mutex.create () in
@@ -38,7 +39,7 @@ let () =
 	let fid_verify = open_out "/tmp/ec3/verify.txt" in
 	
 	let supstak = 
-		{device; gs; dbf; dbf_cpu; dbf_enc; mnist; mnist_enc; vae; db_mutex;
+		{device; gs; dbf; dbf_cpu; dbf_enc; mnist; mnist_cpu; mnist_enc; vae; db_mutex;
 		superv=true; fid=supfid; fid_verify; batchno=0; pool; de} in
 	
 	let supsteak = load_database supstak "db_sorted.S" in
