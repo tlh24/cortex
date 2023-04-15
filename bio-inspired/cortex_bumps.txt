@@ -4172,3 +4172,24 @@ To roll back to fourier series, checkout
 https://github.com/tlh24/cortex/commit/d53e88339fed1a3b7872e255006cdb3bc77c0345
 One-hot makes it much easier to interpolate over decoding alternatives, and hence create a (recursive) search tree for enumeration, not samples.  
 This prevents the transformer from endlessly proposing the same series of edits... 
+
+April 14 2023
+batch size 512
+With VAE: 13556MiB
+without VAE: 11420MiB
+Smaller ... but still a very large allocation of memory! 
+Seems like we don't need to keep around two copies of the database. 
+In just dream mode (set via main.ml) 11420MiB
+	well well. 
+In just train mode: 1158MiB what ?? 
+Yep, that's correct -- an additional 10GB are allocated in 'dream' mode. 
+This seems to be due to the MSE algorithm, which allocates many arrays. 
+Most of these arrays appear to be small to the GC, but in practice are quite large -- so they blow up the GPU memory.. 
+
+Anyway.  Have to deal with this for now; can't run dream and train at the same time. 
+
+Looking at the training data, it's very much biased toward substitutions and deletions, less so insertions; we need to bias the training for increased specificity, so that it memorizes not just equivalences and reductions, but mainly complexifications.  
+
+Other thing I was thinking last night: adding in float numbers.  
+This will smooth the search space considerably. 
+Float numbers saved as a *decimal string* so they can be subject to tweakage! 

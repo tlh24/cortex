@@ -112,7 +112,7 @@ type tsteak = (* thread state *)
 	; mnist : Tensor.t 
 	; mnist_cpu : Tensor.t 
 	; mnist_enc : Tensor.t (* on the GPU *)
-	; vae : Vae.VAE.t (* GPU *)
+	(*; vae : Vae.VAE.t (* GPU *)*)
 	; db_mutex : Mutex.t
 	; superv : bool (* supervised or dreaming *)
 	(*; sockno : int 4340 for supervised, 4341 dreaming *)
@@ -293,10 +293,10 @@ let db_get steak i =
 	Mutex.unlock steak.db_mutex ; 
 	r
 
-let imgf_to_enc steak imgf =
-	Vae.encode1_ext steak.vae
-		(Tensor.view imgf ~size:[image_res*image_res])
-		
+let imgf_to_enc _steak _imgf =
+	Tensor.randn [12;]
+	(*Vae.encode1_ext steak.vae
+		(Tensor.view imgf ~size:[image_res*image_res])*)
 
 let db_add_uniq ?(doenc=true) steak ed imgf imgf_cpu =
 	(*imgf is a tensor on same device as dbf*)
@@ -308,7 +308,7 @@ let db_add_uniq ?(doenc=true) steak ed imgf imgf_cpu =
 	if imgi >= 0 then (
 		Tensor.copy_ ~src:imgf (Tensor.narrow steak.dbf ~dim:0 ~start:imgi ~length:1);
 		Tensor.copy_ ~src:imgf_cpu (Tensor.narrow steak.dbf_cpu ~dim:0 ~start:imgi ~length:1);
-		if doenc then
+		if doenc && false then
 			Tensor.copy_ ~src:enc (Tensor.narrow steak.dbf_enc ~dim:0 ~start:imgi ~length:1) ;
 		added := true
 	); 
@@ -462,7 +462,7 @@ let new_batche_train steak dt =
 			) else selector () )
 		| `Equiv -> (
 			(* always simplify to the minimum desc *)
-			if String.length d.ed.progenc < (p_ctx/2-2) then (
+			if String.length d.ed.progenc < (p_ctx/2-2) && false then (
 				let ei = d.equivroot in
 				let e = Vector.get steak.gs.g ei in
 				if e.progt = `Uniq then (
@@ -535,8 +535,8 @@ let new_batche_mnist_cos steak =
 	(* note: bd.fresh is set in the calling function (for consistency) *)
 	
 let distance_array = Array.make 512 0.0 
-	
-let new_batche_mnist_mse steak bi =
+
+let rec new_batche_mnist_mse steak bi =
 	(* for now, just set the target B to a sample from MNIST; ultimately will need to have longer interactions & intermediate starting points *)
 	(*let len = match steak.dreams with
 		| Some dream -> Array.length dream
@@ -552,6 +552,55 @@ let new_batche_mnist_mse steak bi =
 			|> Tensor.reshape ~shape:[imgcnt; image_res*image_res] in
 	let d = Tensor.(sum_dim_intlist (square(a - b)) 
 			~dim:(Some [1]) ~keepdim:false ~dtype:(T Float) ) in
+	assert ((Tensor.shape1_exn d) = imgcnt) ; (* sanity.. *)
+	let d,ind = Tensor.sort d ~dim:0 ~descending:false in
+	(* if the problem is solved, select a new digit *)
+	let h = (Tensor.get_float1 d 0) /. (foi (image_res * image_res)) in
+	(*Logs.debug (fun m->m "new_batche_mnist_mse %d %f" bi h);*) 
+	if h > 0.025 then (
+	(* select the best match that is short enough *)
+	let rec selector k = 
+		assert (k < imgcnt); 
+		let h = Tensor.get_int1 ind k in
+		let indx = steak.gs.img_inv.(h) in 
+		let a = db_get steak indx in
+		if String.length a.ed.progenc < (p_ctx/2-2) then (
+			assert (h = a.imgi) ; 
+			distance_array.(bi) <- Tensor.get_float1 d h ; 
+			let edited = Array.make (p_ctx/2) 0.0 in
+			let root = Editree.make_root a.ed.progenc in
+			let dt = `Mnist(root, []) in
+			{  a_pid = indx; b_pid = mid;
+				a_progenc = a.ed.progenc; 
+				b_progenc = ""; 
+				c_progenc = a.ed.progenc; 
+				a_imgi = a.imgi; 
+				b_imgi = mid; 
+				edits = []; edited; count=0; dt}
+		) else selector (k+1) in
+	selector 0
+	) else (
+		Caml.Gc.major(); 
+		new_batche_mnist_mse steak bi
+	)
+	(* note: bd.fresh is set in the calling function (for consistency) *)
+
+
+let new_batche_mnist_mse_b steak bi =
+	(* for now, just set the target B to a sample from MNIST; ultimately will need to have longer interactions & intermediate starting points *)
+	(*let len = match steak.dreams with
+		| Some dream -> Array.length dream
+		| _ -> 1 in*)
+	let mid = 1 + (Random.int 1000) in
+	(* select a starting point closer to the target, w/threshold.
+		goal is conflated with longer interactions, guess ? *)
+	let imgcnt = steak.gs.num_uniq in (* may be updated in other threads *)
+	let d = Tensor.( 
+			sum_dim_intlist
+				(square
+					(narrow steak.dbf ~dim:0 ~start:0 ~length:imgcnt) - 
+					(narrow steak.mnist ~dim:0 ~start:mid ~length:1) )
+				~dim:(Some [1;2]) ~keepdim:false ~dtype:(T Float) ) in
 	assert ((Tensor.shape1_exn d) = imgcnt) ; (* sanity.. *)
 	let _,ind = Tensor.sort d ~dim:0 ~descending:false in
 	(* select the best match that is short enough *)
@@ -1153,11 +1202,19 @@ let bigfill_batchd steak bd =
 let reset_bea steak dreaming =
 	(* dt sets the 'mode' of batchd, which persists thru update_bea*)
 	let dt = `Train in
+	(*Printf.printf "\n------- reset_bea:\n"; 
+	Gc.print_stat stdout; *)
 	let bea = Array.init !batch_size
 		(fun i -> 
 			if dreaming then new_batche_mnist_mse steak i
 			else new_batche_train steak dt) in
 	let fresh = Array.init !batch_size (fun _i -> true) in
+	(*Printf.printf "\n------- after new_batche:\n"; 
+	Gc.print_stat stdout; 
+	Caml.Gc.full_major(); 
+	Printf.printf "\n------- after Gc.full_major ():\n"; 
+	Gc.print_stat stdout; 
+	flush stdout; *)
 	bea,fresh
 	
 let init_batchd steak superv =
@@ -1429,7 +1486,7 @@ let handle_message steak bd msg =
 		(* read this independently of updating bd.bedts; so as to determine acuracy. *)
 		let decode_edit_accuracy edit_arr = 
 			let typright, chrright, posright = ref 0, ref 0, ref 0 in
-			let print = ref false in
+			let print = ref true in
 			Array.iteri (fun i (typ,pos,chr) -> 
 				if List.length (bd.bea.(i).edits) > 0 then (
 					let styp,spos,schr = List.hd (bd.bea.(i).edits) in (* supervised *)

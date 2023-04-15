@@ -63,7 +63,7 @@ let () =
 	let dbf_cpu = Tensor.zeros [2;2] in 
 	let dbf_enc = Tensor.zeros [2;2] in
 	let mnist_enc = Tensor.zeros [2;2] in
-	let vae = Vae.dummy_ext () in
+	(*let vae = Vae.dummy_ext () in*)
 	let db_mutex = Mutex.create () in
 	let pool = Dtask.setup_pool ~num_domains:12 () in 
 		(* tune this -- 8-12 seems ok *)
@@ -73,7 +73,7 @@ let () =
 	let fid_verify = open_out "/tmp/ec3/verify.txt" in
 	
 	let supstak = 
-		{device; gs; dbf; dbf_cpu; dbf_enc; mnist; mnist_cpu; mnist_enc; vae; db_mutex;
+		{device; gs; dbf; dbf_cpu; dbf_enc; mnist; mnist_cpu; mnist_enc; (*vae;*) db_mutex;
 		superv=true; fid=supfid; fid_verify; batchno=0; pool; de} in
 	
 	let supsteak = if Sys.file_exists "db_sorted.S" then ( 
@@ -101,14 +101,13 @@ let () =
 	render_simplest supsteak; 
 	
 	(* try to train the vae? *)
-	let dbfs = Tensor.narrow supsteak.dbf ~dim:0 ~start:0 ~length:(supsteak.gs.num_uniq) in
+	(*let dbfs = Tensor.narrow supsteak.dbf ~dim:0 ~start:0 ~length:(supsteak.gs.num_uniq) in
 	let vae,dbf_enc',mnist_enc = Vae.train_ext dbfs mnist device !batch_size in
 	(* need to re-expand for future allocation *)
 	let encl,cols = Tensor.shape2_exn dbf_enc' in
 	let dbf_enc = Tensor.( (ones [image_alloc;cols]) * (f (-1.0) ) ) in
 	Tensor.copy_ (Tensor.narrow dbf_enc ~dim:0 ~start:0 ~length:encl) ~src:dbf_enc' ;
-	
-	let supsteak = {supsteak with dbf_enc; mnist_enc; vae} in
+	let supsteak = {supsteak with dbf_enc; mnist_enc; vae} in*)
 
 	
 	(* PSA: extra bit of complexity!! 
@@ -128,9 +127,8 @@ let () =
 		servthread supsteak () ; 
 		Dtask.teardown_pool supsteak.pool)
 	| 1 -> ( (* dream only *)
-		let pool2 = Dtask.setup_pool ~num_domains:8 () in
 		let dreamsteak = {supsteak with
-			superv=false; fid=dreamfid; batchno=0; pool=pool2 } in
+			superv=false; fid=dreamfid;} in
 		servthread dreamsteak (); 
 		Dtask.teardown_pool dreamsteak.pool )
 	| 2 -> ( (* both *)

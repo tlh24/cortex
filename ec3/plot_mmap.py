@@ -98,7 +98,7 @@ while True:
 	posenc = read_mmap(fd_posenc, [p_ctx, poslen])
 	editdiff = read_mmap(fd_editdiff, [batch_size, e_indim])
 
-	plot_tensor(0, 0, bpro[0,:,:], "bpro[0,:,:]", -1.0, 1.0)
+	plot_tensor(0, 0, bpro[0,:,:], "bpro[0,:,:]", -2.0, 2.0)
 	plot_tensor(0, 1, bimg[0,0,:,:], "bimg[0,0,:,:]", -1.0, 1.0)
 	plot_tensor(0, 2, bimg[0,1,:,:], "bimg[0,1,:,:]", -1.0, 1.0)
 	plot_tensor(1, 0, bedts[:bs,:], "bedts[:,:]", -2.0, 2.0)
