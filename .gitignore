@@ -7,3 +7,4 @@ ec3/logod_pb2.py
 ec3/data/
 otorch-test/data/
 results/
+ec3/libtorch/
