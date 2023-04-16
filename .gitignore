@@ -8,3 +8,4 @@ ec3/data/
 otorch-test/data/
 results/
 ec3/libtorch/
+ec3/poetry.lock
