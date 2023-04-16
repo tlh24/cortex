@@ -16,7 +16,7 @@ wget https://download.pytorch.org/libtorch/cu116/libtorch-cxx11-abi-shared-with-
 mv libtorch-cxx11-abi-shared-with-deps-1.13.1+cu116.zip ~
 unzip ~/libtorch-cxx11-abi-shared-with-deps-1.13.1+cu116.zip 
 mv libtorch ~
-export LIBTORCH=/home/ubuntu/libtorch
+export LIBTORCH=~/libtorch
 
 opam install --confirm-level=unsafe-yes vg cairo2 pbrt vector lwt logs pcre torch domainslib ocamlgraph
 eval $(opam env --switch=myswitch)
