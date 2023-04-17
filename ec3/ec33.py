@@ -30,10 +30,10 @@ v_ctx = int((image_res / patch_size) ** 2 + 1)
 vision_width = 256
 prog_width = 128
 vision_heads = 8
-vision_layers = 4
+vision_layers = 4*2
 prog_heads = 8
-prog_layers = 6
-embed_dim = 256
+prog_layers = 6*2
+embed_dim = 384
 
 train_iters = 100000
 learning_rate = 0.00125 # maximum learning rate. scheduled.
@@ -124,8 +124,8 @@ class ecTransformer(nn.Module):
 			input_resolution = image_resolution, 
 			patch_size = patch_size, 
 			width = vision_width, 
-			layers = 4, 
-			heads = 8, 
+			layers = vision_layers,
+			heads = vision_heads,
 			output_dim = embed_dim)
 
 		self.vit_to_prt = nn.Linear(embed_dim, prog_width)
@@ -144,7 +144,8 @@ class ecTransformer(nn.Module):
 	
 	def forward(self, u, batch_a, batch_p): 
 		# encode the image (we should only need to do this once??)
-		q = th.zeros(6) # ! this will be parallelized !
+		pdb.set_trace
+		q = th.zeros(6) # ! this could be parallelized !
 		vx = self.vit(batch_a) # x is size [bs, v_ctx, 256] 
 		q[0] = th.std(vx)
 		vx = self.vit_to_prt(vx)
