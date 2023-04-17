@@ -1,6 +1,7 @@
 # commands for getting lambda labs up and running 
 sudo chmod +rw /usr/bin
-sudo apt-get install ocaml
+sudo apt-get update
+sudo apt-get install ocaml python3.10
 # upgrade opam
 bash -c "sh <(curl -fsSL https://raw.githubusercontent.com/ocaml/opam/master/shell/install.sh)"
 # add a flambda build, with the latest ocaml compiler
@@ -34,8 +35,7 @@ gunzip train-labels-idx1-ubyte.gz
 gunzip t10k-images-idx3-ubyte.gz
 gunzip t10k-labels-idx1-ubyte.gz
 
-# git config --global user.email "sideskate@gmail.com"
-# git config --global user.name "Tim Hanson"
-
+# setup pyenv 
+curl https://pyenv.run | bash
 # for accessing remotely:  (e.g.)
 # sshfs -o allow_other,default_permissions ubuntu@104.171.203.63:/home/ubuntu/cortex/ /home/tlh24/remote/
