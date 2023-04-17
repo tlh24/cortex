@@ -391,3 +391,272 @@ let update_bea steak bd =
 	(* cannot do this within a parallel for loop!!! *)
 	(* in-place update of bea *)
 	bd
+
+	
+let make_trains steak = 
+	(* pre-compute training data; enumeration better than search. *)
+	let trains_sub = Vector.create ~dummy:nuldream in
+	let trains_insdel = Vector.create ~dummy:nuldream in
+	let edited = Array.make p_ctx 0.0 in (* needs replacement! *)
+	let dba = Vector.to_array steak.db in
+	let dbn = Vector.length steak.db in
+	(*let dba2 = Array.sub dba 0 8192 in*)
+	let make_trains_innerloop i = 
+		let a = dba.(i) in
+		Array.iteri (fun j b -> 
+			let dist,edits = pdata_to_edits a b in
+			let admit dosub = 
+				if dist > 0 && (edit_criteria edits dosub) then (
+					{a_pid = i; 
+					b_pid = j;
+					a_progenc = a.progenc; 
+					b_progenc = b.progenc; 
+					c_progenc = a.progenc; (* starting point *)
+					edits; 
+					edited; 
+					count = 0; 
+					dt=nuldreamtd},true
+				) else (nulbatche,false)
+			in
+			let doadd be2 f train =
+				if f then (
+					let indx = Vector.length train in
+					if (indx mod 1000) = 0 then
+						Logs.debug (fun m -> m "trains_ size %d" indx);
+					let dt = {indx; dosub=true; dtyp=`Train} in
+					let be = {be2 with dt} in
+					Mutex.lock steak.db_mutex;
+					Vector.push train {be; decode=[]; cossim=[]; correct_cnt=0};
+					Mutex.unlock steak.db_mutex
+				)
+			in
+			let be2,f = admit true in
+			doadd be2 f trains_sub ;
+			let be2,f = admit false in
+			doadd be2 f trains_insdel ;
+		) dba in (* /make_trains_innerloop *)
+	if !gparallel then ( 
+		Dtask.run steak.pool (fun () -> 
+			Dtask.parallel_for steak.pool ~start:0 ~finish:(dbn-1) 
+				~body:make_trains_innerloop )
+	) else (
+		for i = 0 to (dbn-1) do (* non-parallel version *)
+			make_trains_innerloop i done );
+	Logs.debug (fun m -> m "Generated %d sub and %d insdel training examples" 
+		(Vector.length trains_sub) (Vector.length trains_insdel)); 
+	(* save them! (can recreate the edits later) *)
+	let fid = open_out "trains_sub.txt" in
+	Vector.iteri (fun i a -> 
+		Printf.fprintf fid "%d\t%d\t%d\n" i a.be.a_pid a.be.b_pid) trains_sub;
+	close_out fid; 
+	let fid = open_out "trains_insdel.txt" in
+	Vector.iteri (fun i a -> 
+		Printf.fprintf fid "%d\t%d\t%d\n" i a.be.a_pid a.be.b_pid) trains_insdel;
+	close_out fid;
+	(Vector.to_array trains_sub),(Vector.to_array trains_insdel)
+	
+let load_trains steak = 
+	let edited = Array.make p_ctx 0.0 in (* needs replacement! *)
+	let i = ref 0 in
+	let readfile fname dosub =
+		let lines = read_lines fname in
+		let linesa = Array.of_list lines in
+		let r = Array.map (fun l -> 
+			let sl = String.split_on_char '\t' l in
+			match sl with 
+			| _::aq::bq -> (
+				let ai = int_of_string aq in
+				let bi = int_of_string (List.hd bq) in
+				let a = db_get steak ai in
+				let b = db_get steak bi in
+				let _dist,edits = pdata_to_edits a b in
+				let dt = {indx = !i; dosub; dtyp = `Train} in
+				let be = {a_pid = ai; 
+						b_pid = bi;
+						a_progenc = a.progenc; 
+						b_progenc = b.progenc; 
+						c_progenc = a.progenc; (* starting point *)
+						edits; 
+						edited; 
+						count = 0; 
+						dt} in
+				incr i; 
+				{be; decode=[]; cossim=[]; correct_cnt=0}
+				)
+			| _ -> (
+				Logs.err (fun m -> m "%s could not parse %s" fname l); 
+				nuldream
+				) ) linesa in
+		Logs.debug (fun m -> m "%s loaded %d" fname (Array.length r)); 
+		r
+	in
+	(readfile "trains_sub.txt" true),(readfile "trains_insdel.txt" false)
+	
+let make_dreams () =
+	(* array to accumulate mnist approximations *)
+	let dreams = Vector.create ~dummy:nuldream in
+	for i=0 to 160-1 do (
+		let edited = Array.make p_ctx 0.0 in
+			(* don't forget this has to be replaced later *)
+		let dt = {indx = i; dosub = false; dtyp = `Mnist} in
+		let be = {a_pid = 0; 
+					b_pid = i;
+					a_progenc = "";
+					b_progenc = ""; 
+					c_progenc = ""; 
+					edits = []; 
+					edited; 
+					count=0; dt} in
+		Vector.push dreams {be; decode=[]; cossim=[]; correct_cnt=0}
+	) done; 
+	let nall = Vector.length dreams in
+	Logs.debug (fun m -> m "Generated %d dreams" nall);
+	Vector.to_array dreams
+
+	
+let save_database steak fname = 
+	(* saves in the current state -- not sorted. *)
+	let dba = Vector.to_array db in (* inefficient *)
+	let fil = open_out fname in
+	Printf.fprintf fil "%d\n" (Array.length dba); 
+	Array.iteri (fun i d -> 
+		let pstr = Logo.output_program_pstr d.pro in
+		Printf.fprintf fil "[%d] %s "  i pstr; 
+		List.iter (fun ep -> 
+			let ps = Logo.output_program_pstr ep.epro in
+			if String.length ps > 0 then 
+				Printf.fprintf fil "| %s " ps) d.equiv; 
+		Printf.fprintf fil "\n") dba ; 
+	close_out fil; 
+	Logs.info(fun m -> m  "saved %d to %s" (Array.length dba) fname); 
+	
+	(* verification .. human readable*)
+	let fil = open_out "db_human_log.txt" in
+	Printf.fprintf fil "%d\n" (Array.length dba); 
+	Array.iteri (fun i d -> 
+		Printf.fprintf fil "\n[%d]\t" i ; 
+		Logo.output_program_h d.pro fil) dba ; 
+	close_out fil; 
+	Logs.debug(fun m -> m  "saved %d to db_human_log.txt" (Array.length dba))
+	(* save the equivalents too? *)
+
+let load_database_line steak s pid equivalent =
+	let sl = Pcre.split ~pat:"[\\[\\]]+" s in
+	let _h,ids,ps = match sl with
+		| h::m::t -> h,m,t
+		| h::[] -> h,"",[]
+		| [] -> "0","0",[] in
+	let pid2 = int_of_string ids in
+	if pid <> pid2 then 
+		Logs.err (fun m -> m "load pid %d != line %d" pid2 pid); 
+	let pr,prl = if pid = 0 || (List.length ps) < 1
+		then Some `Nop, []
+		else (
+			let a = String.split_on_char '|' (List.hd ps) in
+			parse_logo_string (List.hd a), (List.tl a) ) in
+	(match pr with 
+	| Some pro -> 
+		let progenc = Logo.encode_program_str pro in
+		let (_,_,segs) = Logo.eval (Logo.start_state ()) pro in
+		let scost = segs_to_cost segs in
+		let pcost = Logo.progenc_cost progenc in
+		let img,_ = Logo.segs_to_array_and_cost segs image_res in
+		let equiv = List.map (fun s -> 
+			let g = parse_logo_string s in
+			match g with 
+			| Some epro -> ( 
+				let eprogenc = Logo.encode_program_str epro in
+				let (_,_,esegs) = Logo.eval (Logo.start_state ()) epro in
+				let escost = segs_to_cost esegs in
+				let epcost = Logo.progenc_cost eprogenc in
+				let eimg,_ = Logo.segs_to_array_and_cost esegs image_res in
+				Atomic.incr equivalent; 
+				{epro; eprogenc; eimg; escost; epcost; esegs}
+				)
+			| _ -> ( 
+				Logs.err(fun m -> m  "could not parse equiv program %d %s" pid s); 
+				nulpequiv ) ) prl in
+		let data = {pid; pro; progenc; img; 
+						scost; pcost; segs; equiv} in
+		let imgf = tensor_of_bigarray2 img steak.device in
+		ignore( db_push steak data imgf ~doenc:false);  (* mutex protected *)
+	
+	| _ -> Logs.err(fun m -> m 
+				"could not parse program %d %s" pid s ))
+	
+let load_database steak = 
+	let equivalent = Atomic.make 0 in
+	let fname = "db_prog.txt" in
+	let lines = read_lines fname in
+	let a,progs = match lines with
+		| h::r -> h,r
+		| [] -> "0",[] in
+	let ai = int_of_string a in
+	if ai > image_alloc then (
+		Logs.err(fun m -> m "%s image_count too large, %d > %d" fname ai image_alloc) 
+	) else (
+		(* db_prog format: [$id] program | eq. prog | eq. prog ... \n *)
+		let progsa = Array.of_list progs in
+		let pl = Array.length progsa in
+		(* this needs to be called within Dtask.run to be parallel *)
+		(* actually ... running in parallel seems to screw things up! *)
+		if !gparallel && false then (
+			Dtask.parallel_for steak.pool ~start:0 ~finish:(pl-1) 
+				~body:( fun i -> load_database_line steak progsa.(i) i equivalent )
+		) else (
+			for i = 0 to (pl-1) do 
+				load_database_line steak progsa.(i) i equivalent 
+			done
+		); 
+		Logs.info (fun m -> m "Loaded %d programs (%d max) and %d equivalents" 
+			(List.length progs) image_alloc (Atomic.get equivalent)); 
+	)
+
+let save_dreams steak =
+	(* iterate over the training data.. *)
+	let write_dreamcheck dca fname =
+		let fid = open_out (fname^".txt") in
+		Array.iteri (fun i dc ->
+			let d = if List.length dc.decode >= 1 then
+					List.hd dc.decode else "" in
+			let a = progenc2progstr dc.be.a_progenc in
+			let b = progenc2progstr dc.be.b_progenc in
+			Printf.fprintf fid "[%d] ncorrect:%d is:%s->%s decode:%s\n"
+					i dc.correct_cnt a b d;
+			if i < 2048 then (
+				ignore(run_logo_string b 64
+					(Printf.sprintf "/tmp/png/%s%05d_real.png" fname i));
+				ignore(run_logo_string d 64
+					(Printf.sprintf "/tmp/png/%s%05d_decode.png" fname i)) );
+		) dca;
+		close_out fid;
+		Logs.debug (fun m -> m "Saved %d to %s" (Array.length dca) fname) in
+	(match steak.trains_sub with
+	| Some trains -> write_dreamcheck trains "dreamcheck_sub"
+	| _ -> () );
+	(match steak.trains_insdel with
+	| Some trains -> write_dreamcheck trains "dreamcheck_insdel"
+	| _ -> () );
+	(* mnist doesn't need a file, just examples *)
+	let cnt = ref 0 in
+	(match steak.dreams with
+	| Some mnist -> (
+		Array.iteri (fun i dc ->
+			(* take the best (highest cosine sim) match & output that *)
+			if List.length dc.decode > 1 then (
+			let e = List.map2 (fun q w -> q,w) dc.cossim dc.decode
+				|> List.sort (fun (a,_) (b,_) -> compare b a) in
+			let f,d = List.hd e in
+			let f' = int_of_float (f *. 100.) in (* percent *)
+			if (run_logo_string d 64
+				(Printf.sprintf "/tmp/png/mnist%05d_%d_decode.png" f' i)) then (
+				dbf_to_png steak.mnist dc.be.dt.indx
+					(Printf.sprintf "/tmp/png/mnist%05d_%d_real.png" f' i);
+				incr cnt)
+			) ) mnist )
+	| _ -> () );
+	Logs.debug (fun m -> m "Saved %d mnist decodes to /tmp/png" !cnt)
+
+let hidden_nodes = 128
+let epochs = 10000
+let learning_rate = 1e-3

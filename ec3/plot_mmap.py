@@ -7,6 +7,10 @@ import matplotlib.pyplot as plt
 from ctypes import * # for c_char
 import time
 
+from constants import *
+# remove menubar buttons
+plt.rcParams['toolbar'] = 'None'
+
 def make_mmf(fname): 
 	fd = open(fname, "r+b")
 	return mmap.mmap(fd.fileno(), 0)
@@ -27,33 +31,34 @@ def write_mmap(mmf, data):
 	mmf.seek(0)
 	n = mmf.write(buff.read())
 	return n
-	
-fd_bpro = make_mmf("bpro_0.mmap")
-fd_bimg = make_mmf("bimg_0.mmap")
-fd_bedts = make_mmf("bedts_0.mmap")
-fd_bedtd = make_mmf("bedtd_0.mmap")
-fd_posenc = make_mmf("posenc_0.mmap")
-fd_editdiff = make_mmf("editdiff_0.mmap")
-# fallocate -l 6016 editdiff.mmap for batch size 32
-# 6016 = 32 * 47 * 4
+
 
 parser = argparse.ArgumentParser(description='image mmaped files')
 parser.add_argument("-b", "--batch_size", help="Set the batch size", type=int)
+parser.add_argument("-d", "--dreaming", help="Set the model to dream", action="store_true")
 args = parser.parse_args()
 batch_size = args.batch_size
+g_dreaming = args.dreaming
+if args.dreaming: 
+	filno = 1
+else: 
+	filno = 0
 print(f"batch_size:{batch_size}")
 
-image_res = 30
-toklen = 30
-poslen = 6
-p_indim = toklen + 1 + poslen*2 
-e_indim = 5 + toklen + poslen*2
-p_ctx = 64
+
+fd_bpro = make_mmf(f"bpro_{filno}.mmap")
+fd_bimg = make_mmf(f"bimg_{filno}.mmap")
+fd_bedts = make_mmf(f"bedts_{filno}.mmap")
+fd_bedtd = make_mmf(f"bedtd_{filno}.mmap")
+fd_posenc = make_mmf(f"posenc_{filno}.mmap")
+fd_editdiff = make_mmf(f"editdiff_{filno}.mmap")
+# fallocate -l 6016 editdiff.mmap for batch size 32
+# 6016 = 32 * 47 * 4
 
 
 plot_rows = 2
 plot_cols = 3
-figsize = (18, 10)
+figsize = (16, 8)
 plt.ion()
 fig, axs = plt.subplots(plot_rows, plot_cols, figsize=figsize)
 initialized = False
@@ -84,7 +89,7 @@ while True:
 	bimg = read_mmap(fd_bimg, [batch_size, 3, image_res, image_res])
 	bedts = read_mmap(fd_bedts, [batch_size, e_indim])
 	bedtd = read_mmap(fd_bedtd, [batch_size, e_indim])
-	posenc = read_mmap(fd_posenc, [p_ctx, poslen*2])
+	posenc = read_mmap(fd_posenc, [p_ctx, poslen])
 	editdiff = read_mmap(fd_editdiff, [batch_size, e_indim])
 
 	plot_tensor(0, 0, bpro[0,:,:], "bpro[0,:,:]", -1.0, 1.0)
@@ -97,7 +102,7 @@ while True:
 	fig.tight_layout()
 	fig.canvas.draw()
 	fig.canvas.flush_events()
-	time.sleep(2)
+	# time.sleep(2)
 	print("tick")
 	initialized=True
 

@@ -25,11 +25,87 @@
 ; )
 ; (modules logo_pb logo_pp logo_types logo parser lexer vgwrapper colors levenshtein ast vae program)
 
-(executable
-	(name program)
-	(modules logo parser lexer vgwrapper colors levenshtein vae ast program)
-	(libraries vg vg.cairo pbrt vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib ocamlgraph)
+;%{common} = (vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib))
+
+(library
+	(name colors)
+	(modules colors)
+	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib)
 	)
+
+(library
+	(name vgwrapper)
+	(modules vgwrapper)
+	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib colors)
+	)
+
+(library
+	(name logo)
+	(modules logo)
+	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib vgwrapper colors)
+	)
+
+(library
+	(name parser)
+	(modules parser)
+	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib logo vgwrapper colors)
+	)
+
+(library
+	(name lexer)
+	(modules lexer)
+	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib parser logo vgwrapper colors)
+	)
+
+(library
+	(name levenshtein)
+	(modules levenshtein)
+	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib)
+	)
+	
+(library
+	(name ast)
+	(modules ast)
+	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib logo)
+	)
+	
+(library
+	(name graf)
+	(modules graf)
+	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib lexer parser logo vgwrapper colors levenshtein ast)
+	)
+	
+(library
+	(name vae)
+	(modules vae)
+	(libraries torch torch.vision logs logs.threaded domainslib)
+	)
+
+(library	
+	(name program)
+	(modules program)
+	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib graf lexer parser logo vgwrapper colors levenshtein ast vae)
+	)
+
+(executable
+	(name main)
+	(modules main )
+	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib program)
+	(modes exe) ; options: byte exe
+	)
+
+(executable
+	(name verify)
+	(modules verify)
+	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib program)
+	(modes exe) ; options: byte exe
+	)
+	
+;(executable
+;	(name graf)
+;	(modules logo parser lexer vgwrapper colors levenshtein ast graf)
+;	(libraries vg vg.cairo vector sexplib logs logs.threaded) 
+;	)
 
 
 ; to install these libraries, run:

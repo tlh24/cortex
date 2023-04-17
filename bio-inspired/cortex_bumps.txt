@@ -4098,6 +4098,12 @@ This definitely requires significant rejiggering of the ocaml code!  (Not python
 Probably do a one-hot fixed code or something? 
 	Absolute position but not relative pos. 
 	Definitely need to improve position decoding: it's only ~20% accurate now. 
+		March 30th: that turned out to be a bug!  
+		Cosine distance in positional encoding results in 
+		.. a cosine-shaped distribution of matches
+		.. which means that it only picks the correct position ~20% of the time.  
+		This is now fixed.  
+			But glad it encouraged adding AST encoding! 
 
 Hi Alex, 
 
@@ -4131,3 +4137,38 @@ I don’t know your time availability, but happy to share the code for (2) & cha
 
 Cheers, 
 Tim
+
+
+March 30 2023
+
+Making good progress -- got the graph represenation folded in properly, 
+dreaming and training seems to be working well. 
+Need to add some sort of priority queue for pushing the training / dreaming toward 'solving the digits' though.  Hmm. 
+
+April 4 2023
+
+As above, not much progress in getting the network to solve the digits -- even when hammering on one digit, it doesn't seem to make any progress. 
+	Sure, working on multiple problems in parallel should be better, 
+	But hammering ought to make incremental progress. 
+Issue is that all of the edits are too 'large': you need to add small segments, not very large ones. 
+Cosine distance to the current database, however, selects starting points that are not easily modified to improve their fit. 
+Possible modifications: 
+(1) Change the improvement metric to be translation-invariant MSE, rather than VAE encoding distance. 
+	That said: humans are able to change their metric at will, based on perception of progress. 
+	Would be great to permit such a structure. 
+(2) Change the scale of the image to be larger: default segments are smaller. 
+	Issue: need the algorithm to *learn* to use e.g. fractional lengths & angles. 
+(3) The transformer, by default, outputs a series of edits. 
+	We need instead to output a set of *probabilities* of edits, 
+	Something that can be enumerated!  
+	Random sampling is super inefficient. 
+	Need to think much more about this -- we *have* to be able to account for, and to sample, even improbable regions of space. 
+		This may get back to Schmidhuber's OOPS.. 
+
+April 5 2023
+
+Switching to one-hot position encoding, dumb but efficient. 
+To roll back to fourier series, checkout
+https://github.com/tlh24/cortex/commit/d53e88339fed1a3b7872e255006cdb3bc77c0345
+One-hot makes it much easier to interpolate over decoding alternatives, and hence create a (recursive) search tree for enumeration, not samples.  
+This prevents the transformer from endlessly proposing the same series of edits... 

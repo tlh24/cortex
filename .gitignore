@@ -5,4 +5,5 @@ __pycache__
 *_log.txt
 ec3/logod_pb2.py
 ec3/data/
+otorch-test/data/
 results/

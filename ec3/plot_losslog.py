@@ -4,11 +4,12 @@ import pdb
 import matplotlib.pyplot as plt
 import time
 
-
+# remove menubar buttons
+plt.rcParams['toolbar'] = 'None'
 
 plot_rows = 2
 plot_cols = 4
-figsize = (18, 10)
+figsize = (16, 8)
 plt.ion()
 fig, ax = plt.subplots(plot_rows, plot_cols, figsize=figsize)
 initialized = False

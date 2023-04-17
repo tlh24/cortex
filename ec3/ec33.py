@@ -14,31 +14,26 @@ import io
 import os
 import pdb
 
-# import torch._dynamo as dynamo
-# dynamo.config.verbose=True
+import torch._dynamo as dynamo
+dynamo.config.verbose=True
+# note: I can't seem to get this to work. tlh April 7 2023
 
-batch_size = 256*3
-image_res = 30
-toklen = 30
-poslen = 6
-p_indim = toklen + 1 + poslen*2 
-e_indim = 5 + toklen + poslen*2
-p_ctx = 64
+from constants import *
 
 patch_size = 5
 v_ctx = int((image_res / patch_size) ** 2 + 1)
 vision_width = 256
-prog_width = 128
+prog_width = 256
 vision_heads = 8
-vision_layers = 4*2
+vision_layers = 6
 prog_heads = 8
-prog_layers = 6*2
-embed_dim = 384
+prog_layers = 8
+embed_dim = 256
 
 train_iters = 100000
-learning_rate = 0.00125 # maximum learning rate. scheduled.
+learning_rate = 0.0005 # 1e-3 maximum learning rate. scheduled.
 # learning rate of 0.002 is unstable.  Should figure out why. 
-weight_decay = 5e-6
+weight_decay = 2.5e-6
 nreplace = 0
 
 
@@ -95,14 +90,14 @@ fd_bedts = make_mmf(f"bedts_{mmapno}.mmap")
 fd_bedtd = make_mmf(f"bedtd_{mmapno}.mmap")
 fd_editdiff = make_mmf(f"editdiff_{mmapno}.mmap")
 fd_posenc = make_mmf(f"posenc_{mmapno}.mmap")
-posenc = read_mmap(fd_posenc, [p_ctx, poslen*2])
+posenc = read_mmap(fd_posenc, [p_ctx, poslen])
 
 torch_device = 0
 print("torch cuda devices", th.cuda.device_count())
 print("torch device", th.cuda.get_device_name(torch_device))
 th.cuda.set_device(torch_device)
 th.set_default_tensor_type('torch.cuda.FloatTensor')
-# torch.set_float32_matmul_precision('high') # desktop.
+th.set_float32_matmul_precision('high') # desktop.
 
 def build_attention_mask(v_ctx, p_ctx):
 	# allow the model to attend to everything when predicting an edit
@@ -165,9 +160,9 @@ class ecTransformer(nn.Module):
 		q[5] = th.std(x)
 		# x = self.ln_post(x) # scale the inputs to softmax
 		# x = self.gelu(x)
-		x = th.cat((self.tok_softmax(x[:,0:4]),
-				  self.tok_softmax(x[:,4:4+toklen]), 
-				  x[:,4+toklen:]), dim=1)
+		# x = th.cat((self.tok_softmax(x[:,0:4]),
+		# 		  self.tok_softmax(x[:,4:4+toklen]), 
+		# 		  x[:,4+toklen:]), dim=1) -- this is for fourier position enc. 
 		return x,q
 
 model = ecTransformer(image_resolution = image_res, 
@@ -201,12 +196,15 @@ print(f"Number of model parameters:{trainable_params/1e6}M")
 # loss is on the predicted edit: 
 # [0:4] is the categorical edit type, sub del ins fin
 # [4:toklen] is the categorical character/token.  
-# [5+toklen:5+toklen+poslen*2] is the (absolute) position encoding, vectoral.
+# [5+toklen:5+toklen+poslen] is the (absolute) position encoding, vectoral.
 # not sure why there is a 5 in there.
 
 lossfunc_cel = nn.CrossEntropyLoss(label_smoothing = 0.08, reduction='mean')
 lossfunc_mse = nn.MSELoss(reduction='mean')
-optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+# optimizer = optim.SGD(model.parameters(), lr=2e-3)
+# !SGD does not work!  AdamW much better.  
+optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+# optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
 def print_model_params(): 
 	print(model.prt_to_tok.weight[0,:])
@@ -238,13 +236,13 @@ if g_dreaming:
 # compiling this does not seem to work... 
 def train(mod, bimg, bpro, bedts): 
 	model.zero_grad()
-	y,q = model(u, bimg.cuda(), bpro.cuda())
-	loss = lossfunc(y, bedts.cuda())
+	y,q = model(u, bimg, bpro)
+	loss = lossfunc(y, bedts)
 	lossflat = th.sum(loss)
 	lossflat.backward()
-	th.nn.utils.clip_grad_norm_(model.parameters(), 0.05)
+	th.nn.utils.clip_grad_norm_(model.parameters(), 0.025)
 	optimizer.step()
-	return y,q
+	return y,q,lossflat
 	
 # train_opt = th.compile(train, mode="reduce-overhead")
 
@@ -259,12 +257,18 @@ for u in range(train_iters):
 	
 	if th.min(bedts[:,0]) < 0: 
 		print("bedts synchronization issue!")
+		
+	if g_dreaming: 
+		bimg = bimg.cuda()
+		bimg = bimg + th.randn(batch_size, 3, image_res, image_res) * 0.1
+	else:
+		bimg = bimg.cuda()
 	
 	# with th.autocast(device_type='cuda', dtype=torch.float16):
-	# y,q = train_opt(model, bimg.cuda(), bpro.cuda(), bedts.cuda())
 	model.zero_grad()
-	y,q = model(u, bimg.cuda(), bpro.cuda())
+	y,q = model(u, bimg, bpro.cuda())
 	if g_training: 
+		# y,q,lossflat = train(model, bimg, bpro.cuda(), bedts.cuda())
 		targ = bedts.cuda()
 		loss = lossfunc_mse(y, targ)
 		# loss_typ = lossfunc_cel(y[:,0:4], targ[:,0:4])
@@ -273,7 +277,7 @@ for u in range(train_iters):
 		# loss = loss_typ + loss_chr + loss_pos # should be batch_size
 		lossflat = th.sum(loss)
 		lossflat.backward()
-		th.nn.utils.clip_grad_norm_(model.parameters(), 0.05)
+		th.nn.utils.clip_grad_norm_(model.parameters(), 0.025)
 		optimizer.step() 
 		lossflat.detach()
 	else: 
@@ -308,16 +312,17 @@ for u in range(train_iters):
 		print(f'{u} {lr:.6f} loss: {lossflat:.5f}; slowloss {slowloss:.5f}; {rate} samp/sec')
 	
 	# change the learning rate. 
-	lr = learning_rate
-	# # ramp up between 1000 and 11000
-	# if u > 1000:
-	# 	lr = lr * (1 + ((u-1000) / 5000))
-	# lr = min(lr, 0.001) # this seems to be the outright maximum
-	# # decay from 11k to end
-	# if u > 11000: 
-	# 	lr = lr * math.exp((11000-u) / 50000)
-	for g in optimizer.param_groups:
-		g['lr'] = lr
+	if False: 
+		lr = learning_rate
+		# ramp up between 1000 and 11000
+		if u > 1000:
+			lr = lr * (1 + ((u-1000) / 5000))
+		lr = min(lr, 0.001) # this seems to be the outright maximum
+		# decay from 11k to end
+		if u > 11000: 
+			lr = lr * math.exp((11000-u) / 50000)
+		for g in optimizer.param_groups:
+			g['lr'] = lr
 				
 	if u % 1000 == 999 : 
 		if g_training: 

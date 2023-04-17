@@ -18,12 +18,24 @@ unzip ~/libtorch-cxx11-abi-shared-with-deps-1.13.1+cu116.zip
 mv libtorch ~
 export LIBTORCH=/home/ubuntu/libtorch
 
-opam install --confirm-level=unsafe-yes vg cairo2 pbrt vector lwt logs pcre torch domainslib
+opam install --confirm-level=unsafe-yes vg cairo2 pbrt vector lwt logs pcre torch domainslib ocamlgraph
 eval $(opam env --switch=myswitch)
 dune build
 
-git config --global user.email "sideskate@gmail.com"
-git config --global user.name "Tim Hanson"
+# need to install MNIST data
+mkdir ../otorch-test/data/
+cd ../otorch-test/data/
+wget http://yann.lecun.com/exdb/mnist/train-images-idx3-ubyte.gz
+wget http://yann.lecun.com/exdb/mnist/train-labels-idx1-ubyte.gz
+wget http://yann.lecun.com/exdb/mnist/t10k-images-idx3-ubyte.gz
+wget http://yann.lecun.com/exdb/mnist/t10k-labels-idx1-ubyte.gz
+gunzip train-images-idx3-ubyte.gz
+gunzip train-labels-idx1-ubyte.gz
+gunzip t10k-images-idx3-ubyte.gz
+gunzip t10k-labels-idx1-ubyte.gz
 
-# for accessing remotely: 
+# git config --global user.email "sideskate@gmail.com"
+# git config --global user.name "Tim Hanson"
+
+# for accessing remotely:  (e.g.)
 # sshfs -o allow_other,default_permissions ubuntu@104.171.203.63:/home/ubuntu/cortex/ /home/tlh24/remote/
