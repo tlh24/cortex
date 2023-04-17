@@ -35,6 +35,13 @@ let image_dist_b dbf img =  (* max 2302 MB *)
 		|> Tensor.int_value in
 	let dist = Tensor.get d mindex |> Tensor.float_value in
 	dist,mindex
+	
+let run_nvidiasmi () = 
+	let (ocaml_stdout, ocaml_stdin, ocaml_stderr) = 
+		Unix.open_process_full "nvidia-smi | grep exe" [||] in
+	close_out ocaml_stdin;
+	print_chan ocaml_stdout;
+	print_chan ocaml_stderr;
 
 let () = 
 	Printf.printf "cuda available: %b\n%!" (Cuda.is_available ());
@@ -45,18 +52,20 @@ let () =
 	let siz = image_count * image_res * image_res * 4 in
 	Printf.printf "dbf size: %d bytes %f MB\n" siz ((foi siz) /. 1e6); 
 	let start = Unix.gettimeofday () in
-	for i = 0 to 1000 do (
+	for i = 0 to 30 do (
 		(* generate a random image *)
 		let img = Tensor.(randn [image_res; image_res] ) 
 			|> Tensor.to_device ~device in
 		ignore( image_dist_a dbf img ); 
-		if i mod 3 = 2 then (
+		(* in the actual program, we do something with dist,mindex *)
+		if i mod 10 = 9 then (
 			Caml.Gc.full_major(); 
 		); 
-		(* in the actual program, we do something with dist,mindex *)
+		run_nvidiasmi ()
 	) done; 
 	let stop = Unix.gettimeofday () in
 	Printf.printf "1k image_dist calc time: %fs\n%!" 
 		(stop -. start);
 	ignore(read_line ()); 
+	Printf.printf "Check nvidia-smi for memory usage" 
 
