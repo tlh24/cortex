@@ -7,6 +7,7 @@ open Torch
 open Graf*)
 (*open Torch*)
 open Program
+open Graf
 
 let () = 
 	Random.self_init (); 
@@ -45,6 +46,46 @@ let () =
 	let supsteak = load_database supstak "db_sorted.S" in
 	verify_database supsteak; 
 	save_database supsteak "db_rewrite.S"; 
+	
+	(* also save GEXF file for gephi visualization *)
+	let fid = open_out "../prog-gephi-viz/db.gexf" in
+	Printf.fprintf fid "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"; 
+	Printf.fprintf fid "<gexf xmlns=\"http://gexf.net/1.3\" version=\"1.3\">\n"; 
+	Printf.fprintf fid "<graph mode=\"static\" defaultedgetype=\"directed\">\n"; 
+	Printf.fprintf fid "<attributes class=\"node\">\n"; 
+	Printf.fprintf fid "<attribute id=\"0\" title=\"progt\" type=\"string\"/>\n"; 
+	Printf.fprintf fid "</attributes>\n";
+	Printf.fprintf fid "<attributes class=\"edge\">\n"; 
+	Printf.fprintf fid "<attribute id=\"0\" title=\"typ\" type=\"string\"/>\n"; 
+	Printf.fprintf fid "</attributes>\n"; 
+	Printf.fprintf fid "<nodes>\n"; 
+	Vector.iteri (fun i d -> 
+		Printf.fprintf fid "<node id=\"%d\" label=\"%s\" >\n" i
+			(Logo.output_program_pstr d.ed.pro); 
+		let pts = match d.progt with
+			| `Uniq -> "uniq"
+			| `Equiv -> "equiv"
+			| _ -> "nul" in
+		Printf.fprintf fid 
+		"<attvalues><attvalue for=\"0\" value=\"%s\"/></attvalues>\n" pts; 
+		Printf.fprintf fid "</node>\n"
+		) supsteak.gs.g ; 
+	Printf.fprintf fid "</nodes>\n";
+	
+	Printf.fprintf fid "<edges>\n"; 
+	Vector.iteri (fun i d -> 
+		Graf.SI.iter (fun (j,typ,_cnt) -> 
+			Printf.fprintf fid "<edge source=\"%d\" target=\"%d\">" i j; 
+			Printf.fprintf fid 
+			"<attvalues><attvalue for=\"0\" value=\"%s\"/></attvalues>\n" typ; 
+			Printf.fprintf fid "</edge>\n"
+		) d.outgoing
+		) supsteak.gs.g ; 
+	Printf.fprintf fid "</edges>\n";
+	Printf.fprintf fid "</graph>\n";
+	Printf.fprintf fid "</gexf>\n";
+	close_out fid; 
+	Printf.printf "saved ../prog-gephi-viz/db.gexf\n"; 
 	
 	close_out supfid; 
 	close_out dreamfid;

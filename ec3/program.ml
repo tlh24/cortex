@@ -449,11 +449,16 @@ let new_batche_train steak dt =
 		match d.progt with
 		| `Uniq -> (
 			if String.length d.ed.progenc < (p_ctx/2-2) then (
-				let o = SI.elements d.outgoing in
+				let typ = match (Random.int 4) with
+					| 0 -> "sub"
+					| 1 -> "del"
+					| _ -> "ins" in (* biased!! 50% insert *)
+				let o = SI.elements d.outgoing 
+					|> List.filter (fun (_,t,_) -> t = typ) in
 				let ol = List.length o in
 				if ol > 0 then (
 					let k = Random.int ol in
-					let ei = List.nth o k in
+					let ei,_,_ = List.nth o k in
 					let e = Vector.get steak.gs.g ei in
 					if e.progt = `Uniq then (
 						make_batche_train d di e ei dt
@@ -1407,17 +1412,31 @@ let verify_database steak =
 		match d.progt with
 		| `Uniq -> (
 			(* verify that all equivalents are actually that. *)
-			SI.iter (fun j -> 
+			SI.iter (fun (j,typ,cnt) -> 
 				let e = Vector.get steak.gs.g j in
-				verify_equivalent i d j e
+				verify_equivalent i d j e; 
+				let _,edits = get_edits d.ed.progenc e.ed.progenc in
+				let b,typ',cnt' = edit_criteria edits in
+				if not b then 
+					Logs.err (fun m -> m "%d %d edit criteria false" i j); 
+				if typ <> typ' then 
+					Logs.err (fun m -> m 
+						"%d %d edit type wrong is %s should be %s" i j typ typ');
+				if cnt <> cnt' then 
+					Logs.err (fun m -> m 
+						"%d %d edit count wrong is %d should be %d" i j cnt cnt'); 
 				) d.equivalents ; 
 			(* re-create outgoing to verify *)
-			let ii,_ = List.filter (fun (j,e) -> 
-				if j <> i then 
+			let ii = List.map (fun (j,e) -> 
+				if j <> i then (
 				let _,edits = Graf.get_edits d.ed.progenc e.ed.progenc in
 				let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
-				Graf.edit_criteria edits else false ) gi
-				|> List.split in
+				let b,typ,cnt = Graf.edit_criteria edits in
+				(j,b,typ,cnt) 
+				) else (0,false,"",0)
+				) gi
+				|> List.filter (fun (_,b,_,_) -> b) 
+				|> List.map (fun (j,_,typ,cnt) -> j,typ,cnt) in
 			let og = SI.of_list ii in
 			if og <> d.outgoing then (
 				let ogl = SI.cardinal og in
@@ -1427,7 +1446,7 @@ let verify_database steak =
 				let print_diff a b =
 					let df = SI.diff a b in
 					Printf.printf "diff:\n"; 
-					SI.iter (fun k -> 
+					SI.iter (fun (k,_,_) -> 
 						let e = Vector.get steak.gs.g k in
 						let dist,edits = Graf.get_edits d.ed.progenc e.ed.progenc in
 						Printf.printf "fwd\t%d, %s -> %s dist %d\n" k d.ed.progenc e.ed.progenc dist; 

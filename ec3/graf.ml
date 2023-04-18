@@ -17,7 +17,14 @@ The original implementation kept these separate.
 let soi = string_of_int
 let ios = int_of_string
 
-module SI = Set.Make(Int);;
+module SI = Set.Make( 
+	(* set for outgoing connections *)
+	(* node, edit type, edit count *)
+	(* type and count are for sorting / selecting *)
+	struct
+		let compare (a,_,_) (b,_,_) = compare a b
+		type t = int * string * int
+	end ) ;;
 
 type progtyp = [
 	| `Uniq  (* replace this with Bigarray image + imagef *)
@@ -80,25 +87,34 @@ let create image_alloc =
 	let g = Vector.create ~dummy:nulgdata in
 	let img_inv = Array.make image_alloc 0 in
 	{g; image_alloc; img_inv; num_uniq = 0; num_equiv = 0 }
-	
-let edit_criteria edits = 
+
+let count_edit_types edits = 
 	let count_type typ = 
 		List.fold_left 
 		(fun a (t,_p,_c) -> if t = typ then a+1 else a) 0 edits 
 	in
+	let nsub = count_type "sub" in
+	let ndel = count_type "del" in
+	let nins = count_type "ins" in
+	nsub,ndel,nins
+	
+let edit_criteria edits = 
 	if List.length edits > 0 then (
-		let nsub = count_type "sub" in
-		let ndel = count_type "del" in
-		let nins = count_type "ins" in
+		let nsub,ndel,nins = count_edit_types edits in
 		let r = ref false in
+		let typ = ref "nul" in
+		let cnt = ref 0 in
 		(* note! these rules must be symmetric for the graph to make sense *)
-		if nsub <= 3 && ndel = 0 && nins = 0 then r := true;
-		if nsub = 0 && ndel <= 6 && nins = 0 then r := true; 
-		if nsub = 0 && ndel = 0 && nins <= 6 then r := true;
+		if nsub <= 3 && ndel = 0 && nins = 0 then (
+			r := true; typ := "sub"; cnt := nsub ); 
+		if nsub = 0 && ndel <= 6 && nins = 0 then (
+			r := true; typ := "del"; cnt := ndel ); 
+		if nsub = 0 && ndel = 0 && nins <= 6 then (
+			r := true; typ := "ins"; cnt := nins );
 		(*if nsub <= 1 && ndel = 0 && nins <= 3 then r := true;
 		if nsub <= 1 && ndel <= 3 && nins <= 0 then r := true;*)
-		!r
-	) else false
+		!r,!typ,!cnt
+	) else false,"",0
 
 let get_edits a_progenc b_progenc = 
 	let dist,edits = Levenshtein.distance a_progenc b_progenc true in
@@ -123,17 +139,21 @@ let connect_uniq g indx =
 	Vector.iteri (fun i a -> 
 		if i <> indx then (
 			let _dist,edits = get_edits pe a.ed.progenc in
-			let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
-			if edit_criteria edits then (
-				nearby := i :: !nearby; 
+			let b,typ,cnt = edit_criteria edits in
+			if b then (
+				nearby := (i,typ,cnt) :: !nearby; 
 				(*Printf.printf "connect_uniq: [%d] conn [%d] : %d \n" indx i dist
 			) else (
 				Printf.printf "connect_uniq: [%d] nocon [%d] : %d\n" indx i dist*)
 			)
 		 ) ) g; 
-	List.iter (fun i -> 
+	List.iter (fun (i,typ,cnt) -> 
+		let invtyp = match typ with
+			| "del" -> "ins"
+			| "ins" -> "del"
+			| _ -> "sub" in
 		let d2 = Vector.get g i in
-		let d2o = SI.add indx d2.outgoing in
+		let d2o = SI.add (indx,invtyp,cnt) d2.outgoing in
 		Vector.set g i {d2 with outgoing=d2o} ) (!nearby) ; 
 	(* update current node *)
 	Vector.set g indx {d with outgoing=(SI.of_list (!nearby)) }
@@ -158,8 +178,10 @@ let replace_equiv gs indx ed =
 	(* outgoing connections are not changed *)
 	let d1 = Vector.get gs.g indx in
 	if d1.ed.progenc <> ed.progenc then (
+		let _dist,edits = get_edits ed.progenc d1.ed.progenc in
+		let _b,typ,cnt = edit_criteria edits in (* NOTE not constrained! *)
 		let d2 = {nulgdata with ed; progt = `Uniq; 
-					equivalents = (SI.add indx d1.equivalents); 
+					equivalents = (SI.add (indx,typ,cnt) d1.equivalents); 
 					imgi = d1.imgi} in
 		Vector.push gs.g d2;
 		gs.num_equiv <- gs.num_equiv + 1; 
@@ -167,7 +189,7 @@ let replace_equiv gs indx ed =
 		(*Logs.debug (fun m -> m "replace_equiv %d %d" d2.imgi ni);*) 
 		gs.img_inv.(d2.imgi) <- ni ; (* back pointer *)
 		(* update the incoming equivalent pointers; includes d1 !  *)
-		SI.iter (fun i -> 
+		SI.iter (fun (i,_,_) -> 
 			let e = Vector.get gs.g i in
 			let e' = {e with progt = `Equiv; equivroot = ni; equivalents = SI.empty} in
 			Vector.set gs.g i e' ) d2.equivalents; 
@@ -189,7 +211,7 @@ let add_equiv gs indx ed =
 	let d1 = Vector.get gs.g equivroot in
 	if d1.ed.progenc <> ed.progenc then (
 		(* need to verify that this is not in the graph.*)
-		let has = SI.fold (fun j a -> 
+		let has = SI.fold (fun (j,_,_) a -> 
 			let d = Vector.get gs.g j in
 			if d.ed.progenc = ed.progenc then true else a) 
 			d1.equivalents false in
@@ -198,7 +220,9 @@ let add_equiv gs indx ed =
 			Vector.push gs.g d2; 
 			gs.num_equiv <- gs.num_equiv + 1;
 			let ni = (Vector.length gs.g) - 1 in (* new index *)
-			let d1' = {d1 with equivalents = SI.add ni d1.equivalents} in
+			let _dist,edits = get_edits ed.progenc d1.ed.progenc in
+			let _b,typ,cnt = edit_criteria edits in (* NOTE not constrained! *)
+			let d1' = {d1 with equivalents = SI.add (ni,typ,cnt) d1.equivalents} in
 			Vector.set gs.g equivroot d1'; 
 			connect_uniq gs.g ni ; 
 			ni (* return the location of the new node, same as add_uniq *)
@@ -223,8 +247,10 @@ let sort_graph g =
 	Array.iteri (fun i a -> mappin.(a) <- i; 
 		(*Logs.debug (fun m -> m "old %d -> new %d\n" a i)*)) indxs; 
 	Array.map (fun a -> 
-		let outgoing = SI.map (fun b -> mappin.(b)) a.outgoing in
-		let equivalents = SI.map (fun b -> mappin.(b)) a.equivalents in
+		let outgoing = SI.map (fun (b,typ,cnt) -> mappin.(b),typ,cnt
+				) a.outgoing in
+		let equivalents = SI.map (fun (b,typ,cnt) -> mappin.(b),typ,cnt
+				) a.equivalents in
 		let equivroot = if a.equivroot >= 0 then
 			mappin.(a.equivroot) else (-1) in
 		{a with outgoing; equivalents; equivroot} ) sorted |>
@@ -243,9 +269,9 @@ let print_graph g =
 		Printf.printf "node [%d] = %s '%s'\n\tcost:%.2f, %.2f imgi:%d\n"
 			i c (Logo.output_program_pstr d.ed.pro) d.ed.scost d.ed.pcost d.imgi; 
 		Printf.printf "\toutgoing: "; 
-		SI.iter (fun j -> Printf.printf "%d," j) d.outgoing;
+		SI.iter (fun (j,typ,cnt) -> Printf.printf "%d(%s %d)," j typ cnt) d.outgoing;
 		Printf.printf "\tequivalents: "; 
-		SI.iter (fun j -> Printf.printf "%d," j) d.equivalents; 
+		SI.iter (fun (j,typ,cnt) -> Printf.printf "%d(%s %d," j typ cnt) d.equivalents; 
 		Printf.printf "\tequivroot: \027[31m %d\027[0m\n" d.equivroot
 	in
 	Vector.iteri print_node g 
@@ -287,7 +313,10 @@ let save fname g =
 	let open Sexplib in
 	(* output directly, preserving order -- indexes should be preserved *)
 	let intset_to_sexp o = 
-		Sexp.List (List.map (fun a -> Sexp.Atom (string_of_int a) )
+		Sexp.List (List.map (fun (i,typ,cnt) -> Sexp.List
+			[ Sexp.Atom (soi i)
+			; Sexp.Atom typ
+			; Sexp.Atom (soi cnt) ])
 			(SI.elements o) ) 
 	in
 	let sexp = Sexp.List ( List.mapi (fun i d -> 
@@ -315,10 +344,14 @@ let load gs fname =
 	let sexp' = Conv.list_of_sexp (function 
 		|  Sexp.List(a) -> a
 		| _ ->  []) sexp in
-	let strip_int k =
+	let sexp_to_intset k =
 		Conv.list_of_sexp (function
-			| Sexp.Atom s -> ios s
-			| _ -> (-1) ) k |> SI.of_list in
+			| Sexp.List s -> (
+				match s with
+				| [Sexp.Atom i; Sexp.Atom typ; Sexp.Atom cnt] -> 
+					(ios i),typ,(ios cnt)
+				| _ -> (-1,"",0) )
+			| _ -> (-1,"",0) ) k |> SI.of_list in
 	gs.num_uniq <- 0; 
 	gs.num_equiv <- 0; 
 	let gl = List.map (function 
@@ -330,8 +363,8 @@ let load gs fname =
 			(match prog with
 			| Some(pro) -> 
 				let progt = (str_to_progt pt) in
-				let outgoing = (strip_int out) in
-				let equivalents = (strip_int equiv) in
+				let outgoing = (sexp_to_intset out) in
+				let equivalents = (sexp_to_intset equiv) in
 				let equivroot = (ios eqrt) in
 				let good = (ios gd) in
 				let imgi = match progt with 
