@@ -449,10 +449,10 @@ let new_batche_train steak dt =
 		match d.progt with
 		| `Uniq -> (
 			if String.length d.ed.progenc < (p_ctx/2-2) then (
-				let typ = match (Random.int 4) with
+				let typ = match (Random.int 8) with
 					| 0 -> "sub"
 					| 1 -> "del"
-					| _ -> "ins" in (* biased!! 50% insert *)
+					| _ -> "ins" in (* biased!! *)
 				let o = SI.elements d.outgoing 
 					|> List.filter (fun (_,t,_) -> t = typ) in
 				let ol = List.length o in
@@ -466,13 +466,15 @@ let new_batche_train steak dt =
 				) else selector ()
 			) else selector () )
 		| `Equiv -> (
-			(* always simplify to the minimum desc *)
-			if String.length d.ed.progenc < (p_ctx/2-2) && false then (
-				let ei = d.equivroot in
-				let e = Vector.get steak.gs.g ei in
-				if e.progt = `Uniq then (
-					make_batche_train d di e ei dt
-				) else ( assert (0 <> 0); nulbatche ) 
+			if (Random.int 5) = 0 then (
+				(* always simplify to the minimum desc *)
+				if String.length d.ed.progenc < (p_ctx/2-2) && false then (
+					let ei = d.equivroot in
+					let e = Vector.get steak.gs.g ei in
+					if e.progt = `Uniq then (
+						make_batche_train d di e ei dt
+					) else ( assert (0 <> 0); nulbatche ) 
+				) else selector () 
 			) else selector () )
 		| _ -> assert (0 <> 0); nulbatche
 	in
@@ -558,6 +560,7 @@ let rec new_batche_mnist_mse steak bi =
 	let d = Tensor.(sum_dim_intlist (square(a - b)) 
 			~dim:(Some [1]) ~keepdim:false ~dtype:(T Float) ) in
 	assert ((Tensor.shape1_exn d) = imgcnt) ; (* sanity.. *)
+	let d = Tensor.(d + (randn_like d) * (f 4.0)) in (* noise *)
 	let d,ind = Tensor.sort d ~dim:0 ~descending:false in
 	(* if the problem is solved, select a new digit *)
 	let h = (Tensor.get_float1 d 0) /. (foi (image_res * image_res)) in
@@ -834,6 +837,7 @@ let try_add_program steak data img be bi =
 			(* those two operations are in-place, so subsequent batches should contain the new program :-) *)
 		)
 	) ;
+	if dist > 0.0075 then (
 	match be.dt with 
 	| `Mnist(_,_) -> ( (* sigh, redundant info *)
 		(*let cpu = Torch.Device.Cpu in*)
@@ -887,7 +891,7 @@ let try_add_program steak data img be bi =
 			success := true
 		))
 	| _ -> ()
-	); 
+	) ); 
 	!success
 	(* NOTE not sure if we need to call GC here *)
 	(* apparently not? *)
@@ -1415,23 +1419,21 @@ let verify_database steak =
 			SI.iter (fun (j,typ,cnt) -> 
 				let e = Vector.get steak.gs.g j in
 				verify_equivalent i d j e; 
-				let _,edits = get_edits d.ed.progenc e.ed.progenc in
-				let b,typ',cnt' = edit_criteria edits in
-				if not b then 
-					Logs.err (fun m -> m "%d %d edit criteria false" i j); 
+				let cnt',edits = get_edits d.ed.progenc e.ed.progenc in
+				let _,typ' = edit_criteria edits in
 				if typ <> typ' then 
 					Logs.err (fun m -> m 
-						"%d %d edit type wrong is %s should be %s" i j typ typ');
+						"%d %d equiv edit type wrong is %s should be %s " i j typ typ');
 				if cnt <> cnt' then 
 					Logs.err (fun m -> m 
-						"%d %d edit count wrong is %d should be %d" i j cnt cnt'); 
+						"%d %d equiv edit count wrong is %d should be %d" i j cnt cnt'); 
 				) d.equivalents ; 
 			(* re-create outgoing to verify *)
 			let ii = List.map (fun (j,e) -> 
 				if j <> i then (
-				let _,edits = Graf.get_edits d.ed.progenc e.ed.progenc in
+				let cnt,edits = Graf.get_edits d.ed.progenc e.ed.progenc in
 				let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
-				let b,typ,cnt = Graf.edit_criteria edits in
+				let b,typ = Graf.edit_criteria edits in
 				(j,b,typ,cnt) 
 				) else (0,false,"",0)
 				) gi

@@ -30,7 +30,7 @@ prog_heads = 8
 prog_layers = 8
 embed_dim = 256
 
-train_iters = 10000
+train_iters = 100000
 learning_rate = 0.0005 # 1e-3 maximum learning rate. scheduled.
 # learning rate of 0.002 is unstable.  Should figure out why. 
 weight_decay = 2.5e-6

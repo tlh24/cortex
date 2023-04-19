@@ -133,7 +133,7 @@ let () =
 		Dtask.teardown_pool dreamsteak.pool )
 	| 2 -> ( (* both *)
 		let d = Domain.spawn (fun _ ->
-			let pool2 = Dtask.setup_pool ~num_domains:8 () in
+			let pool2 = Dtask.setup_pool ~num_domains:12 () in
 			let dreamsteak = {supsteak with
 				superv=false; fid=dreamfid; batchno=0; pool=pool2 } in
 			servthread dreamsteak (); 

@@ -64,7 +64,7 @@ fd_editdiff = make_mmf(f"editdiff_{filno}.mmap")
 
 plot_rows = 2
 plot_cols = 3
-figsize = (16, 8)
+figsize = (22, 11)
 plt.ion()
 fig, axs = plt.subplots(plot_rows, plot_cols, figsize=figsize)
 initialized = False

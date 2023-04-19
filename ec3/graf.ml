@@ -103,18 +103,17 @@ let edit_criteria edits =
 		let nsub,ndel,nins = count_edit_types edits in
 		let r = ref false in
 		let typ = ref "nul" in
-		let cnt = ref 0 in
 		(* note! these rules must be symmetric for the graph to make sense *)
 		if nsub <= 3 && ndel = 0 && nins = 0 then (
-			r := true; typ := "sub"; cnt := nsub ); 
+			r := true; typ := "sub" ); 
 		if nsub = 0 && ndel <= 6 && nins = 0 then (
-			r := true; typ := "del"; cnt := ndel ); 
+			r := true; typ := "del" ); 
 		if nsub = 0 && ndel = 0 && nins <= 6 then (
-			r := true; typ := "ins"; cnt := nins );
+			r := true; typ := "ins" );
 		(*if nsub <= 1 && ndel = 0 && nins <= 3 then r := true;
 		if nsub <= 1 && ndel <= 3 && nins <= 0 then r := true;*)
-		!r,!typ,!cnt
-	) else false,"",0
+		!r,!typ
+	) else false,""
 
 let get_edits a_progenc b_progenc = 
 	let dist,edits = Levenshtein.distance a_progenc b_progenc true in
@@ -138,8 +137,8 @@ let connect_uniq g indx =
 	let nearby = ref [] in
 	Vector.iteri (fun i a -> 
 		if i <> indx then (
-			let _dist,edits = get_edits pe a.ed.progenc in
-			let b,typ,cnt = edit_criteria edits in
+			let cnt,edits = get_edits pe a.ed.progenc in
+			let b,typ = edit_criteria edits in
 			if b then (
 				nearby := (i,typ,cnt) :: !nearby; 
 				(*Printf.printf "connect_uniq: [%d] conn [%d] : %d \n" indx i dist
@@ -177,25 +176,32 @@ let replace_equiv gs indx ed =
 	(* add d2 the end, and update d1 = g[indx]. *)
 	(* outgoing connections are not changed *)
 	let d1 = Vector.get gs.g indx in
-	if d1.ed.progenc <> ed.progenc then (
-		let _dist,edits = get_edits ed.progenc d1.ed.progenc in
-		let _b,typ,cnt = edit_criteria edits in (* NOTE not constrained! *)
-		let d2 = {nulgdata with ed; progt = `Uniq; 
-					equivalents = (SI.add (indx,typ,cnt) d1.equivalents); 
-					imgi = d1.imgi} in
-		Vector.push gs.g d2;
-		gs.num_equiv <- gs.num_equiv + 1; 
-		let ni = (Vector.length gs.g) - 1 in (* new index *)
-		(*Logs.debug (fun m -> m "replace_equiv %d %d" d2.imgi ni);*) 
-		gs.img_inv.(d2.imgi) <- ni ; (* back pointer *)
-		(* update the incoming equivalent pointers; includes d1 !  *)
-		SI.iter (fun (i,_,_) -> 
-			let e = Vector.get gs.g i in
-			let e' = {e with progt = `Equiv; equivroot = ni; equivalents = SI.empty} in
-			Vector.set gs.g i e' ) d2.equivalents; 
-		(* finally, update d2's edit connections *)
-		connect_uniq gs.g ni ; 
-		ni,d2.imgi (* return the location of the new node, same as add_uniq *)
+	if SI.cardinal d1.equivalents < 16 then (
+		if d1.ed.progenc <> ed.progenc then (
+			let eq2 = SI.add (indx,"",0) d1.equivalents in
+			let equivalents = SI.map (fun (i,_,_) -> 
+				let e = Vector.get gs.g i in
+				let cnt,edits = get_edits ed.progenc e.ed.progenc in
+				let _,typ = edit_criteria edits in (* not constrained! *)
+				i,typ,cnt) eq2 in
+			let d2 = {nulgdata with ed; 
+						progt = `Uniq; 
+						equivalents;
+						imgi = d1.imgi} in
+			Vector.push gs.g d2;
+			gs.num_equiv <- gs.num_equiv + 1; 
+			let ni = (Vector.length gs.g) - 1 in (* new index *)
+			(*Logs.debug (fun m -> m "replace_equiv %d %d" d2.imgi ni);*) 
+			gs.img_inv.(d2.imgi) <- ni ; (* back pointer *)
+			(* update the incoming equivalent pointers; includes d1 !  *)
+			SI.iter (fun (i,_,_) -> 
+				let e = Vector.get gs.g i in
+				let e' = {e with progt = `Equiv; equivroot = ni; equivalents = SI.empty} in
+				Vector.set gs.g i e' ) d2.equivalents; 
+			(* finally, update d2's edit connections *)
+			connect_uniq gs.g ni ; 
+			ni,d2.imgi (* return the location of the new node, same as add_uniq *)
+		) else (-1),(-1)
 	) else (-1),(-1)
 	
 let add_equiv gs indx ed =
@@ -220,8 +226,8 @@ let add_equiv gs indx ed =
 			Vector.push gs.g d2; 
 			gs.num_equiv <- gs.num_equiv + 1;
 			let ni = (Vector.length gs.g) - 1 in (* new index *)
-			let _dist,edits = get_edits ed.progenc d1.ed.progenc in
-			let _b,typ,cnt = edit_criteria edits in (* NOTE not constrained! *)
+			let cnt,edits = get_edits d1.ed.progenc ed.progenc in
+			let _b,typ = edit_criteria edits in (* NOTE not constrained! *)
 			let d1' = {d1 with equivalents = SI.add (ni,typ,cnt) d1.equivalents} in
 			Vector.set gs.g equivroot d1'; 
 			connect_uniq gs.g ni ; 
