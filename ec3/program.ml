@@ -808,7 +808,7 @@ let try_add_program steak data img be bi =
 				"try_add_program: could not add new, db full. [%d]" l )
 		)
 	) ; *)
-	if dist < 0.0005 then (
+	if dist < 0.0002 then (
 		let data2 = db_get steak mindex in
 		let c1 = data.pcost in
 		let c2 = data2.ed.pcost in
@@ -818,7 +818,7 @@ let try_add_program steak data img be bi =
 			let r = db_replace_equiv steak mindex data imgf imgf_cpu in
 			if r >= 0 then (
 				let root = "/tmp/ec3/replace_verify" in
-				Logs.info (fun m -> m "#%d b:%d replacing equivalents [%d] %s with %s" !nreplace steak.batchno mindex progstr2 progstr);
+				Logs.info (fun m -> m "#%d b:%d replacing equivalents [%d] %f %s with %s" !nreplace steak.batchno mindex dist progstr2 progstr);
 				Printf.fprintf steak.fid
 					"(%d) [%d] d:%f %s --> %s | pcost %.2f -> %.2f\n"
 					!nreplace mindex dist progstr2 progstr c2 c1 ;
@@ -837,7 +837,7 @@ let try_add_program steak data img be bi =
 			(* those two operations are in-place, so subsequent batches should contain the new program :-) *)
 		)
 	) ;
-	if dist > 0.0075 then (
+	if dist > 0.002 then (
 	match be.dt with 
 	| `Mnist(_,_) -> ( (* sigh, redundant info *)
 		(*let cpu = Torch.Device.Cpu in*)
@@ -1313,7 +1313,6 @@ let generate_logo_fromstr str =
 	match parse_logo_string str with
 	| Some pro -> Graf.pro_to_edata pro image_res
 	| _ -> Graf.pro_to_edata `Nop image_res
-	
 
 let init_database steak count = 
 	(* generate 'count' initial program & image pairs *)
@@ -1326,80 +1325,94 @@ let init_database steak count =
 	let fid = open_out (Printf.sprintf "%s/newdbg.txt" root) in
 	let i = ref 0 in
 	let iters = ref 0 in
-	while !i < count do (
-		(*Logs.debug (fun m->m "init_database %d" !i);*) 
-		let data,img = match !i with 
-			| 0 -> generate_logo_fromstr "" 
-			| 1 -> generate_logo_fromstr "move 4, 4"
-			| 2 -> generate_logo_fromstr "move 2, 2"
-			| 3 -> generate_logo_fromstr "move 1, 1"
-			| 4 -> generate_logo_fromstr "( move 4, 4 )"
-			| 5 -> generate_logo_fromstr "( move 2, 2 )"
-			| 6 -> generate_logo_fromstr "( move 1, 1 )"
-			| 7 -> generate_logo_fromstr "( move 4, 4; move 4, 4 )"
-			| 8 -> generate_logo_fromstr "( move 2, 2; move 2, 2 )"
-			| 9 -> generate_logo_fromstr "( move 1, 1; move 1, 1 )"
-			| 10 -> generate_logo_fromstr "( move 4, 4; move 4, 4; move 4, 4 )"
-			| 11 -> generate_logo_fromstr "( move 2, 2; move 2, 2; move 2, 2 )"
-			| 12 -> generate_logo_fromstr "( move 1, 1; move 1, 1; move 1, 1 )"
-			| _ -> generate_random_logo image_res in
 
+	let tryadd data img override =
 		let imgf_cpu,imgf = img_to_imgf steak img in
-		let good,dist,minde = if !i = 0 then true,0.5,0 
+		let good,dist,minde = if override then true,0.5,0
 			else dbf_dist steak imgf in
 		let mindex = steak.gs.img_inv.(minde) in
-		if (good || !i < 2) then (
+		if good then (
 		(* bug: white image sets distance to 1.0 to [0] *)
-		(*Logs.debug (fun m -> m "dbf_dist %f %d" dist mindex);*) 
-		if dist > 0.002 then ( 
+		(*Logs.debug (fun m -> m "dbf_dist %f %d" dist mindex);*)
+		if dist > 0.002 then (
 			let s = Logo.output_program_pstr data.pro in
-			Logs.debug(fun m -> m 
-				"%d: adding [%d] = %s" !iters !i s); 
+			Logs.debug(fun m -> m
+				"%d: adding [%d] = %s" !iters !i s);
 			ignore( db_add_uniq steak data imgf imgf_cpu ~doenc:false );
 			Logo.segs_to_png data.segs 64
-				(Printf.sprintf "%s/db%05d_.png" root !i); 
+				(Printf.sprintf "%s/db%05d_.png" root !i);
 			dbf_to_png steak.dbf !i
 				(Printf.sprintf "%s/db%05d_f.png" root !i);
-			Printf.fprintf fid "[%d] %s (dist:%f to:%d)\n" !i s dist mindex; 
+			Printf.fprintf fid "[%d] %s (dist:%f to:%d)\n" !i s dist mindex;
 			incr i;
-		) ; 
+		) ;
 		if dist < 0.0002 then (
 			(* see if there's a replacement *)
 			let data2 = db_get steak mindex in
 			let c1 = data.pcost in (* progenc_cost  *)
 			let c2 = data2.ed.pcost in
 			if c1 < c2 then (
-				let r = db_replace_equiv steak mindex data imgf imgf_cpu in 
+				let r = db_replace_equiv steak mindex data imgf imgf_cpu in
 				if r >= 0 then (
-					Logs.debug(fun m -> m 
-					"%d: replacing [%d] = %s ( was %s)" 
+					Logs.debug(fun m -> m
+					"%d: replacing [%d] = %s ( was %s) dist:%f"
 					!iters mindex
-					(Logo.output_program_pstr data.pro) 
-					(Logo.output_program_pstr data2.ed.pro));
+					(Logo.output_program_pstr data.pro)
+					(Logo.output_program_pstr data2.ed.pro) dist);
 					incr i;
 				)
-			); 
+			);
 			if c1 > c2 then (
-				if (SI.cardinal data2.equivalents) < 32 then (
+				if (SI.cardinal data2.equivalents) < 16 then (
 					let r = db_add_equiv steak mindex data in
 					if r >= 0 then (
-						Logs.debug(fun m -> m 
-						"iter %d: added equiv [loc %d] = %s [new loc %d] ( simpler %s) %s %s same:%b " 
+						Logs.debug(fun m -> m
+						"iter %d: added equiv [loc %d] = %s [new loc %d] ( simpler= %s) %s %s same:%b dist:%f"
 						!iters mindex
 						(Logo.output_program_pstr data.pro) r
 						(Logo.output_program_pstr data2.ed.pro)
 						data.progenc data2.ed.progenc
-						(data.progenc = data2.ed.progenc) );
+						(data.progenc = data2.ed.progenc) dist);
 						incr i;
 					)
 				)
-			); 
-		) );  
-		if !iters mod 40 = 39 then 
+			);
+		) );
+		if !iters mod 40 = 39 then
 			(* needed to clean up torch allocations *)
-			Caml.Gc.major (); 
+			Caml.Gc.major ();
 		incr iters
-	) done; 
+	in
+
+	let tryadd_fromstr str override =
+		let data,img = generate_logo_fromstr str in
+		tryadd data img override
+	in
+
+	tryadd_fromstr "" true;
+	tryadd_fromstr "move 1, 1" false;
+	let lenopts = [|"1";"2";"3";"4";"5";"ua";"2*2";"2*3"|] in
+	let angopts = [|"1/5";"2/5";"3/5";"4/5";"1/4";"3/4";"1/3";"2/3";"1/2";
+		"1";"2";"3";"4"|] in
+	let make_moves () =
+		let r = ref [] in
+		for i = 0 to (Array.length lenopts)-1 do (
+			for j = 0 to (Array.length angopts)-1 do (
+				let s = " move "^ lenopts.(i)^" , "^angopts.(j) in
+				r := s :: !r
+			) done ;
+		) done;
+		!r
+	in
+	make_moves ()
+	|> List.rev
+	|> List.iter (fun s -> tryadd_fromstr s false);
+
+	(*while !i < count do (
+		(*Logs.debug (fun m->m "init_database %d" !i);*) 
+		let data,img = generate_random_logo image_res in
+		tryadd data img false
+	) done; *)
 	close_out fid; 
 	let steak = sort_database steak in
 	Logs.info(fun m -> m  "%d done; %d sampled; %d replacements; %d equivalents" !i !iters steak.gs.num_uniq steak.gs.num_equiv); 

@@ -414,7 +414,7 @@ let load gs fname =
 (* use a priority-search-queue to hold the list of nodes *)
 module QI = struct type t = int let compare (a: int) b = compare a b end
 module QF = struct type t = float let compare (a: float) b = compare a b end
-module Q = Psq.Make (I) (F) ;; (* make (key) (priority) *)
+module Q = Psq.Make (QI) (QI) ;; (* make (key) (priority) *)
 
 let dijkstra gs start = 
 	(* starting from node gs.g.(i), 
