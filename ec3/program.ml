@@ -143,7 +143,7 @@ let parse_with_error lexbuf =
 	let prog = try Some (Parser.parse_prog Lexer.read lexbuf) with
 	| SyntaxError _msg ->
 		(*Logs.debug (fun m -> m "%s: %s" 
-			(print_position lexbuf) msg);*)  (* these errors overwhelm while dreaming *)
+			(print_position lexbuf) msg);  (* these errors overwhelm while dreaming *)*)
 		None
 	| Parser.Error ->
 		(*Logs.debug (fun m -> m "%s: syntax error" 
@@ -1309,10 +1309,11 @@ let rec generate_random_logo res =
 	| Some q -> q
 	| _ -> generate_random_logo res
 
-let generate_empty_logo res =
-	(* the first program needs to be empty, for diffing *)
-	let pro = `Nop in
-	Graf.pro_to_edata pro res
+let generate_logo_fromstr str = 
+	match parse_logo_string str with
+	| Some pro -> Graf.pro_to_edata pro image_res
+	| _ -> Graf.pro_to_edata `Nop image_res
+	
 
 let init_database steak count = 
 	(* generate 'count' initial program & image pairs *)
@@ -1326,9 +1327,23 @@ let init_database steak count =
 	let i = ref 0 in
 	let iters = ref 0 in
 	while !i < count do (
-		let data,img = if !i = 0 then
-			generate_empty_logo image_res else
-			generate_random_logo image_res in
+		(*Logs.debug (fun m->m "init_database %d" !i);*) 
+		let data,img = match !i with 
+			| 0 -> generate_logo_fromstr "" 
+			| 1 -> generate_logo_fromstr "move 4, 4"
+			| 2 -> generate_logo_fromstr "move 2, 2"
+			| 3 -> generate_logo_fromstr "move 1, 1"
+			| 4 -> generate_logo_fromstr "( move 4, 4 )"
+			| 5 -> generate_logo_fromstr "( move 2, 2 )"
+			| 6 -> generate_logo_fromstr "( move 1, 1 )"
+			| 7 -> generate_logo_fromstr "( move 4, 4; move 4, 4 )"
+			| 8 -> generate_logo_fromstr "( move 2, 2; move 2, 2 )"
+			| 9 -> generate_logo_fromstr "( move 1, 1; move 1, 1 )"
+			| 10 -> generate_logo_fromstr "( move 4, 4; move 4, 4; move 4, 4 )"
+			| 11 -> generate_logo_fromstr "( move 2, 2; move 2, 2; move 2, 2 )"
+			| 12 -> generate_logo_fromstr "( move 1, 1; move 1, 1; move 1, 1 )"
+			| _ -> generate_random_logo image_res in
+
 		let imgf_cpu,imgf = img_to_imgf steak img in
 		let good,dist,minde = if !i = 0 then true,0.5,0 
 			else dbf_dist steak imgf in
@@ -1336,7 +1351,7 @@ let init_database steak count =
 		if (good || !i < 2) then (
 		(* bug: white image sets distance to 1.0 to [0] *)
 		(*Logs.debug (fun m -> m "dbf_dist %f %d" dist mindex);*) 
-		if dist > 0.02 then ( 
+		if dist > 0.002 then ( 
 			let s = Logo.output_program_pstr data.pro in
 			Logs.debug(fun m -> m 
 				"%d: adding [%d] = %s" !iters !i s); 
@@ -1348,24 +1363,26 @@ let init_database steak count =
 			Printf.fprintf fid "[%d] %s (dist:%f to:%d)\n" !i s dist mindex; 
 			incr i;
 		) ; 
-		if dist < 0.0005 then (
+		if dist < 0.0002 then (
 			(* see if there's a replacement *)
 			let data2 = db_get steak mindex in
 			let c1 = data.pcost in (* progenc_cost  *)
 			let c2 = data2.ed.pcost in
 			if c1 < c2 then (
 				let r = db_replace_equiv steak mindex data imgf imgf_cpu in 
-				if r >= 0 then 
+				if r >= 0 then (
 					Logs.debug(fun m -> m 
 					"%d: replacing [%d] = %s ( was %s)" 
 					!iters mindex
 					(Logo.output_program_pstr data.pro) 
 					(Logo.output_program_pstr data2.ed.pro));
+					incr i;
+				)
 			); 
 			if c1 > c2 then (
 				if (SI.cardinal data2.equivalents) < 32 then (
 					let r = db_add_equiv steak mindex data in
-					if r >= 0 then 
+					if r >= 0 then (
 						Logs.debug(fun m -> m 
 						"iter %d: added equiv [loc %d] = %s [new loc %d] ( simpler %s) %s %s same:%b " 
 						!iters mindex
@@ -1373,6 +1390,8 @@ let init_database steak count =
 						(Logo.output_program_pstr data2.ed.pro)
 						data.progenc data2.ed.progenc
 						(data.progenc = data2.ed.progenc) );
+						incr i;
+					)
 				)
 			); 
 		) );  

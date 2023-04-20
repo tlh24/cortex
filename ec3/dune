@@ -72,7 +72,7 @@
 (library
 	(name graf)
 	(modules graf)
-	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib lexer parser logo vgwrapper colors levenshtein ast)
+	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib psq lexer parser logo vgwrapper colors levenshtein ast)
 	)
 	
 (library

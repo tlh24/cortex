@@ -98,6 +98,17 @@ let count_edit_types edits =
 	let nins = count_type "ins" in
 	nsub,ndel,nins
 	
+let edit_criteria_b edits = 
+	if List.length edits > 0 && List.length edits <= 6 then (
+		let nsub,ndel,nins = count_edit_types edits in
+		let typ = ref "nul" in
+		(* note! these rules must be symmetric for the graph to make sense *)
+		if nsub > ndel && nsub > nins then typ := "sub";
+		if ndel > nsub && ndel > nins then typ := "del"; 
+		if nins > nsub && nins > ndel then typ := "ins"; 
+		true,!typ
+	) else false,"nul"
+	
 let edit_criteria edits = 
 	if List.length edits > 0 then (
 		let nsub,ndel,nins = count_edit_types edits in
@@ -400,6 +411,88 @@ let load gs fname =
 		) g; 
 	{gs with g}
 	
+(* use a priority-search-queue to hold the list of nodes *)
+module QI = struct type t = int let compare (a: int) b = compare a b end
+module QF = struct type t = float let compare (a: float) b = compare a b end
+module Q = Psq.Make (I) (F) ;; (* make (key) (priority) *)
+
+let dijkstra gs start = 
+	(* starting from node gs.g.(i), 
+		find the distances to all other nodes *)
+	let d = Vector.get gs.g start in
+	let n = Vector.length gs.g in
+	let dist = Array.make n (-1) in
+	let prev = Array.make n (-1) in
+	let visited = Array.make n false in 
+	dist.(start) <- 0; 
+	visited.(start) <- true; 
+	let q = SI.fold (fun (i,_,cnt) a -> 
+		dist.(i) <- cnt; 
+		prev.(i) <- start; 
+		Q.add i cnt a
+		) d.outgoing Q.empty in
+	Logs.debug (fun m->m "psq size %d" (Q.size q));
+	Logs.debug (fun m->m "outgoing size %d" (SI.cardinal d.outgoing));
+	
+	let rec dijk qq = 
+		if Q.is_empty qq then ()
+		else (
+			match Q.pop qq with
+			| Some ((i,p),q) -> (
+				let e = Vector.get gs.g i in
+				(* visited nodes are never added to the queue *)
+				assert(visited.(i) = false);
+				Logs.debug (fun m -> m "dijk visit [%d] %d %s"
+					i p (Logo.output_program_pstr e.ed.pro));
+				Logs.debug (fun m->m "psq size %d" (Q.size q));
+				Logs.debug (fun m->m "outgoing size %d" (SI.cardinal e.outgoing));
+				Logs.debug (fun m->m "equivalents size %d" (SI.cardinal e.equivalents));
+				visited.(i) <- true; 
+				let de = dist.(i) in
+				assert( p = de ); 
+				let foldadd set sq = 
+					SI.fold (fun (j,typ,cnt) a -> 
+					if not visited.(j) && typ <> "nul" then (
+						let nd = de + cnt in
+						if dist.(j) < 0 then (
+							(* new route *)
+							Logs.debug (fun m -> m "new route to %d cost %d" j nd); 
+							dist.(j) <- nd; 
+							prev.(j) <- i; 
+							Q.add j nd a
+						) else (
+							if nd < dist.(j) then (
+								(* new route is shorter *)
+								Logs.debug (fun m -> m "shorter route to %d cost %d" j nd); 
+								dist.(j) <- nd; 
+								prev.(j) <- i; 
+								Q.adjust j (fun _ -> nd) a
+							) else ( a ) )
+					) else ( a ) ) set sq 
+				in
+				q 
+				|> foldadd e.outgoing 
+				|> foldadd e.equivalents 
+				|> dijk )
+			| _ -> () 
+		) 
+	in
+	
+	dijk q; 
+	
+	let rec print_path i = 
+		let d = Vector.get gs.g i in
+		Logs.debug (fun m -> m "[%d] %s -> " 
+			i (Logo.output_program_pstr d.ed.pro)); 
+		let j = prev.(i) in
+		if j >= 0 then print_path prev.(i) else ()
+	in
+	
+	for i = 0 to 9 do 
+		Logs.debug (fun m -> m "--%d--" i); 
+		print_path (Random.int n)
+	done; 
+
 (*let () = 
 	let gs = create 5 in
 	

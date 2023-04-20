@@ -80,7 +80,7 @@ let () =
 		(*Dtask.run supsteak.pool (fun () -> load_database supsteak )*)
 		load_database supstak "db_sorted.S"
 	) else ( 
-		let nprogs = 1000 in
+		let nprogs = 8192 in
 		Logs.app(fun m -> m "Generating %d programs" nprogs);
 		let start = Unix.gettimeofday () in
 		let stk = init_database supstak nprogs in
