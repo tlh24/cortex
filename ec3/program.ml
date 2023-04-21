@@ -1388,24 +1388,48 @@ let init_database steak count =
 		let data,img = generate_logo_fromstr str in
 		tryadd data img override
 	in
+	
+	let renderpng n s fid = 
+		let fname = Printf.sprintf "/tmp/ec3/init_database/%05d.png" !n in
+		ignore( run_logo_string s 64 fname ); 
+		Printf.fprintf fid "[%d] %s\n" !n s; 
+		incr n
+	in
 
 	tryadd_fromstr "" true;
 	tryadd_fromstr "move 1, 1" false;
 	let lenopts = [|"1";"2";"3";"4";"5";"ua";"2*2";"2*3"|] in
 	let angopts = [|"1/5";"2/5";"3/5";"4/5";"1/4";"3/4";"1/3";"2/3";"1/2";
-		"1";"2";"3";"4"|] in
+		"1";"2";"3";"4";"5";"6";"ua/5";"ua/4";"ua/3";"ua/2";"ua"|] in
+	let preopts = [| ""; "0 - "|] in
+	let n = ref 0 in
+	let fid = open_out "/tmp/ec3/init_database/enumerate.txt" in
 	let make_moves () =
 		let r = ref [] in
 		for i = 0 to (Array.length lenopts)-1 do (
 			for j = 0 to (Array.length angopts)-1 do (
-				let s = " move "^ lenopts.(i)^" , "^angopts.(j) in
-				r := s :: !r
-			) done ;
+				for k = 0 to (Array.length preopts)-1 do (
+					let s = "move "^ lenopts.(i)^
+							" , "^preopts.(k)^angopts.(j) in
+					r := s :: !r; 
+					renderpng n s fid
+				) done; 
+			) done;
 		) done;
 		!r
 	in
-	make_moves ()
-	|> List.rev
+	let r = make_moves () in
+	(* now outer-prod them in a sequence + pen *)
+	let penopts = [|"1";"2";"3";"4";"5"|] 
+		|> Array.map (fun s -> "pen "^s^"; ") in
+	let r2 = ref [] in
+	for h = 0 to (Array.length penopts)-1 do (
+		let pen = penopts.(h) in
+		let t = List.map (fun s -> "("^pen^s^")") r in
+		List.iter (fun s -> renderpng n s fid) t; 
+		r2 := List.rev_append t !r2; 
+	) done; 
+	List.rev_append r !r2
 	|> List.iter (fun s -> tryadd_fromstr s false);
 
 	(*while !i < count do (
