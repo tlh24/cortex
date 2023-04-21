@@ -1,5 +1,3 @@
-open Lexer
-open Lexing
 open Printf
 open Logo
 open Ast
@@ -132,81 +130,12 @@ let read_lines name : string list =
 		| None -> close_in ic; List.rev acc in
 	loop []
 
-let print_position lexbuf = 
-	let pos = lexbuf.lex_curr_p in
-	let bf = Buffer.create 64 in
-	Printf.bprintf bf "%s:%d:%d" pos.pos_fname
-		pos.pos_lnum (pos.pos_cnum - pos.pos_bol + 1); 
-	(Buffer.contents bf)
-
-let parse_with_error lexbuf =
-	let prog = try Some (Parser.parse_prog Lexer.read lexbuf) with
-	| SyntaxError _msg ->
-		(*Logs.debug (fun m -> m "%s: %s" 
-			(print_position lexbuf) msg);  (* these errors overwhelm while dreaming *)*)
-		None
-	| Parser.Error ->
-		(*Logs.debug (fun m -> m "%s: syntax error" 
-			(print_position lexbuf));*)
-		None in
-	prog
-
 let bigarray_to_bytes arr = 
 	(* convert a bigarray to a list of bytes *)
 	(* this is not efficient.. *)
 	let len = Bigarray.Array1.dim arr in
 	Bytes.init len 
 		(fun i -> Bigarray.Array1.get arr i |> Char.chr)
-
-let run_prog prog res fname =
-	(*Logs.debug(fun m -> m "enter run_prog");*)
-	match prog with
-	| Some(prog) -> (
-		let (_,_,segs) = Logo.eval (Logo.start_state ()) prog in
-		(*Logs.debug(fun m -> m "%s" (Logo.output_program_pstr prog)); 
-		Logs.debug(fun m -> m "%s" (Logo.output_segments_str segs));*) 
-		Logo.segs_to_png segs res fname; 
-		(*let _arr,scost = Logo.segs_to_array_and_cost segs res in*)
-		(*Logs.debug(fun m -> m "run_prog cost %f" scost);*) 
-			(* another good way of doing it*)
-		(*Logs.debug(fun m -> m  "run_prog done");*)
-		true)
-	| None -> ( false )
-
-let parse_logo_string s = 
-	let lexbuf = Lexing.from_string s in
-	lexbuf.lex_curr_p <- { lexbuf.lex_curr_p with pos_fname = "from string" };
-	parse_with_error lexbuf
-	
-let run_logo_string s res fname = 
-	let pro = parse_logo_string s in
-	run_prog pro res fname 
-	
-let parse_logo_file fname = 
-	let ic = open_in fname in
-	let s = really_input_string ic (in_channel_length ic) in
-	close_in ic;
-	parse_logo_string s
-
-let run_logo_file fname =
-	let prog = parse_logo_file fname in
-	ignore(run_prog prog 256 (fname^".png") )
-	
-(*let program_to_gdata pro res = 
-	let progenc = Logo.encode_program_str pro in
-	let (_,_,segs) = Logo.eval (Logo.start_state ()) pro in
-	let scost = segs_to_cost segs in
-	let pcost = Logo.progenc_cost progenc in
-	let lx,hx,ly,hy = segs_bbx segs in
-	let dx = hx-.lx in
-	let dy = hy-.ly in
-	let maxd = max dx dy in
-	if maxd >= 2. && maxd <= 9. && scost >= 4. && scost <= 64. && List.length segs < 8 && String.length progenc < 24 then (
-		let img, _ = Logo.segs_to_array_and_cost segs res in
-		let progt = `Uniq in
-		Some ({Graf.nulgdata with 
-			progt; pro; progenc; scost; pcost; segs}, img)
-	) else None*)
 
 let progenc2str progenc =
 	progenc |>
@@ -1313,6 +1242,12 @@ let generate_logo_fromstr str =
 	match parse_logo_string str with
 	| Some pro -> Graf.pro_to_edata pro image_res
 	| _ -> Graf.pro_to_edata `Nop image_res
+	
+let permute_array a = 
+	let n = Array.length a in
+	let b = Array.init n (fun i -> i,(Random.float 10.0)) in
+	Array.sort (fun (_,d) (_,e) -> compare d e) b;
+	Array.map (fun (i,_) -> a.(i)) b
 
 let init_database steak count = 
 	(* generate 'count' initial program & image pairs *)
@@ -1391,14 +1326,14 @@ let init_database steak count =
 	
 	let renderpng n s fid = 
 		let fname = Printf.sprintf "/tmp/ec3/init_database/%05d.png" !n in
-		ignore( run_logo_string s 64 fname ); 
+		ignore( Logoext.run_logo_string s 64 fname ); 
 		Printf.fprintf fid "[%d] %s\n" !n s; 
 		incr n
 	in
 
 	tryadd_fromstr "" true;
 	tryadd_fromstr "move 1, 1" false;
-	let lenopts = [|"1";"2";"3";"4";"5";"ua";"2*2";"2*3"|] in
+	let lenopts = [|"1";"2";"3";"2*2";"2*3";"2/3"|] in
 	let angopts = [|"1/5";"2/5";"3/5";"4/5";"1/4";"3/4";"1/3";"2/3";"1/2";
 		"1";"2";"3";"4";"5";"6";"ua/5";"ua/4";"ua/3";"ua/2";"ua"|] in
 	let preopts = [| ""; "0 - "|] in
@@ -1419,6 +1354,7 @@ let init_database steak count =
 		!r
 	in
 	let r = make_moves () in
+	let rp = List.map (fun s -> "( "^s^")") r in
 	(* now outer-prod them in a sequence + pen *)
 	let penopts = [|"1";"2";"3";"4";"5"|] 
 		|> Array.map (fun s -> "pen "^s^"; ") in
@@ -1429,7 +1365,26 @@ let init_database steak count =
 		List.iter (fun s -> renderpng n s fid) t; 
 		r2 := List.rev_append t !r2; 
 	) done; 
-	List.rev_append r !r2
+	
+	(* for longer sequences, we need to sub-sample *)
+	let penopts = [|"1";"2";"3";"4"|] 
+		|> Array.map (fun s -> "pen "^s) in
+	let r3 = ref [] in
+	let ra = Array.of_list r in
+	let nra = List.length r in
+	while !n < 8000 do (
+		let i = Random.int nra in
+		let j = Random.int nra in
+		let k = Random.int (Array.length penopts) in
+		let y = [| ra.(i); ra.(j); penopts.(k) |] |> permute_array in
+		let s,_ = Array.fold_left (fun (a,m) b -> 
+			(if m<2 then a^b^"; " else a^b),m+1) ("",0) y in
+		let s2 = "("^s^")" in
+		r3 := s2 :: !r3; 
+		renderpng n s2 fid
+	) done; 
+	
+	r @ rp @ !r2 @ !r3
 	|> List.iter (fun s -> tryadd_fromstr s false);
 
 	(*while !i < count do (

@@ -600,3 +600,5 @@ let segs_to_array_and_cost segs resolution =
 		) done;
 		(o, cost)
 	) else ( nulimg, cost)
+
+	
