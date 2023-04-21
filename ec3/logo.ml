@@ -601,4 +601,3 @@ let segs_to_array_and_cost segs resolution =
 		(o, cost)
 	) else ( nulimg, cost)
 
-	
