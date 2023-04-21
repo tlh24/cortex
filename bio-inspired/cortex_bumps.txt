@@ -4194,3 +4194,15 @@ Other thing I was thinking last night: adding in float numbers.
 This will smooth the search space considerably. 
 Float numbers saved as a *decimal string* so they can be subject to tweakage! 
 	I'm going to wait on this until "complexifications" is added. 
+
+April 20 2023
+
+Database is looking much healthier now -- and better connected / quicker to generate (enumeration). 
+Graph seems to be working properly. 
+Dijkstra's is working well too. 
+Todo next: 
+* Figure out how to train the network by following edges *to* a result. 
+* Make sure there are enough of these edges that the network doesn't overfit
+* Label the nodes (programs) that are close to any given specification (MNIST digit)
+* Think more about how this set can use to organize 1 above. 
+* Cull nodes that can't be visited or aren't visited on the way to a specification. 

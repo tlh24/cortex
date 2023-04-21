@@ -1333,7 +1333,7 @@ let init_database steak count =
 
 	tryadd_fromstr "" true;
 	tryadd_fromstr "move 1, 1" false;
-	let lenopts = [|"1";"2";"3";"2*2";"2*3";"2/3"|] in
+	let lenopts = [|"1";"2";"3";"2*2";"1/2";"2/3"|] in
 	let angopts = [|"1/5";"2/5";"3/5";"4/5";"1/4";"3/4";"1/3";"2/3";"1/2";
 		"1";"2";"3";"4";"5";"6";"ua/5";"ua/4";"ua/3";"ua/2";"ua"|] in
 	let preopts = [| ""; "0 - "|] in
