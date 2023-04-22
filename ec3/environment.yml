@@ -8,6 +8,7 @@ dependencies:
   - opam
   - ocaml
   - pip
+  - pydantic >= 1.10
   - pip:
     - torch==2.0.0
     - torchvision==0.15.1
