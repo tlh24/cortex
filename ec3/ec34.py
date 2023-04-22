@@ -109,21 +109,7 @@ model = Recognizer(image_resolution = image_res,
 							 p_indim = p_indim, 
 							 e_indim = e_indim)
 
-from os.path import exists
-if exists("ec32.ptx"):
-	loaded_dict = torch.load("ec32.ptx")
-	model.load_state_dict(loaded_dict)
-	# prefix = 'module.'
-	# n_clip = len(prefix)
-	# adapted_dict = {k[n_clip:]: v for k, v in loaded_dict.items()
-	# 					if k.startswith(prefix)}
-# except: 
-# 	print("could not load model parameters from ec32.ptx")
-
-trainable_params = sum(
-	p.numel() for p in model.parameters() if p.requires_grad
-)
-print(f"Number of model parameters:{trainable_params/1e6}M")
+model.print_n_params()
 
 # model = nn.DataParallel(model)
 
@@ -244,11 +230,9 @@ for u in range(train_iters):
 				
 	if u % 1000 == 999 : 
 		if g_training: 
-			torch.save(model.state_dict(), "ec32.ptx")
-			print("saved ec32.ptx")
+			model.save_checkpoint()
 		if g_dreaming: 
-			loaded_dict = torch.load("ec32.ptx")
-			model.load_state_dict(loaded_dict)
+			model.load_checkpoint()
 			print("dreamer reloaded model parameters.")
 	
 

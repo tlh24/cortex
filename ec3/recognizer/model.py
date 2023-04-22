@@ -97,6 +97,12 @@ class Recognizer(nn.Module):
 			path = self.CHECKPOINT_SAVEPATH
 			self.load_state_dict(th.load(path))
    
+	def save_checkpoint(self, path: Union[Path, str]=None):
+		if path is None:
+			path = self.CHECKPOINT_SAVEPATH
+		torch.save(self.state_dict(), path)
+		print(f"saved checkpoint to {path}")
+   
 	
 	def print_model_params(self): 
 		print(self.prt_to_tok.weight[0,:])
@@ -114,3 +120,9 @@ class Recognizer(nn.Module):
 		q[3] = th.std(self.prt.resblocks[0].mlp[0].weight)
 		q[4] = th.std(self.prt_to_tok.weight)
 		return q
+
+	def print_n_params(self):
+		trainable_params = sum(
+			p.numel() for p in self.parameters() if p.requires_grad
+		)
+		print(f"Number of model parameters:{trainable_params/1e6}M")
