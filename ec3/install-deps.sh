@@ -1,9 +1,18 @@
-# Install conda
-# wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh && bash Miniconda3-latest-Linux-x86_64.sh -bfp /usr/local && rm Miniconda3-latest-Linux-x86_64.sh && /usr/local/bin/conda init
+sudo chmod +rw /usr/bin
+sudo chmod +rw /usr/local
 
+# Install conda
+if ! command -v conda
+then
+echo "installing conda"
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+bash Miniconda3-latest-Linux-x86_64.sh -bfp 
+rm Miniconda3-latest-Linux-x86_64.sh 
+export PATH="$HOME/miniconda3/bin:$PATH"
+conda init
+fi
 
 # commands for getting lambda labs up and running
-sudo chmod +rw /usr/bin
 sudo apt-get update
 sudo apt-get install -y make gcc unzip bubblewrap
 
