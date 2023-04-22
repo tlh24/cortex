@@ -9,7 +9,7 @@ class ModelConfig(BaseModel):
     toklen: int = Field(30, description="Token length")
     p_ctx: int = Field(64, description="Context for program")
     poslen: int = Field(32, description="Position length")
-    p_indim: int = Field(61, description="Program input dimension")
+    p_indim: int = Field(63, description="Program input dimension")
     e_indim: int = Field(67, description="Encoder input dimension")
     patch_size: int = Field(5, description="Patch size for vision model")
     # Recognizer model

@@ -57,7 +57,16 @@ def make_mmf(fname):
 
 
 class MemmapOrchestrator(object):
-    def __init__(self, mmapno: int, p_ctx, poslen, batch_size, p_indim, image_res, e_indim):
+    def __init__(
+        self, 
+        mmapno: int, 
+        p_ctx, 
+        poslen, 
+        batch_size, 
+        p_indim, 
+        image_res, 
+        e_indim,
+        ):
         self.fd_bpro = make_mmf(f"bpro_{mmapno}.mmap")
         self.fd_bimg = make_mmf(f"bimg_{mmapno}.mmap")
         self.fd_bedts = make_mmf(f"bedts_{mmapno}.mmap")
@@ -67,9 +76,12 @@ class MemmapOrchestrator(object):
         self.posenc = self.read_mmap(self.fd_posenc, [p_ctx, poslen])
         
         # Create partial functions for reading data with the specified dimensions
-        self.read_bpro = partial(self.read_mmap, self.fd_bpro, [batch_size, p_ctx, p_indim])
-        self.read_bimg = partial(self.read_mmap, self.fd_bimg, [batch_size, 3, image_res, image_res])
-        self.read_bedts = partial(self.read_mmap, self.fd_bedts, [batch_size, e_indim])
+        self.read_bpro = partial(self.read_mmap, self.fd_bpro, 
+                                 [batch_size, p_ctx, p_indim])
+        self.read_bimg = partial(self.read_mmap, self.fd_bimg, 
+                                 [batch_size, 3, image_res, image_res])
+        self.read_bedts = partial(self.read_mmap, self.fd_bedts, 
+                                  [batch_size, e_indim])
         
         # Create partial functions for writing data
         self.write_bedtd = partial(self.write_mmap, self.fd_bedtd)

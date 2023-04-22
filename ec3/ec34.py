@@ -1,18 +1,14 @@
-import math
-import mmap
+
 import torch as th
 from torch import nn, optim
 import torch.cuda.amp
-from ctypes import *
-import socket
 import time
 import argparse
 import os
 from data_exchange import SocketClient, MemmapOrchestrator
-import constants as c
 from config import ModelConfig
-
 from recognizer.model import Recognizer
+
 import torch._dynamo as dynamo
 dynamo.config.verbose=True
 # note: I can't seem to get this to work. tlh April 7 2023
@@ -32,7 +28,7 @@ print(f"batch_size:{mc.batch_size}")
 print(f"dreaming:{mc.dreaming}")
 
 # setup the socket client and handshake with the server.
-socket_client = SocketClient()
+socket_client = SocketClient(mc.dreaming)
 socket_client.connect()
 socket_client.handshake()
 
@@ -41,9 +37,14 @@ os.system(mc.edsiz_allocate_command)
 # the other mmaps are allocated by ocaml.
 	
 mo = MemmapOrchestrator(
-    mmapno=mc.mmapno, 
-    p_ctx=mc.p_ctx, 
-    poslen=mc.poslen)
+	mmapno=mc.mmapno, 
+	p_ctx=mc.p_ctx, 
+	poslen=mc.poslen,
+	batch_size=mc.batch_size,
+	p_indim=mc.p_indim,
+	image_res=mc.image_res,
+	e_indim=mc.e_indim,
+)
 
 
 torch_device = 0
@@ -56,7 +57,7 @@ th.set_float32_matmul_precision('high') # desktop.
 
 
 model = Recognizer(
-    image_resolution = mc.image_res, 
+	image_resolution = mc.image_res, 
 	vision_width = mc.vision_width, 
 	patch_size = mc.patch_size, 
 	prog_width = mc.prog_width, 
@@ -79,10 +80,8 @@ model.print_n_params()
 
 lossfunc_cel = nn.CrossEntropyLoss(label_smoothing = 0.08, reduction='mean')
 lossfunc_mse = nn.MSELoss(reduction='mean')
-# optimizer = optim.SGD(model.parameters(), lr=2e-3)
 # !SGD does not work!  AdamW much better.  
 optimizer = optim.Adam(model.parameters(), lr=mc.learning_rate)
-# optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
 	
 scaler = torch.cuda.amp.GradScaler()
@@ -98,14 +97,13 @@ if mc.dreaming:
 def train(mod, bimg, bpro, bedts): 
 	model.zero_grad()
 	y,q = model(u, bimg, bpro)
-	loss = lossfunc(y, bedts)
+	loss = lossfunc_mse(y, bedts)
 	lossflat = th.sum(loss)
 	lossflat.backward()
 	th.nn.utils.clip_grad_norm_(model.parameters(), 0.025)
 	optimizer.step()
 	return y,q,lossflat
 	
-# train_opt = th.compile(train, mode="reduce-overhead")
 
 for u in range(mc.train_iters): 
 	# keep things synchronous for now. 
@@ -125,12 +123,11 @@ for u in range(mc.train_iters):
 	else:
 		bimg = bimg.cuda()
 	
-	# with th.autocast(device_type='cuda', dtype=torch.float16):
 	model.zero_grad()
 	y,q = model(u, bimg, bpro.cuda())
 	if mc.training: 
 		
-  		# encapsulate in model?
+		  # encapsulate in model?
 		targ = bedts.cuda()
 		loss = lossfunc_mse(y, targ)
 		lossflat = th.sum(loss)
@@ -140,11 +137,9 @@ for u in range(mc.train_iters):
 		lossflat.detach()
 	else: 
 		lossflat = 0.0
-		
+  
 	slowloss = 0.99*slowloss + 0.01 * lossflat
-	# ngpu = th.cuda.device_count()
-	# q = th.reshape(q, (ngpu,-1)) 
-	# q = th.mean(q, 0) # only for model DP. 
+ 
 	if mc.training: 
 		losslog.write(f"{u}\t{slowloss}")
 		for i in range(q.shape[0]): 
@@ -153,34 +148,16 @@ for u in range(mc.train_iters):
 		losslog.write("\n")
 		losslog.flush()
 	
- 	mo.write_bedtd(y)
+	mo.write_bedtd(y)
 	if mc.training: 
 		mo.write_editdiff(bedts - y.cpu()) # synchronization.
 		socket_client.send_and_receive(message="update_editdiff")
   
-	# scaler.scale(lossflat).backward()
-	# th.nn.utils.clip_grad_norm_(model.parameters(), 0.05)
-	# scaler.step(optimizer)
-	# scaler.update()
-	
 	if u % 11 == 0 :
 		toc = time.time()
 		rate = int((batch_size * 11) / (toc - tic))
 		tic = toc
-		print(f'{u} {lr:.6f} loss: {lossflat:.5f}; slowloss {slowloss:.5f}; {rate} samp/sec')
-	
-	# change the learning rate. 
-	if False: 
-		lr = learning_rate
-		# ramp up between 1000 and 11000
-		if u > 1000:
-			lr = lr * (1 + ((u-1000) / 5000))
-		lr = min(lr, 0.001) # this seems to be the outright maximum
-		# decay from 11k to end
-		if u > 11000: 
-			lr = lr * math.exp((11000-u) / 50000)
-		for g in optimizer.param_groups:
-			g['lr'] = lr
+		print(f'{u} {mc.learning_rate:.6f} loss: {lossflat:.5f}; slowloss {slowloss:.5f}; {rate} samp/sec')
 				
 	if u % 1000 == 999 : 
 		if mc.training: 
