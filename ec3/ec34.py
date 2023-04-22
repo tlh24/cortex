@@ -3,25 +3,22 @@ import mmap
 import torch as th
 from torch import nn, optim
 import torch.cuda.amp
-import matplotlib.pyplot as plt
-import copy
 from ctypes import *
 import socket
 import time
-import clip_model
 import argparse
-import io
 import os
-import pdb
+
+import constants as c
 
 import torch._dynamo as dynamo
 dynamo.config.verbose=True
 # note: I can't seem to get this to work. tlh April 7 2023
 
-from constants import *
+
 
 patch_size = 5
-v_ctx = int((image_res / patch_size) ** 2 + 1)
+v_ctx = int((c.IMAGE_RES / patch_size) ** 2 + 1)
 vision_width = 256
 prog_width = 256
 vision_heads = 8
