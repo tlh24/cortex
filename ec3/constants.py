@@ -1,6 +1,6 @@
-image_res = 30
-toklen = 30
-p_ctx = 64
-poslen = p_ctx // 2
-p_indim = toklen + 1 + poslen 
-e_indim = 5 + toklen + poslen
+IMAGE_RES = 30
+TOKLEN = 30
+P_CTX = 64
+POSLEN = P_CTX // 2
+P_INDIM = TOKLEN + 1 + POSLEN
+E_INDIM = 5 + TOKLEN + POSLEN
