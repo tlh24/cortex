@@ -1,16 +1,34 @@
 # Setup
 
-`cd ec3`
-`sh install-deps.sh` script to build the ocaml executable.
+## Prerequisites
 
-## python env setup
+Conda should be installed on your system. You can install Miniconda by running the following commands:
 
-To get a virtual env using `pyenv` and `poetry`
-`cd ec3`
-`pyenv local 3.10`
-`poetry install`
+```bash
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+bash Miniconda3-latest-Linux-x86_64.sh -bfp /usr/local
+rm Miniconda3-latest-Linux-x86_64.sh
+/usr/local/bin/conda init
+```
 
-To use, run `poetry shell` to activate the virtual env or prepend `poetry run` to the python commands below.
+## Run the setup script
+
+This repository contains a setup script (`install-deps.sh`) to help you get started. The script performs the following tasks:
+
+1. Installs system packages (make, gcc, unzip, and bubblewrap).
+2. Creates and activates a Conda environment named `ec3` using the `environment.yml` file.
+3. Installs and configures `opam` and OCaml with the flambda option.
+4. Installs libtorch and sets the LIBTORCH environment variable.
+5. Installs additional OCaml packages using `opam`.
+6. Builds the project using `dune`.
+7. Downloads and extracts the MNIST dataset.
+
+To run the setup script, run the following commands:
+
+```bash
+cd ec3
+./install-deps.sh
+```
 
 # Use
 
