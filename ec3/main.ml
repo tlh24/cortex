@@ -68,13 +68,14 @@ let () =
 	let pool = Dtask.setup_pool ~num_domains:12 () in 
 		(* tune this -- 8-12 seems ok *)
 	let de = decode_edit_tensors !batch_size in
+	let training = [| |] in
 	let supfid = open_out "/tmp/ec3/replacements_sup.txt" in
 	let dreamfid = open_out "/tmp/ec3/replacements_dream.txt" in
 	let fid_verify = open_out "/tmp/ec3/verify.txt" in
 	
 	let supstak = 
 		{device; gs; dbf; dbf_cpu; dbf_enc; mnist; mnist_cpu; mnist_enc; (*vae;*) db_mutex;
-		superv=true; fid=supfid; fid_verify; batchno=0; pool; de} in
+		superv=true; fid=supfid; fid_verify; batchno=0; pool; de; training} in
 	
 	let supsteak = if Sys.file_exists "db_sorted.S" then ( 
 		(*Dtask.run supsteak.pool (fun () -> load_database supsteak )*)
@@ -98,7 +99,11 @@ let () =
 		save_database stk "db_sorted.S";
 		stk
 	) in
+	
 	render_simplest supsteak; 
+	
+	let training2 = mnist_closest supsteak in
+	let supsteak = {supsteak with training = training2} in
 	
 	(* try to train the vae? *)
 	(*let dbfs = Tensor.narrow supsteak.dbf ~dim:0 ~start:0 ~length:(supsteak.gs.num_uniq) in

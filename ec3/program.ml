@@ -119,6 +119,7 @@ type tsteak = (* thread state *)
 	; mutable batchno : int (* for e.g doing garbage collection *)
 	; mutable pool : Domainslib.Task.pool (* needs to be replaced for dream *)
 	; de : decode_tensors
+	; training : (int*int) array
 	}
 
 let read_lines name : string list =
@@ -320,7 +321,64 @@ let normalize_tensor m =
 	let len = Tensor.(f 1. / len) in
 	Tensor.einsum ~equation:"ij,i -> ij" [m;len] ~path:None 
 	
-
+	
+module SX = Set.Make(Int);;
+	
+let mnist_closest steak = 
+	(* find the closest programs to many mnist digits *)
+	let nmnist = 512 in
+	let dbfn = steak.gs.num_uniq in
+	let size = [nmnist; dbfn; image_res; image_res] in
+	Logs.debug (fun m->m "entering mnist_closest. mnist:%d dbf:%d" nmnist dbfn); 
+	let training = ref [] in 
+	for u = 0 to 10 do (
+		let aa = 
+			Tensor.narrow steak.mnist ~dim:0 ~start:(nmnist*u) ~length:nmnist
+			|> Tensor.unsqueeze ~dim:1 
+			|> Tensor.expand ~size ~implicit:true in
+		let bb = 
+			Tensor.narrow steak.dbf ~dim:0 ~start:0 ~length:dbfn
+			|> Tensor.unsqueeze ~dim:0
+			|> Tensor.expand ~size ~implicit:true in
+		let c = Tensor.(sum_dim_intlist (square (aa - bb)) 
+			~dim:(Some [2;3]) ~keepdim:false ~dtype:(T Float)) in
+			(* this burns lots of memory, but I can't figure out another way..*)
+		let indx = Tensor.argmin c ~dim:(Some 1) ~keepdim:false in
+		(* indx is now a list of elements of dbf closest to mnist *)
+		let closest = match Tensor.to_int1 indx with
+			| Some x -> x
+			| _ -> [| |] in
+		let root = "/tmp/ec3/mnist_closest" in
+		Array.iteri (fun i x -> 
+			if i < 100 then (
+				let j = steak.gs.img_inv.(x) in
+				Logs.debug (fun m->m "dbf %d (gs.g %d) is closest to mnist %d" x j (nmnist*u + i)); 
+				if u = 0 then (
+					dbf_to_png steak.dbf x
+						(Printf.sprintf "%s/%05d_dbf.png" root i);
+					dbf_to_png steak.mnist_cpu i
+						(Printf.sprintf "%s/%05d_mnist.png" root i);
+					let a = db_get steak j in
+					Logo.segs_to_png a.ed.segs 64
+						(Printf.sprintf "%s/%05d_segs.png" root i);
+				) ) ) closest; 
+		let s = Array.fold_left (fun a b -> SX.add b a) SX.empty closest in
+		(* make a (repeating) list of (from, to) indexes for training *)
+		List.iter ( fun target -> 
+			let _dist,prev = Graf.dijkstra steak.gs target false in
+			Array.iteri (fun j pre -> 
+				if pre >= 0 then (
+					training := (pre,j) :: !training
+				) ) prev
+			) (SX.elements s); 
+		Caml.Gc.full_major()
+	) done; 
+	List.iteri (fun i (pre,post) -> 
+		if i < 100 then 
+			Logs.debug (fun m->m "training: %d -> %d" pre post)) !training; 
+	Graf.edge_use steak.gs !training; 
+	Graf.gexf_out steak.gs ;
+	Array.of_list !training ;;
 	
 (*let pdata_to_edits a b = 
 	let dist, edits = Levenshtein.distance a.progenc b.progenc true in
@@ -369,8 +427,16 @@ let make_batche_train a ai b bi dt =
 	; count = 0
 	; dt (* dreamt *)
 	}
-	
+
 let new_batche_train steak dt = 
+	let n = Array.length steak.training in
+	let i = Random.int n in
+	let (pre,post) = steak.training.(i) in
+	let d = Vector.get steak.gs.g pre in
+	let e = Vector.get steak.gs.g post in
+	make_batche_train d pre e post dt
+	
+let new_batche_train_b steak dt = 
 	(* supervised mode, any 'A' -- including eqiv *)
 	let rec selector () = 
 		let di = Random.int (Vector.length steak.gs.g) in 
@@ -383,11 +449,11 @@ let new_batche_train steak dt =
 					| 1 -> "del"
 					| _ -> "ins" in (* biased!! *)
 				let o = SI.elements d.outgoing 
-					|> List.filter (fun (_,t,_) -> t = typ) in
+					|> List.filter (fun (_,t,_,_) -> t = typ) in
 				let ol = List.length o in
 				if ol > 0 then (
 					let k = Random.int ol in
-					let ei,_,_ = List.nth o k in
+					let ei,_,_,_ = List.nth o k in
 					let e = Vector.get steak.gs.g ei in
 					if e.progt = `Uniq then (
 						make_batche_train d di e ei dt
@@ -1273,7 +1339,8 @@ let init_database steak count =
 			let s = Logo.output_program_pstr data.pro in
 			Logs.debug(fun m -> m
 				"%d: adding [%d] = %s" !iters !i s);
-			ignore( db_add_uniq steak data imgf imgf_cpu ~doenc:false );
+			let added,_ = db_add_uniq steak data imgf imgf_cpu ~doenc:false in
+			if not added then Logs.err (fun m->m "did not add %s to db" s);
 			Logo.segs_to_png data.segs 64
 				(Printf.sprintf "%s/db%05d_.png" root !i);
 			dbf_to_png steak.dbf !i
@@ -1326,7 +1393,7 @@ let init_database steak count =
 	
 	let renderpng n s fid = 
 		let fname = Printf.sprintf "/tmp/ec3/init_database/%05d.png" !n in
-		ignore( Logoext.run_logo_string s 64 fname ); 
+		ignore( Logoext.run_logo_string s 64 fname !gdebug); 
 		Printf.fprintf fid "[%d] %s\n" !n s; 
 		incr n
 	in
@@ -1356,7 +1423,7 @@ let init_database steak count =
 	let r = make_moves () in
 	let rp = List.map (fun s -> "( "^s^")") r in
 	(* now outer-prod them in a sequence + pen *)
-	let penopts = [|"1";"2";"3";"4";"5"|] 
+	let penopts = [|"1";"2";"3";"4"|] 
 		|> Array.map (fun s -> "pen "^s^"; ") in
 	let r2 = ref [] in
 	for h = 0 to (Array.length penopts)-1 do (
@@ -1367,12 +1434,12 @@ let init_database steak count =
 	) done; 
 	
 	(* for longer sequences, we need to sub-sample *)
-	let penopts = [|"1";"2";"3";"4"|] 
+	let penopts = [|"0";"1";"2";"3";"4"|] 
 		|> Array.map (fun s -> "pen "^s) in
 	let r3 = ref [] in
 	let ra = Array.of_list r in
 	let nra = List.length r in
-	while !n < 8000 do (
+	while !n < 5000 do (
 		let i = Random.int nra in
 		let j = Random.int nra in
 		let k = Random.int (Array.length penopts) in
@@ -1383,6 +1450,29 @@ let init_database steak count =
 		r3 := s2 :: !r3; 
 		renderpng n s2 fid
 	) done; 
+	while !n < 7000 do (
+		let i = Random.int nra in
+		let j = Random.int nra in
+		let k = Random.int (Array.length penopts) in
+		let y = [| ra.(i); ra.(j); penopts.(k) |] |> permute_array in
+		let s,_ = Array.fold_left (fun (a,m) b -> 
+			(if m<2 then a^b^"; " else a^b),m+1) ("",0) y in
+		let s2 = "(pen 0 ;"^s^")" in
+		r3 := s2 :: !r3; 
+		renderpng n s2 fid
+	) done;
+	while !n < 10000 do (
+		let i = Random.int nra in
+		let j = Random.int nra in
+		let k = Random.int nra in
+		let l = Random.int (Array.length penopts) in
+		let y = [| ra.(i); ra.(j); ra.(k); penopts.(l) |] |> permute_array in
+		let s,_ = Array.fold_left (fun (a,m) b -> 
+			(if m<2 then a^b^"; " else a^b),m+1) ("",0) y in
+		let s2 = "(pen 0 ;"^s^")" in
+		r3 := s2 :: !r3; 
+		renderpng n s2 fid
+	) done;
 	
 	r @ rp @ !r2 @ !r3
 	|> List.iter (fun s -> tryadd_fromstr s false);
@@ -1427,7 +1517,7 @@ let verify_database steak =
 		match d.progt with
 		| `Uniq -> (
 			(* verify that all equivalents are actually that. *)
-			SI.iter (fun (j,typ,cnt) -> 
+			SI.iter (fun (j,typ,cnt,_) -> 
 				let e = Vector.get steak.gs.g j in
 				verify_equivalent i d j e; 
 				let cnt',edits = get_edits d.ed.progenc e.ed.progenc in
@@ -1449,7 +1539,7 @@ let verify_database steak =
 				) else (0,false,"",0)
 				) gi
 				|> List.filter (fun (_,b,_,_) -> b) 
-				|> List.map (fun (j,_,typ,cnt) -> j,typ,cnt) in
+				|> List.map (fun (j,_,typ,cnt) -> j,typ,cnt,0) in
 			let og = SI.of_list ii in
 			if og <> d.outgoing then (
 				let ogl = SI.cardinal og in
@@ -1459,7 +1549,7 @@ let verify_database steak =
 				let print_diff a b =
 					let df = SI.diff a b in
 					Printf.printf "diff:\n"; 
-					SI.iter (fun (k,_,_) -> 
+					SI.iter (fun (k,_,_,_) -> 
 						let e = Vector.get steak.gs.g k in
 						let dist,edits = Graf.get_edits d.ed.progenc e.ed.progenc in
 						Printf.printf "fwd\t%d, %s -> %s dist %d\n" k d.ed.progenc e.ed.progenc dist; 

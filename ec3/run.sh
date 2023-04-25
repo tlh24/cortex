@@ -8,6 +8,8 @@ mkdir -p /tmp/ec3/replace_verify
 rm -rf /tmp/ec3/replace_verify/*
 mkdir -p /tmp/ec3/mnist_improve
 rm -rf /tmp/ec3/mnist_improve/*
+mkdir -p /tmp/ec3/mnist_closest
+rm -rf /tmp/ec3/mnist_closest/*
 mkdir -p /tmp/ec3/init_database
 rm -rf /tmp/ec3/init_database/*
 mkdir -p /tmp/ec3/verify_database

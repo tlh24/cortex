@@ -7,7 +7,6 @@ open Torch
 open Graf*)
 (*open Torch*)
 open Program
-open Graf
 
 let () = 
 	Random.self_init (); 
@@ -35,58 +34,21 @@ let () =
 	let pool = Dtask.setup_pool ~num_domains:12 () in 
 		(* tune this -- 8-12 seems ok *)
 	let de = decode_edit_tensors 4 in (* dummy *)
+	let training = [| |] in
 	let supfid = open_out "/tmp/ec3/replacements_sup.txt" in
 	let dreamfid = open_out "/tmp/ec3/replacements_dream.txt" in
 	let fid_verify = open_out "/tmp/ec3/verify.txt" in
 	
 	let supstak = 
 		{device; gs; dbf; dbf_cpu; dbf_enc; mnist; mnist_cpu; mnist_enc; (*vae;*) db_mutex;
-		superv=true; fid=supfid; fid_verify; batchno=0; pool; de} in
+		superv=true; fid=supfid; fid_verify; batchno=0; pool; de; training} in
 	
 	let supsteak = load_database supstak "db_sorted.S" in
-	Graf.dijkstra supsteak.gs 0; 
+	ignore( Graf.dijkstra supsteak.gs 0 true); 
 	verify_database supsteak; 
 	save_database supsteak "db_rewrite.S"; 
 	
-	(* also save GEXF file for gephi visualization *)
-	let fid = open_out "../prog-gephi-viz/db.gexf" in
-	Printf.fprintf fid "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"; 
-	Printf.fprintf fid "<gexf xmlns=\"http://gexf.net/1.3\" version=\"1.3\">\n"; 
-	Printf.fprintf fid "<graph mode=\"static\" defaultedgetype=\"directed\">\n"; 
-	Printf.fprintf fid "<attributes class=\"node\">\n"; 
-	Printf.fprintf fid "<attribute id=\"0\" title=\"progt\" type=\"string\"/>\n"; 
-	Printf.fprintf fid "</attributes>\n";
-	Printf.fprintf fid "<attributes class=\"edge\">\n"; 
-	Printf.fprintf fid "<attribute id=\"0\" title=\"typ\" type=\"string\"/>\n"; 
-	Printf.fprintf fid "</attributes>\n"; 
-	Printf.fprintf fid "<nodes>\n"; 
-	Vector.iteri (fun i d -> 
-		Printf.fprintf fid "<node id=\"%d\" label=\"%s\" >\n" i
-			(Logo.output_program_pstr d.ed.pro); 
-		let pts = match d.progt with
-			| `Uniq -> "uniq"
-			| `Equiv -> "equiv"
-			| _ -> "nul" in
-		Printf.fprintf fid 
-		"<attvalues><attvalue for=\"0\" value=\"%s\"/></attvalues>\n" pts; 
-		Printf.fprintf fid "</node>\n"
-		) supsteak.gs.g ; 
-	Printf.fprintf fid "</nodes>\n";
-	
-	Printf.fprintf fid "<edges>\n"; 
-	Vector.iteri (fun i d -> 
-		Graf.SI.iter (fun (j,typ,_cnt) -> 
-			Printf.fprintf fid "<edge source=\"%d\" target=\"%d\">" i j; 
-			Printf.fprintf fid 
-			"<attvalues><attvalue for=\"0\" value=\"%s\"/></attvalues>\n" typ; 
-			Printf.fprintf fid "</edge>\n"
-		) d.outgoing
-		) supsteak.gs.g ; 
-	Printf.fprintf fid "</edges>\n";
-	Printf.fprintf fid "</graph>\n";
-	Printf.fprintf fid "</gexf>\n";
-	close_out fid; 
-	Printf.printf "saved ../prog-gephi-viz/db.gexf\n"; 
+	Graf.gexf_out supsteak.gs;
 	
 	close_out supfid; 
 	close_out dreamfid;
