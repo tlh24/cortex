@@ -31,7 +31,7 @@ prog_layers = 8
 embed_dim = 256
 
 train_iters = 100000
-learning_rate = 0.0005 # 1e-3 maximum learning rate. scheduled.
+learning_rate = 0.00025 # 1e-3 maximum learning rate. scheduled.
 # learning rate of 0.002 is unstable.  Should figure out why. 
 weight_decay = 2.5e-6
 nreplace = 0
@@ -228,6 +228,7 @@ if g_training:
 	print("training...")
 if g_dreaming:
 	print("dreaming...")
+	torch. set_grad_enabled(False)
 
 # compiling this does not seem to work... 
 def train(mod, bimg, bpro, bedts): 
@@ -261,9 +262,9 @@ for u in range(train_iters):
 		bimg = bimg.cuda()
 	
 	# with th.autocast(device_type='cuda', dtype=torch.float16):
-	model.zero_grad()
-	y,q = model(u, bimg, bpro.cuda())
 	if g_training: 
+		model.zero_grad()
+		y,q = model(u, bimg.cuda(), bpro.cuda())
 		# y,q,lossflat = train(model, bimg, bpro.cuda(), bedts.cuda())
 		targ = bedts.cuda()
 		loss = lossfunc_mse(y, targ)
@@ -277,6 +278,15 @@ for u in range(train_iters):
 		optimizer.step() 
 		lossflat.detach()
 	else: 
+		bimg = bimg.cuda()
+		bpro = bpro.cuda()
+		bimg1 = bimg + th.randn(batch_size, 3, image_res, image_res) * 0.1
+		y1,q = model(u, bimg1, bpro)
+		bimg2 = bimg + th.randn(batch_size, 3, image_res, image_res) * 0.1
+		y2,q = model(u, bimg2, bpro)
+		bimg3 = bimg + th.randn(batch_size, 3, image_res, image_res) * 0.1
+		y3,q = model(u, bimg3, bpro)
+		y = (y1 + y2 + y3)/3.0
 		lossflat = 0.0
 		
 	slowloss = 0.99*slowloss + 0.01 * lossflat

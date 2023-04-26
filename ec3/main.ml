@@ -102,7 +102,9 @@ let () =
 	
 	render_simplest supsteak; 
 	
+	Logs.info (fun m->m "generating training dataset.."); 
 	let training2 = mnist_closest supsteak in
+	Logs.info (fun m->m "training size: %d" (Array.length training2)); 
 	let supsteak = {supsteak with training = training2} in
 	
 	(* try to train the vae? *)

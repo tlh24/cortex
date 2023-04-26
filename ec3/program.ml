@@ -6,7 +6,7 @@ open Graf
 
 let pi = 3.1415926
 (*let image_count = ref 0 *)
-let image_alloc = 4*2048 (*6*2048*2*) (* need to make this a parameter *)
+let image_alloc = 5*2048 (*6*2048*2*) (* need to make this a parameter *)
 let image_res = 30
 let batch_size = ref 512
 let toklen = 30
@@ -326,12 +326,12 @@ module SX = Set.Make(Int);;
 	
 let mnist_closest steak = 
 	(* find the closest programs to many mnist digits *)
-	let nmnist = 512 in
+	let nmnist = 256 in
 	let dbfn = steak.gs.num_uniq in
 	let size = [nmnist; dbfn; image_res; image_res] in
 	Logs.debug (fun m->m "entering mnist_closest. mnist:%d dbf:%d" nmnist dbfn); 
 	let training = ref [] in 
-	for u = 0 to 10 do (
+	for u = 0 to 100 do (
 		let aa = 
 			Tensor.narrow steak.mnist ~dim:0 ~start:(nmnist*u) ~length:nmnist
 			|> Tensor.unsqueeze ~dim:1 
@@ -348,7 +348,7 @@ let mnist_closest steak =
 		let closest = match Tensor.to_int1 indx with
 			| Some x -> x
 			| _ -> [| |] in
-		let root = "/tmp/ec3/mnist_closest" in
+		(*let root = "/tmp/ec3/mnist_closest" in
 		Array.iteri (fun i x -> 
 			if i < 100 then (
 				let j = steak.gs.img_inv.(x) in
@@ -361,17 +361,25 @@ let mnist_closest steak =
 					let a = db_get steak j in
 					Logo.segs_to_png a.ed.segs 64
 						(Printf.sprintf "%s/%05d_segs.png" root i);
-				) ) ) closest; 
+				) ) ) closest;*) 
 		let s = Array.fold_left (fun a b -> SX.add b a) SX.empty closest in
 		(* make a (repeating) list of (from, to) indexes for training *)
+		(* start from the root node *)
+		let _dist,prev = Graf.dijkstra steak.gs 0 false in
 		List.iter ( fun target -> 
-			let _dist,prev = Graf.dijkstra steak.gs target false in
-			Array.iteri (fun j pre -> 
-				if pre >= 0 then (
-					training := (pre,j) :: !training
-				) ) prev
+			let rec loop r = 
+				if r >= 0 then (
+					let q = prev.(r) in
+					if q >= 0 then (
+						training := (q,r) :: !training; 
+						loop q
+					)
+				)
+			in
+			loop target (* if there are no routes to root, don't add *)
 			) (SX.elements s); 
-		Caml.Gc.full_major()
+		Caml.Gc.full_major(); 
+		Logs.debug (fun m->m "%d of 100" u)
 	) done; 
 	List.iteri (fun i (pre,post) -> 
 		if i < 100 then 
@@ -1173,7 +1181,7 @@ let bigfill_batchd steak bd =
 		bd.bedts.{u,0} <- 0.0; (* TEST python synchronization *)
 		let (typ,pp,c) = if (List.length be.edits) > 0 
 			then List.hd be.edits
-			else ("fin",0,'0') in
+			else ("sub",0,'0') in
 		(* during dreaming, the edit list is drained dry: 
 		we apply the edits (thereby emptying the 1-element list),
 		update the program encodings, 
@@ -1315,6 +1323,32 @@ let permute_array a =
 	Array.sort (fun (_,d) (_,e) -> compare d e) b;
 	Array.map (fun (i,_) -> a.(i)) b
 
+let renderpng n s fid = 
+	let fname = Printf.sprintf "/tmp/ec3/init_database/%05d.png" !n in
+	ignore( Logoext.run_logo_string s 64 fname false); 
+	Printf.fprintf fid "[%d] %s\n" !n s; 
+	incr n
+	;;
+	
+let make_moves fid n = 
+	let lenopts = [|"1";"2";"3";"2*2";"1/2";"2/3"|] in
+	let angopts = [|"1/5";"2/5";"3/5";"4/5";"1/4";"3/4";"1/3";"2/3";"1/2";
+		"1";"2";"3";"4";"5";"6";"ua/5";"ua/4";"ua/3";"ua/2";"ua"|] in
+	let preopts = [| ""; "0 - "|] in
+	let r = ref [] in
+	for i = 0 to (Array.length lenopts)-1 do (
+		for j = 0 to (Array.length angopts)-1 do (
+			for k = 0 to (Array.length preopts)-1 do (
+				let s = "move "^ lenopts.(i)^
+						" , "^preopts.(k)^angopts.(j) in
+				r := s :: !r; 
+				renderpng n s fid
+			) done; 
+		) done;
+	) done;
+	List.rev !r
+	;;
+
 let init_database steak count = 
 	(* generate 'count' initial program & image pairs *)
 	let dbf_cpu = Tensor.( 
@@ -1323,8 +1357,8 @@ let init_database steak count =
 	let steak = {steak with dbf; dbf_cpu} in
 	Logs.info(fun m -> m  "init_database %d" count); 
 	let root = "/tmp/ec3/init_database" in
-	let fid = open_out (Printf.sprintf "%s/newdbg.txt" root) in
-	let i = ref 0 in
+	let fid = open_out (Printf.sprintf "%s/enumerate.txt" root) in
+	let u = ref 0 in
 	let iters = ref 0 in
 
 	let tryadd data img override =
@@ -1332,23 +1366,23 @@ let init_database steak count =
 		let good,dist,minde = if override then true,0.5,0
 			else dbf_dist steak imgf in
 		let mindex = steak.gs.img_inv.(minde) in
+		let s = Logo.output_program_pstr data.pro in
 		if good then (
 		(* bug: white image sets distance to 1.0 to [0] *)
 		(*Logs.debug (fun m -> m "dbf_dist %f %d" dist mindex);*)
-		if dist > 0.002 then (
-			let s = Logo.output_program_pstr data.pro in
+		if dist > 0.0002 then (
 			Logs.debug(fun m -> m
-				"%d: adding [%d] = %s" !iters !i s);
+				"%d: adding [%d] = %s" !iters !u s);
 			let added,_ = db_add_uniq steak data imgf imgf_cpu ~doenc:false in
 			if not added then Logs.err (fun m->m "did not add %s to db" s);
 			Logo.segs_to_png data.segs 64
-				(Printf.sprintf "%s/db%05d_.png" root !i);
-			dbf_to_png steak.dbf !i
-				(Printf.sprintf "%s/db%05d_f.png" root !i);
-			Printf.fprintf fid "[%d] %s (dist:%f to:%d)\n" !i s dist mindex;
-			incr i;
+				(Printf.sprintf "%s/db%05d_.png" root !u);
+			dbf_to_png steak.dbf !u
+				(Printf.sprintf "%s/db%05d_f.png" root !u);
+			Printf.fprintf fid "[%d] %s (dist:%f to:%d)\n" !u s dist mindex;
+			incr u;
 		) ;
-		if dist < 0.0002 then (
+		if dist < 0.0001 then (
 			(* see if there's a replacement *)
 			let data2 = db_get steak mindex in
 			let c1 = data.pcost in (* progenc_cost  *)
@@ -1357,11 +1391,11 @@ let init_database steak count =
 				let r = db_replace_equiv steak mindex data imgf imgf_cpu in
 				if r >= 0 then (
 					Logs.debug(fun m -> m
-					"%d: replacing [%d] = %s ( was %s) dist:%f"
+					"%d: replacing [%d] = %s ( was %s) dist:%f new [%d]"
 					!iters mindex
 					(Logo.output_program_pstr data.pro)
-					(Logo.output_program_pstr data2.ed.pro) dist);
-					incr i;
+					(Logo.output_program_pstr data2.ed.pro) dist r);
+					incr u;
 				)
 			);
 			if c1 > c2 then (
@@ -1375,11 +1409,18 @@ let init_database steak count =
 						(Logo.output_program_pstr data2.ed.pro)
 						data.progenc data2.ed.progenc
 						(data.progenc = data2.ed.progenc) dist);
-						incr i;
+						incr u;
 					)
 				)
 			);
-		) );
+		) ; 
+		if dist <= 0.0002 && dist >= 0.0001 then (
+			Logs.debug (fun m->m "%d: %s reject, dist: %f to: %d" 
+				!iters s dist mindex)
+		)
+		) else (
+			Logs.debug (fun m->m "%d: not good: %s" !iters s)
+		) ; 
 		if !iters mod 40 = 39 then
 			(* needed to clean up torch allocations *)
 			Caml.Gc.major ();
@@ -1390,37 +1431,12 @@ let init_database steak count =
 		let data,img = generate_logo_fromstr str in
 		tryadd data img override
 	in
-	
-	let renderpng n s fid = 
-		let fname = Printf.sprintf "/tmp/ec3/init_database/%05d.png" !n in
-		ignore( Logoext.run_logo_string s 64 fname !gdebug); 
-		Printf.fprintf fid "[%d] %s\n" !n s; 
-		incr n
-	in
 
 	tryadd_fromstr "" true;
 	tryadd_fromstr "move 1, 1" false;
-	let lenopts = [|"1";"2";"3";"2*2";"1/2";"2/3"|] in
-	let angopts = [|"1/5";"2/5";"3/5";"4/5";"1/4";"3/4";"1/3";"2/3";"1/2";
-		"1";"2";"3";"4";"5";"6";"ua/5";"ua/4";"ua/3";"ua/2";"ua"|] in
-	let preopts = [| ""; "0 - "|] in
-	let n = ref 0 in
-	let fid = open_out "/tmp/ec3/init_database/enumerate.txt" in
-	let make_moves () =
-		let r = ref [] in
-		for i = 0 to (Array.length lenopts)-1 do (
-			for j = 0 to (Array.length angopts)-1 do (
-				for k = 0 to (Array.length preopts)-1 do (
-					let s = "move "^ lenopts.(i)^
-							" , "^preopts.(k)^angopts.(j) in
-					r := s :: !r; 
-					renderpng n s fid
-				) done; 
-			) done;
-		) done;
-		!r
-	in
-	let r = make_moves () in
+	tryadd_fromstr "move 1, 0 - 1" false;
+	let n = ref 3 in
+	let r = make_moves fid n in
 	let rp = List.map (fun s -> "( "^s^")") r in
 	(* now outer-prod them in a sequence + pen *)
 	let penopts = [|"1";"2";"3";"4"|] 
@@ -1450,11 +1466,11 @@ let init_database steak count =
 		r3 := s2 :: !r3; 
 		renderpng n s2 fid
 	) done; 
-	while !n < 7000 do (
+	while !n < 8000 do (
 		let i = Random.int nra in
 		let j = Random.int nra in
 		let k = Random.int (Array.length penopts) in
-		let y = [| ra.(i); ra.(j); penopts.(k) |] |> permute_array in
+		let y = [| ra.(i); penopts.(k); ra.(j) |] in
 		let s,_ = Array.fold_left (fun (a,m) b -> 
 			(if m<2 then a^b^"; " else a^b),m+1) ("",0) y in
 		let s2 = "(pen 0 ;"^s^")" in
@@ -1466,7 +1482,20 @@ let init_database steak count =
 		let j = Random.int nra in
 		let k = Random.int nra in
 		let l = Random.int (Array.length penopts) in
-		let y = [| ra.(i); ra.(j); ra.(k); penopts.(l) |] |> permute_array in
+		let y = [| ra.(i); penopts.(l); ra.(j); ra.(k); |] in
+		let s,_ = Array.fold_left (fun (a,m) b -> 
+			(if m<2 then a^b^"; " else a^b),m+1) ("",0) y in
+		let s2 = "(pen 0 ;"^s^")" in
+		r3 := s2 :: !r3; 
+		renderpng n s2 fid
+	) done;
+	while !n < 13000 do (
+		let i = Random.int nra in
+		let j = Random.int nra in
+		let k = Random.int nra in
+		let l = Random.int (Array.length penopts) in
+		let m = Random.int (Array.length penopts) in
+		let y = [| ra.(i); penopts.(l); ra.(j); penopts.(m); ra.(k); |] in
 		let s,_ = Array.fold_left (fun (a,m) b -> 
 			(if m<2 then a^b^"; " else a^b),m+1) ("",0) y in
 		let s2 = "(pen 0 ;"^s^")" in
@@ -1484,7 +1513,7 @@ let init_database steak count =
 	) done; *)
 	close_out fid; 
 	let steak = sort_database steak in
-	Logs.info(fun m -> m  "%d done; %d sampled; %d replacements; %d equivalents" !i !iters steak.gs.num_uniq steak.gs.num_equiv); 
+	Logs.info(fun m -> m  "%d done; %d sampled; %d replacements; %d equivalents" !u !iters steak.gs.num_uniq steak.gs.num_equiv); 
 	steak
 
 let verify_database steak =
@@ -1616,13 +1645,13 @@ let handle_message steak bd msg =
 					if pos = spos then incr posright; 
 					if chr = schr then incr chrright; 
 					if !print then (
-						Logs.info (fun m -> m "|i%d |b%d true: %s [%d] %c ; decode: %s [%d] %c \"%s\""
+						Logs.debug (fun m -> m "|i%d |b%d true: %s [%d] %c ; decode: %s [%d] %c \"%s\""
 							steak.batchno i styp spos schr typ pos chr bd.bea.(i).c_progenc); 
 						print := false
 					)
 				) ) edit_arr ; 
 			let pctg v = (foi !v) /. (foi !batch_size) in
-			Logs.info (fun m -> m (* TODO: debug mode *)
+			Logs.debug (fun m -> m (* TODO: debug mode *)
 				"decode_edit: correct typ %0.3f chr %0.3f pos %0.3f " 
 				(pctg typright) (pctg chrright) (pctg posright) );
 		in

@@ -4231,3 +4231,37 @@ and 2 seems to hold as well.
 	This is tricky, as all the pointers will change!! 
 	(Could also keep a list of the empty positions in the array, and annul all entries with that one.. kinda simpler)
 	
+April 25 2023
+
+Fixed more bugs with the pathfinding algo -- was getting upwards of 32M paths in the training set!  insane...  
+Reason was that these were disordered.  
+Fixed that to make more sense: started dijkstra from the root node, so only one pass needed. 
+Trying some training now .. 
+But, need to: 
+1 - Replace Vector with a fixed Array
+2 - Keep track of unused slots in the array with a list
+3 - Remove unused nodes periodically, without corrupting the rest of the graph. 
+	 Otherwise we end up running out of memory for the working programs! 
+	 (Certainly can make things a good bit larger, but still..)
+4 - ** figure out why it takes many batches for supervised decoding to "warm up" .. ? 
+5 - The 'programmer' tends to get stuck in dead-ends: 
+	 It's hard to make an improvement when the turtle is at the end of a stroke. 
+	 One solution would be to allow for a 'reset' operator -- 
+	 This cuts up the potentially long depedency graphs. 
+		And gets a bit closer to simply outputting segments directly. Hum. 
+		Would be better that the program learns to "lift up the pen"
+		but ... this is a large edit, 
+		and is not permitted with the current criteria: 
+	The model must output "fin" before getting to putting the pen back down, 
+	changing the pen size, and drawing another line. 
+	At minimum it needs to be allowed an "equv" or "cont" command -- 
+		e.g. keep running the model to get the next edits. 
+	Alternately, just get the model to emit more tokens. 
+	Need at least: 
+	; pen 0; move 4/5, 3; pen 3; move a/b c/d
+	That's 21 tokens!  
+	Easy easy with a LLM, but here we're trying to bootstrap incrementally. 
+	Another solution is to compress this into one smaller op: 
+	turtle x, y -> move to new location, keep pen style, but don't emit a new segment. 
+	-> Ideally we could just have a call to do this... in a library say.. 
+		But do need the reset command. 

@@ -482,20 +482,26 @@ let dijkstra gs start dbg =
 	
 	dijk q; 
 	
-	let rec print_path i = 
-		let d = Vector.get gs.g i in
-		Logs.debug (fun m -> m "[%d] %s -> " 
-			i (Logo.output_program_pstr d.ed.pro)); 
-		let j = prev.(i) in
-		if j >= 0 then print_path prev.(i) else ()
-	in
+	let root = "/tmp/ec3/dijkstra" in
+	let fid = open_out (Printf.sprintf "%s/paths.txt" root) in
 	
-	if dbg then (
-		for i = 0 to 9 do 
-			Logs.debug (fun m -> m "--%d--" i); 
-			print_path (Random.int n)
-		done 
-	); 
+	let rec print_path final step present = 
+		let d = Vector.get gs.g present in
+		Printf.fprintf fid "final:%d step:%d present:%d %s \n" 
+			final step present (Logo.output_program_pstr d.ed.pro); 
+		let fname = Printf.sprintf "%s/%d_%d.png" root final step in
+		ignore(Logoext.run_prog (Some d.ed.pro) 64 fname false); 
+		let j = prev.(present) in
+		if j >= 0 then print_path final (step+1) j else ()
+	in
+
+	for i = 0 to 19 do (
+		Printf.fprintf fid "--%d--" i; 
+		let k = Random.int n in
+		print_path k 0 k
+	) done; 
+
+	close_out fid; 
 	
 	(dist, prev)
 	
@@ -519,7 +525,7 @@ let edge_use gs l =
 		Vector.set gs.g post {b with good} ) l; 
 	let unused = ref 0 in
 	Vector.iter (fun a -> if a.good = 0 then incr unused) gs.g; 
-	Logs.debug (fun m->m "unused database nodes: %d" !unused)
+	Logs.info (fun m->m "Graf.edge_use: unused database nodes: %d" !unused)
 	;;
 		
 let gexf_out gs = 
