@@ -44,41 +44,44 @@ let () =
 	done; *)
 	test_logo (); 
 	
+	(*let device = Torch.Device.Cpu in*) (* slower *)
+	let device = Torch.Device.cuda_if_available () in
+	
 	let mnistd = Mnist_helper.read_files ~prefix:"../otorch-test/data" () in
 	let mimg = Tensor.reshape mnistd.train_images 
 		~shape:[60000; 28; 28] in
 	(* need to pad to 30 x 30, one pixel on each side *)
-	let mnist = Tensor.zeros [60000; 30; 30] in
+	let mnist_cpu = Tensor.zeros [60000; 30; 30] in
 	Tensor.copy_ (
-		Tensor.narrow mnist ~dim:1 ~start:1 ~length:28 |> 
+		Tensor.narrow mnist_cpu ~dim:1 ~start:1 ~length:28 |> 
 		Tensor.narrow ~dim:2 ~start:1 ~length:28) ~src:mimg ;
 		(* Tensor.narrow returns a pointer/view; copy_ is in-place. *)
-		(* keep on CPU? *)
-	
-	(*let device = Torch.Device.Cpu in*) (* slower *)
-	let device = Torch.Device.cuda_if_available () in
+	let mnist = Tensor.to_device mnist_cpu ~device in
+
 	let gs = Graf.create image_alloc in
 	let dbf = Tensor.zeros [2;2] in
 	let dbf_cpu = Tensor.zeros [2;2] in 
 	let dbf_enc = Tensor.zeros [2;2] in
 	let mnist_enc = Tensor.zeros [2;2] in
-	let vae = Vae.dummy_ext () in
+	(*let vae = Vae.dummy_ext () in*)
 	let db_mutex = Mutex.create () in
 	let pool = Dtask.setup_pool ~num_domains:12 () in 
 		(* tune this -- 8-12 seems ok *)
+	let de = decode_edit_tensors !batch_size in
+	let training = [| |] in
 	let supfid = open_out "/tmp/ec3/replacements_sup.txt" in
 	let dreamfid = open_out "/tmp/ec3/replacements_dream.txt" in
 	let fid_verify = open_out "/tmp/ec3/verify.txt" in
 	
 	let supstak = 
-		{device; gs; dbf; dbf_cpu; dbf_enc; mnist; mnist_enc; vae; db_mutex;
-		superv=true; fid=supfid; fid_verify; batchno=0; pool } in
+		{device; gs; dbf; dbf_cpu; dbf_enc; mnist; mnist_cpu; mnist_enc; (*vae;*) db_mutex;
+		superv=true; fid=supfid; fid_verify; batchno=0; pool; de; training} in
 	
 	let supsteak = if Sys.file_exists "db_sorted.S" then ( 
 		(*Dtask.run supsteak.pool (fun () -> load_database supsteak )*)
 		load_database supstak "db_sorted.S"
 	) else ( 
-		let nprogs = 1000 in
+		let nprogs = 8192 in
 		Logs.app(fun m -> m "Generating %d programs" nprogs);
 		let start = Unix.gettimeofday () in
 		let stk = init_database supstak nprogs in
@@ -96,17 +99,22 @@ let () =
 		save_database stk "db_sorted.S";
 		stk
 	) in
+	
 	render_simplest supsteak; 
 	
+	Logs.info (fun m->m "generating training dataset.."); 
+	let training2 = mnist_closest supsteak in
+	Logs.info (fun m->m "training size: %d" (Array.length training2)); 
+	let supsteak = {supsteak with training = training2} in
+	
 	(* try to train the vae? *)
-	let dbfs = Tensor.narrow supsteak.dbf ~dim:0 ~start:0 ~length:(supsteak.gs.num_uniq) in
+	(*let dbfs = Tensor.narrow supsteak.dbf ~dim:0 ~start:0 ~length:(supsteak.gs.num_uniq) in
 	let vae,dbf_enc',mnist_enc = Vae.train_ext dbfs mnist device !batch_size in
 	(* need to re-expand for future allocation *)
 	let encl,cols = Tensor.shape2_exn dbf_enc' in
 	let dbf_enc = Tensor.( (ones [image_alloc;cols]) * (f (-1.0) ) ) in
 	Tensor.copy_ (Tensor.narrow dbf_enc ~dim:0 ~start:0 ~length:encl) ~src:dbf_enc' ;
-	
-	let supsteak = {supsteak with dbf_enc; mnist_enc; vae} in
+	let supsteak = {supsteak with dbf_enc; mnist_enc; vae} in*)
 
 	
 	(* PSA: extra bit of complexity!! 
@@ -126,14 +134,13 @@ let () =
 		servthread supsteak () ; 
 		Dtask.teardown_pool supsteak.pool)
 	| 1 -> ( (* dream only *)
-		let pool2 = Dtask.setup_pool ~num_domains:8 () in
 		let dreamsteak = {supsteak with
-			superv=false; fid=dreamfid; batchno=0; pool=pool2 } in
+			superv=false; fid=dreamfid;} in
 		servthread dreamsteak (); 
 		Dtask.teardown_pool dreamsteak.pool )
 	| 2 -> ( (* both *)
 		let d = Domain.spawn (fun _ ->
-			let pool2 = Dtask.setup_pool ~num_domains:8 () in
+			let pool2 = Dtask.setup_pool ~num_domains:12 () in
 			let dreamsteak = {supsteak with
 				superv=false; fid=dreamfid; batchno=0; pool=pool2 } in
 			servthread dreamsteak (); 
