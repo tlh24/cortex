@@ -27,22 +27,28 @@ let () =
 	let dbf_cpu = Torch.Tensor.zeros [2;2] in 
 	let dbf_enc = Torch.Tensor.zeros [2;2] in
 	let mnist = Torch.Tensor.zeros [2;2] in
+	let mnist_cpu = Torch.Tensor.zeros [2;2] in
 	let mnist_enc = Torch.Tensor.zeros [2;2] in
-	let vae = Vae.dummy_ext () in
+	(*let vae = Vae.dummy_ext () in*)
 	let db_mutex = Mutex.create () in
 	let pool = Dtask.setup_pool ~num_domains:12 () in 
 		(* tune this -- 8-12 seems ok *)
+	let de = decode_edit_tensors 4 in (* dummy *)
+	let training = [| |] in
 	let supfid = open_out "/tmp/ec3/replacements_sup.txt" in
 	let dreamfid = open_out "/tmp/ec3/replacements_dream.txt" in
 	let fid_verify = open_out "/tmp/ec3/verify.txt" in
 	
 	let supstak = 
-		{device; gs; dbf; dbf_cpu; dbf_enc; mnist; mnist_enc; vae; db_mutex;
-		superv=true; fid=supfid; fid_verify; batchno=0; pool } in
+		{device; gs; dbf; dbf_cpu; dbf_enc; mnist; mnist_cpu; mnist_enc; (*vae;*) db_mutex;
+		superv=true; fid=supfid; fid_verify; batchno=0; pool; de; training} in
 	
 	let supsteak = load_database supstak "db_sorted.S" in
+	ignore( Graf.dijkstra supsteak.gs 0 true); 
 	verify_database supsteak; 
 	save_database supsteak "db_rewrite.S"; 
+	
+	Graf.gexf_out supsteak.gs;
 	
 	close_out supfid; 
 	close_out dreamfid;

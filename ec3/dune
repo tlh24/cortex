@@ -30,49 +30,55 @@
 (library
 	(name colors)
 	(modules colors)
-	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib)
+	(libraries vg vg.cairo logs logs.threaded)
 	)
 
 (library
 	(name vgwrapper)
 	(modules vgwrapper)
-	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib colors)
+	(libraries vg vg.cairo logs logs.threaded colors)
 	)
 
 (library
 	(name logo)
 	(modules logo)
-	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib vgwrapper colors)
+	(libraries vg vg.cairo logs logs.threaded vgwrapper colors)
 	)
 
 (library
 	(name parser)
 	(modules parser)
-	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib logo vgwrapper colors)
+	(libraries vg vg.cairo logs logs.threaded logo vgwrapper colors)
 	)
 
 (library
 	(name lexer)
 	(modules lexer)
-	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib parser logo vgwrapper colors)
+	(libraries vg vg.cairo logs logs.threaded parser logo vgwrapper colors)
+	)
+	
+(library
+	(name logoext)
+	(modules logoext)
+	(libraries vg vg.cairo logs logs.threaded parser logo vgwrapper colors lexer)
 	)
 
 (library
 	(name levenshtein)
 	(modules levenshtein)
-	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib)
+	(libraries logs logs.threaded)
 	)
 	
 (library
 	(name ast)
 	(modules ast)
-	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib logo)
+	(libraries logo)
 	)
 	
 (library
 	(name graf)
 	(modules graf)
-	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib lexer parser logo vgwrapper colors levenshtein ast)
+	(libraries vg vg.cairo vector torch torch.vision logs logs.threaded domainslib sexplib psq lexer parser logo vgwrapper colors levenshtein ast logoext)
 	)
 	
 (library
@@ -80,25 +86,42 @@
 	(modules vae)
 	(libraries torch torch.vision logs logs.threaded domainslib)
 	)
+	
+(library 
+	(name editree)
+	(modules editree)
+	(libraries levenshtein logs))
 
 (library	
 	(name program)
 	(modules program)
-	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib graf lexer parser logo vgwrapper colors levenshtein ast vae)
+	(libraries vg vg.cairo vector torch torch.vision pcre logs logs.threaded domainslib sexplib graf lexer parser logo vgwrapper colors levenshtein ast vae editree logoext)
 	)
 
 (executable
 	(name main)
 	(modules main )
-	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib program)
+	(libraries vg vg.cairo vector torch torch.vision pcre logs logs.threaded domainslib sexplib program)
 	(modes exe) ; options: byte exe
 	)
 
 (executable
 	(name verify)
 	(modules verify)
-	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib program)
+	(libraries vg vg.cairo vector torch torch.vision pcre logs logs.threaded domainslib sexplib program)
 	(modes exe) ; options: byte exe
+	)
+	
+(executable 
+	(name editree_test)
+	(modules editree_test)
+	(libraries levenshtein editree))
+	
+(executable
+	(name logofilerun)
+	(modules logofilerun)
+	(libraries vg vg.cairo vector torch torch.vision pcre logs logs.threaded program logoext)
+	(modes exe)
 	)
 	
 ;(executable
