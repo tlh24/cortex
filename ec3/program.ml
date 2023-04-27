@@ -348,20 +348,21 @@ let mnist_closest steak =
 		let closest = match Tensor.to_int1 indx with
 			| Some x -> x
 			| _ -> [| |] in
-		(*let root = "/tmp/ec3/mnist_closest" in
-		Array.iteri (fun i x -> 
-			if i < 100 then (
-				let j = steak.gs.img_inv.(x) in
-				Logs.debug (fun m->m "dbf %d (gs.g %d) is closest to mnist %d" x j (nmnist*u + i)); 
-				if u = 0 then (
-					dbf_to_png steak.dbf x
-						(Printf.sprintf "%s/%05d_dbf.png" root i);
-					dbf_to_png steak.mnist_cpu i
-						(Printf.sprintf "%s/%05d_mnist.png" root i);
-					let a = db_get steak j in
-					Logo.segs_to_png a.ed.segs 64
-						(Printf.sprintf "%s/%05d_segs.png" root i);
-				) ) ) closest;*) 
+		if true then (
+			let root = "/tmp/ec3/mnist_closest" in
+			Array.iteri (fun i x -> 
+				if i < 100 then (
+					let j = steak.gs.img_inv.(x) in
+					Logs.debug (fun m->m "dbf %d (gs.g %d) is closest to mnist %d" x j (nmnist*u + i)); 
+					if u = 0 then (
+						dbf_to_png steak.dbf x
+							(Printf.sprintf "%s/%05d_dbf.png" root i);
+						dbf_to_png steak.mnist_cpu i
+							(Printf.sprintf "%s/%05d_mnist.png" root i);
+						let a = db_get steak j in
+						Logo.segs_to_png a.ed.segs 64
+							(Printf.sprintf "%s/%05d_segs.png" root i);
+					) ) ) closest ); 
 		let s = Array.fold_left (fun a b -> SX.add b a) SX.empty closest in
 		(* make a (repeating) list of (from, to) indexes for training *)
 		(* start from the root node *)
