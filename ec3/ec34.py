@@ -1,4 +1,3 @@
-
 import torch as th
 from torch import nn, optim
 import torch.cuda.amp
@@ -30,7 +29,7 @@ print(f"dreaming:{mc.dreaming}")
 # setup the socket client and handshake with the server.
 socket_client = SocketClient(mc.dreaming)
 socket_client.connect()
-socket_client.handshake()
+# socket_client.handshake() -- not needed anymore!  April 27 2023
 
 
 os.system(mc.edsiz_allocate_command)
@@ -70,6 +69,12 @@ model = Recognizer(
 
 model.print_n_params()
 
+# TODO : replace this with the new loading logic !!
+from os.path import exists
+if exists("ec32.ptx"):
+	loaded_dict = torch.load("ec32.ptx")
+	model.load_state_dict(loaded_dict)
+
 # model = nn.DataParallel(model)
 
 # loss is on the predicted edit: 
@@ -92,6 +97,7 @@ if mc.training:
 	print("training...")
 if mc.dreaming:
 	print("dreaming...")
+	torch. set_grad_enabled(False)
 
 # compiling this does not seem to work... 
 def train(mod, bimg, bpro, bedts): 
@@ -113,21 +119,12 @@ for u in range(mc.train_iters):
 	bimg = mo.read_bimg()
 	bedts = mo.read_bedts()
 
-	
 	if th.min(bedts[:,0]) < 0: 
 		print("bedts synchronization issue!")
-		
-	if mc.dreaming: 
-		bimg = bimg.cuda()
-		bimg = bimg + th.randn(batch_size, 3, mc.image_res, mc.image_res) * 0.1 # AN - what is this?
-	else:
-		bimg = bimg.cuda()
 	
-	model.zero_grad()
-	y,q = model(u, bimg, bpro.cuda())
 	if mc.training: 
-		
-		  # encapsulate in model?
+		model.zero_grad()
+		y,q = model(u, bimg.cuda(), bpro.cuda())
 		targ = bedts.cuda()
 		loss = lossfunc_mse(y, targ)
 		lossflat = th.sum(loss)
@@ -136,6 +133,17 @@ for u in range(mc.train_iters):
 		optimizer.step() 
 		lossflat.detach()
 	else: 
+		bimg = bimg.cuda()
+		bpro = bpro.cuda()
+		# introduce noise to the target image and average model output 
+		# so ocaml has a better estimate of edit probabilities
+		bimg1 = bimg + th.randn(batch_size, 3, mc.image_res, mc.image_res) * 0.1
+		y1,q = model(u, bimg1, bpro)
+		bimg2 = bimg + th.randn(batch_size, 3, mc.image_res, mc.image_res) * 0.1
+		y2,q = model(u, bimg2, bpro)
+		bimg3 = bimg + th.randn(batch_size, 3, mc.image_res, mc.image_res) * 0.1
+		y3,q = model(u, bimg3, bpro)
+		y = (y1 + y2 + y3)/3.0
 		lossflat = 0.0
   
 	slowloss = 0.99*slowloss + 0.01 * lossflat
@@ -151,7 +159,7 @@ for u in range(mc.train_iters):
 	mo.write_bedtd(y)
 	if mc.training: 
 		mo.write_editdiff(bedts - y.cpu()) # synchronization.
-		socket_client.send_and_receive(message="update_editdiff")
+	socket_client.send_and_receive(message="decode_edit")
   
 	if u % 11 == 0 :
 		toc = time.time()
