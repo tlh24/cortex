@@ -1,9 +1,7 @@
 open Lexer
 open Lexing
-(*open Logo*)
-(*open Levenshtein*)
 
-(* the Vector stores the actual data,
+(* the Array stores the actual data,
 while the edges are stored as integers (pointers)
 edges are doubly linked: if that node is updated, it changes
 all nodes connected to it - and changes those nodes links too 
@@ -19,7 +17,7 @@ let ios = int_of_string
 
 module SI = Set.Make( 
 	(* set for outgoing connections *)
-	(* node, edit type, edit count, used count *)
+	(* node#, edit type, edit count, used count *)
 	(* type and count are for sorting / selecting *)
 	struct
 		let compare (a,_,_,_) (b,_,_,_) = compare a b
@@ -60,8 +58,8 @@ let nuledata =
 	{ pro = `Nop
 	; progenc = ""
 	; progaddr = []
-	; scost = 0.0
-	; pcost = 0.0
+	; scost = 999999.0
+	; pcost = 999999.0
 	; segs = []
 	}
 
@@ -76,17 +74,22 @@ let nulgdata =
 	}
 	
 type gstat = 
-	{ g : gdata Vector.t
-	; image_alloc : int
+	{ g : gdata array
+	; image_alloc : int (* number of uniq allocated in torch mem*)
+	; all_alloc : int	  (* number of uniq + equiv = Array.len g *)
 	; img_inv : int array (* points back to g, g[img_inv.(i)].imgi = i *)
+	; mutable free_slots : int list (* in g *)
+	; mutable free_img : int list (* in g *)
 	; mutable num_uniq : int
 	; mutable num_equiv : int
 	}
 
-let create image_alloc =
-	let g = Vector.create ~dummy:nulgdata in
+let create all_alloc image_alloc =
+	let g = Array.make all_alloc nulgdata in
 	let img_inv = Array.make image_alloc 0 in
-	{g; image_alloc; img_inv; num_uniq = 0; num_equiv = 0 }
+	let free_slots = List.init all_alloc (fun i -> i) in
+	let free_img = List.init image_alloc (fun i -> i) in
+	{g; image_alloc; all_alloc; img_inv; free_slots; free_img; num_uniq = 0; num_equiv = 0 }
 
 let count_edit_types edits = 
 	let count_type typ = 
@@ -141,20 +144,20 @@ let get_edits a_progenc b_progenc =
 	let edits = ("fin",0,'0') :: edits in
 	dist, (List.rev edits)
 	
-let connect_uniq g indx = 
-	let d = Vector.get g indx in
-	(* need to connect to the rest of the graph *)
+let connect g indx = 
+	let d = g.(indx) in
+	(* connect new node to the rest of the graph *)
 	let pe = d.ed.progenc in
 	let nearby = ref [] in
-	Vector.iteri (fun i a -> 
-		if i <> indx then (
+	Array.iteri (fun i a -> 
+		if a.progt <> `Np && i <> indx then (
 			let cnt,edits = get_edits pe a.ed.progenc in
 			let b,typ = edit_criteria edits in
 			if b then (
 				nearby := (i,typ,cnt,0) :: !nearby; 
-				(*Printf.printf "connect_uniq: [%d] conn [%d] : %d \n" indx i dist
+				(*Printf.printf "connect: [%d] conn [%d] : %d \n" indx i dist
 			) else (
-				Printf.printf "connect_uniq: [%d] nocon [%d] : %d\n" indx i dist*)
+				Printf.printf "connect: [%d] nocon [%d] : %d\n" indx i dist*)
 			)
 		 ) ) g; 
 	List.iter (fun (i,typ,cnt,used) -> 
@@ -162,100 +165,182 @@ let connect_uniq g indx =
 			| "del" -> "ins"
 			| "ins" -> "del"
 			| _ -> "sub" in
-		let d2 = Vector.get g i in
+		let d2 = g.(i) in
 		let d2o = SI.add (indx,invtyp,cnt,used) d2.outgoing in
-		Vector.set g i {d2 with outgoing=d2o} ) (!nearby) ; 
+		g.(i) <- {d2 with outgoing=d2o} ) (!nearby) ; 
 	(* update current node *)
-	Vector.set g indx {d with outgoing=(SI.of_list (!nearby)) }
+	g.(indx) <- {d with outgoing=(SI.of_list (!nearby)) }
+	;;
+	
+let get_slot gs = 
+	let nfree = List.length gs.free_slots in
+	if nfree > 0 then (
+		let ni = List.hd gs.free_slots in
+		gs.free_slots <- List.tl gs.free_slots; 
+		ni
+	) else ( -1 )
+	;;
+	
+let get_slot_img gs = 
+	let nfree = List.length gs.free_img in
+	if nfree > 0 then (
+		let ni = List.hd gs.free_img in
+		gs.free_img <- List.tl gs.free_img; 
+		ni
+	) else ( -1 )
+	;;
 	
 let add_uniq gs ed = 
 	(* add a unique node to the graph structure *)
 	(* returns where it's stored; for now = imgf index *)
-	let l = gs.num_uniq in
-	if l < gs.image_alloc then (
-		let d = {nulgdata with ed; progt = `Uniq; imgi = l} in
-		Vector.push gs.g d; 
-		let ni = (Vector.length gs.g) - 1 in
+	let ni = get_slot gs in
+	let imgi = get_slot_img gs in
+	if imgi >= 0 && ni >= 0 then (
+		let d = {nulgdata with ed; progt = `Uniq; imgi} in
+		gs.g.(ni) <- d; 
 		gs.img_inv.(d.imgi) <- ni ; (* back pointer *)
-		connect_uniq gs.g ni; 
+		connect gs.g ni; 
 		gs.num_uniq <- gs.num_uniq + 1; 
-		ni,l (* index to gs.g and dbf respectively *)
+		ni,imgi (* index to gs.g and dbf respectively *)
 	) else (-1),(-1)
+	;;
 	
 let replace_equiv gs indx ed =
-	(* d2 is equivalent to gs.g[indx], but lower cost *)
-	(* add d2 the end, and update d1 = g[indx]. *)
+	(* ed is equivalent to gs.g[indx], but lower cost *)
+	(* add ed the end, and update d1 = g[indx]. *)
 	(* outgoing connections are not changed *)
-	let d1 = Vector.get gs.g indx in
-	if SI.cardinal d1.equivalents < 16 then (
-		if d1.ed.progenc <> ed.progenc then (
-			let eq2 = SI.add (indx,"",0,0) d1.equivalents in
-			let equivalents = SI.map (fun (i,_,_,_) -> 
-				let e = Vector.get gs.g i in
-				let cnt,edits = get_edits ed.progenc e.ed.progenc in
-				let _,typ = edit_criteria edits in (* not constrained! *)
-				i,typ,cnt,0) eq2 in
-			let d2 = {nulgdata with ed; 
-						progt = `Uniq; 
-						equivalents;
-						imgi = d1.imgi} in
-			Vector.push gs.g d2;
-			gs.num_equiv <- gs.num_equiv + 1; 
-			let ni = (Vector.length gs.g) - 1 in (* new index *)
-			(*Logs.debug (fun m -> m "replace_equiv %d %d" d2.imgi ni);*) 
-			gs.img_inv.(d2.imgi) <- ni ; (* back pointer *)
-			(* update the incoming equivalent pointers; includes d1 !  *)
-			SI.iter (fun (i,_,_,_) -> 
-				let e = Vector.get gs.g i in
-				let e' = {e with progt = `Equiv; equivroot = ni; equivalents = SI.empty} in
-				Vector.set gs.g i e' ) d2.equivalents; 
-			(* finally, update d2's edit connections *)
-			connect_uniq gs.g ni ; 
-			ni,d2.imgi (* return the location of the new node, same as add_uniq *)
+	let ni = get_slot gs in
+	if ni >= 0 then (
+		let d1 = gs.g.(indx) in
+		if SI.cardinal d1.equivalents < 16 then (
+			if d1.ed.progenc <> ed.progenc then (
+				let eq2 = SI.add (indx,"",0,0) d1.equivalents in (* fixed below *)
+				let equivalents = SI.map (fun (i,_,_,_) -> 
+					let e = gs.g.(i) in
+					let cnt,edits = get_edits ed.progenc e.ed.progenc in
+					let _,typ = edit_criteria edits in (* not constrained! *)
+					i,typ,cnt,0) eq2 in
+				let d2 = {nulgdata with ed; 
+							progt = `Uniq; 
+							equivalents;
+							imgi = d1.imgi} in
+				gs.g.(ni) <- d2;
+				gs.num_equiv <- gs.num_equiv + 1; 
+				(*Logs.debug (fun m -> m "replace_equiv %d %d" d2.imgi ni);*) 
+				gs.img_inv.(d2.imgi) <- ni ; (* back pointer *)
+				(* update the incoming equivalent pointers; includes d1 *)
+				SI.iter (fun (i,_,_,_) -> 
+					let e = gs.g.(i) in
+					let e' = {e with progt = `Equiv; equivroot = ni; equivalents = SI.empty} in
+					gs.g.(i) <- e' ) d2.equivalents; 
+				(* finally, update d2's edit connections *)
+				connect gs.g ni ; 
+				ni,d2.imgi (* return the location of the new node, same as add_uniq *)
+			) else (-1),(-1)
 		) else (-1),(-1)
 	) else (-1),(-1)
+	;;
 	
 let add_equiv gs indx ed =
 	(* d2 is equivalent to gs.g[indx], but higher (or equivalent) cost *)
 	(* union-find the root equivalent *)
 	let rec find_root j = 
-		let d = Vector.get gs.g j in
+		let d = gs.g.(j) in
 		if d.equivroot >= 0 then 
 			find_root d.equivroot
 		else
-			j in
-	let equivroot = find_root indx in
-	let d1 = Vector.get gs.g equivroot in
-	if d1.ed.progenc <> ed.progenc then (
-		(* need to verify that this is not in the graph.*)
-		let has = SI.fold (fun (j,_,_,_) a -> 
-			let d = Vector.get gs.g j in
-			if d.ed.progenc = ed.progenc then true else a) 
-			d1.equivalents false in
-		if not has then (
-			let d2 = {nulgdata with ed; progt = `Equiv; equivroot; imgi = d1.imgi} in
-			Vector.push gs.g d2; 
-			gs.num_equiv <- gs.num_equiv + 1;
-			let ni = (Vector.length gs.g) - 1 in (* new index *)
-			let cnt,edits = get_edits d1.ed.progenc ed.progenc in
-			let _b,typ = edit_criteria edits in (* NOTE not constrained! *)
-			let d1' = {d1 with equivalents = SI.add (ni,typ,cnt,0) d1.equivalents} in
-			Vector.set gs.g equivroot d1'; 
-			connect_uniq gs.g ni ; 
-			ni (* return the location of the new node, same as add_uniq *)
+			j 
+	in
+	let ni = get_slot gs in
+	if ni >= 0 then (
+		let equivroot = find_root indx in
+		let d1 = gs.g.(equivroot) in
+		if d1.ed.progenc <> ed.progenc then (
+			(* need to verify that this is not in the graph.*)
+			let has = SI.fold (fun (j,_,_,_) a -> 
+				let d = gs.g.(j) in
+				if d.ed.progenc = ed.progenc then true else a) 
+				d1.equivalents false in
+			if not has then (
+				let d2 = {nulgdata with ed; progt = `Equiv; equivroot; imgi = d1.imgi} in
+				gs.g.(ni) <- d2; 
+				gs.num_equiv <- gs.num_equiv + 1;
+				let cnt,edits = get_edits d1.ed.progenc ed.progenc in
+				let _b,typ = edit_criteria edits in (* NOTE not constrained! *)
+				let d1' = {d1 with equivalents = SI.add (ni,typ,cnt,0) d1.equivalents} in
+				gs.g.(equivroot) <- d1'; 
+				connect gs.g ni ; 
+				ni (* return the location of the new node, same as add_uniq *)
+			) else (-1)
 		) else (-1)
 	) else (-1)
+	;;
+	
+let remove gs indx = 
+	(* remove a node from the graph, 
+		e.g. if it's never used, or not well connected
+		free up space for new nodes! *)
+	(* our pointer from outgoing *)
+	let d = gs.g.(indx) in
+	
+	SI.iter (fun (i,_,_,_) -> 
+		let e = gs.g.(i) in
+		let outgoing = SI.filter (fun (a,_,_,_) -> a <> indx) e.outgoing in
+		let e' = {e with outgoing} in
+		gs.g.(i) <- e' ) d.outgoing ; 
+	
+	if d.progt = `Uniq then (
+		(* complexity: root equivalent nodes need to be remapped *)
+		if d.equivroot = indx && SI.cardinal d.equivalents > 0 then (
+			(* need to find a new equivroot *)
+			let equivroot,_ = 
+				SI.elements d.equivalents
+				|> List.map (fun (a,_,_,_) -> 
+					let e = gs.g.(a) in
+					let f = Logo.progenc_cost e.ed.progenc in
+					a,f )
+				|> List.sort (fun (_,a) (_,b) -> compare a b) 
+				|> List.hd in
+			let equivalents = SI.filter (
+				fun (a,_,_,_) -> 
+					a <> equivroot ) d.equivalents in
+			let e = gs.g.(equivroot) in
+			let imgi = d.imgi in
+			let progt = `Uniq in (* convert type *)
+			let e' = {e with progt; imgi; equivroot; equivalents} in
+			gs.g.(equivroot) <- e'; 
+			SI.iter (fun (a,_,_,_) ->
+				let h = gs.g.(a) in
+				gs.g.(a) <- {h with equivroot} ) equivalents
+		); 
+		(* need to free the imgf alloc *)
+		gs.free_img <- d.imgi :: gs.free_img;
+		gs.free_slots <- indx :: gs.free_slots;
+		gs.num_uniq <- gs.num_uniq - 1; 
+	) ;
+	
+	if d.progt = `Equiv then (
+		(* remove us from our equivroot *)
+		let e = gs.g.(d.equivroot) in
+		let equivalents = SI.filter (fun (a,_,_,_) -> a <> indx) e.equivalents in
+		gs.g.(d.equivroot) <- {e with equivalents}; 
+		(* add to the free lists *)
+		gs.free_slots <- indx :: gs.free_slots;
+		gs.num_equiv <- gs.num_equiv - 1; 
+	); 
+	
+	gs.g.(indx) <- nulgdata
+	;;
 	
 let incr_good gs i = 
 	(* hopefully the compiler replaces this with an in-place op *)
-	let d = Vector.get gs.g i in
-	let d' = {d with good = (d.good + 1)} in
-	Vector.set gs.g i d' 
+	let d = gs.g.(i) in
+	gs.g.(i) <- {d with good = (d.good + 1)} 
+	;;
 	
 let sort_graph g = 
-	(* sort the array by pcost ascending; return new vector *)
-	let ar = Vector.to_array g |>
-		Array.mapi (fun i a -> (i,a)) in
+	(* sort the array by pcost ascending *)
+	let ar = Array.mapi (fun i a -> (i,a)) g in
 	Array.sort (fun (_,a) (_,b) -> compare a.ed.pcost b.ed.pcost) ar ; 
 	let indxs,sorted = Array.split ar in
 	(* indxs[i] = original pointer in g *)
@@ -272,15 +357,14 @@ let sort_graph g =
 				) a.equivalents in
 		let equivroot = if a.equivroot >= 0 then
 			mappin.(a.equivroot) else (-1) in
-		{a with outgoing; equivalents; equivroot} ) sorted |>
-		Vector.of_array ~dummy:nulgdata
+		{a with outgoing; equivalents; equivroot} ) sorted 
 	(* does not update the img indexes *)
 
 let progt_to_str = function
 	| `Uniq -> "uniq" | `Equiv -> "equiv" | `Np -> "np"
 	
 let str_to_progt = function
-	| "uniq" -> `Uniq | "equiv" -> `Equiv | "np" -> `Np | _ -> `Np
+	| "uniq" -> `Uniq | "equiv" -> `Equiv | _ -> `Np
 	
 let print_graph g = 
 	let print_node i d = 
@@ -293,7 +377,7 @@ let print_graph g =
 		SI.iter (fun (j,typ,cnt,used) -> Printf.printf "%d(%s %d %d," j typ cnt used) d.equivalents; 
 		Printf.printf "\tequivroot: \027[31m %d\027[0m\n" d.equivroot
 	in
-	Vector.iteri print_node g 
+	Array.iteri print_node g 
 	
 (* these functions from program.ml *)
 let parse_with_error lexbuf =
@@ -330,7 +414,7 @@ let pro_to_edata_opt pro res =
 	
 let save fname g =
 	let open Sexplib in
-	(* output directly, preserving order -- indexes should be preserved *)
+	(* output directly, keeping order -- indexes should be preserved *)
 	let intset_to_sexp o = 
 		Sexp.List (List.map (fun (i,typ,cnt,_used) -> Sexp.List
 			[ Sexp.Atom (soi i)
@@ -347,7 +431,7 @@ let save fname g =
 			; (intset_to_sexp d.equivalents)
 			; Sexp.Atom (soi d.equivroot)
 			; Sexp.Atom (soi d.good) ] )
-			(Vector.to_list g) )
+			(Array.to_list g) )
 	in
 	let oc = open_out fname in
 	Sexplib.Sexp.output_hum oc sexp;
@@ -373,7 +457,7 @@ let load gs fname =
 			| _ -> (-1,"",0,0) ) k |> SI.of_list in
 	gs.num_uniq <- 0; 
 	gs.num_equiv <- 0; 
-	let gl = List.map (function 
+	List.iter (function 
 		| [Sexp.Atom i; Sexp.Atom pt; Sexp.Atom pstr; out; equiv; 
 							Sexp.Atom eqrt; Sexp.Atom gd] -> (
 			let prog = match pstr with
@@ -392,27 +476,33 @@ let load gs fname =
 					| _ -> (-1) in
 				let ed,_ = pro_to_edata pro 0 in
 				let d = {progt; ed; imgi ; outgoing; equivalents; equivroot; good} in
-				if imgi >= 0 then gs.img_inv.(imgi) <- (ios i); 
-				d
+				let ii = ios i in
+				if imgi >= 0 then gs.img_inv.(imgi) <- ii; 
+				gs.free_img <- List.filter (fun a -> a <> imgi) gs.free_img;
+				gs.free_slots <- List.filter (fun a -> a <> ii) gs.free_slots; 
+				if ii > gs.all_alloc then 
+					Logs.err (fun m->m "database too large for allocation."); 
+				gs.g.(ii) <- d
 			| _ -> (
 				Logs.err (fun m -> m "Failed to parse pstr \"%s\"" pstr); 
 				assert(0 <> 0); 
-				nulgdata) ) )
-		| _ -> failwith "Invalid S-expression format") sexp' in
-	let g = Vector.of_list ~dummy:nulgdata gl in
+				) ) )
+		| _ -> failwith "Invalid S-expression format") sexp' ; 
 	(*Printf.printf "check!!!\n"; 
 	print_graph g; *)
 	(* need to go back and fix the imgi indexes *)
-	Vector.iteri (fun i d -> 
+	Array.iteri (fun i d -> 
 		match d.progt with 
 		| `Equiv -> (
-			let e = Vector.get g d.equivroot in
-			Vector.set g i {d with imgi = e.imgi} )
+			let e = gs.g.(d.equivroot) in
+			gs.g.(i) <- {d with imgi = e.imgi} )
 		| `Uniq -> ()
-		| _ -> Logs.err (fun m -> m "Graf.load error at %d %.2f\n" i d.ed.pcost); assert (0 <> 0);
-		) g; 
-	{gs with g}
-	
+		| _ -> () (* null entry *)
+		) gs.g; 
+	gs
+	;;
+
+
 (* use a priority-search-queue to hold the list of nodes *)
 module QI = struct type t = int let compare (a: int) b = compare a b end
 module QF = struct type t = float let compare (a: float) b = compare a b end
@@ -421,8 +511,8 @@ module Q = Psq.Make (QI) (QI) ;; (* make (key) (priority) *)
 let dijkstra gs start dbg = 
 	(* starting from node gs.g.(start), 
 		find the distances to all other nodes *)
-	let d = Vector.get gs.g start in
-	let n = Vector.length gs.g in
+	let d = gs.g.(start) in
+	let n = Array.length gs.g in
 	let dist = Array.make n (-1) in
 	let prev = Array.make n (-1) in
 	let visited = Array.make n false in 
@@ -441,7 +531,7 @@ let dijkstra gs start dbg =
 		else (
 			match Q.pop qq with
 			| Some ((i,p),q) -> (
-				let e = Vector.get gs.g i in
+				let e = gs.g.(i) in
 				(* visited nodes are never added to the queue *)
 				assert(visited.(i) = false);
 				if dbg then Logs.debug (fun m -> m "dijk visit [%d] %d %s"
@@ -486,7 +576,7 @@ let dijkstra gs start dbg =
 	let fid = open_out (Printf.sprintf "%s/paths.txt" root) in
 	
 	let rec print_path final step present = 
-		let d = Vector.get gs.g present in
+		let d = gs.g.(present) in
 		Printf.fprintf fid "final:%d step:%d present:%d %s \n" 
 			final step present (Logo.output_program_pstr d.ed.pro); 
 		let fname = Printf.sprintf "%s/%d_%d.png" root final step in
@@ -506,9 +596,11 @@ let dijkstra gs start dbg =
 	(dist, prev)
 	
 let edge_use gs l = 
+	(* reset the good counts *)
+	Array.iteri (fun i a -> gs.g.(i) <- {a with good=0} ) gs.g;
 	(* increment the counts of the used edges from the list l *)
 	List.iter (fun (pre,post) -> 
-		let a = Vector.get gs.g pre in
+		let a = gs.g.(pre) in
 		let outgoing = SI.map (fun (b,typ,cnt,usd) -> 
 			let used = if b = post then usd+1 else usd in
 			(b,typ,cnt,used) ) a.outgoing in
@@ -517,15 +609,21 @@ let edge_use gs l =
 		let equivalents = SI.map (fun (b,typ,cnt,usd) -> 
 			let used = if b = post then usd+1 else usd in
 			(b,typ,cnt,used) ) a.equivalents in
-		let good = a.good + 1 in
-		Vector.set gs.g pre {a with outgoing; equivalents; good}; 
+		let good1 = a.good + 1 in
+		gs.g.(pre) <- {a with outgoing; equivalents; good=good1}; 
 		(* update post too *) 
-		let b = Vector.get gs.g post in
-		let good = b.good + 1 in
-		Vector.set gs.g post {b with good} ) l; 
+		let b = gs.g.(post) in
+		let good2 = b.good + 1 in
+		gs.g.(post) <- {b with good=good2} ) l; 
 	let unused = ref 0 in
-	Vector.iter (fun a -> if a.good = 0 then incr unused) gs.g; 
+	Array.iter (fun a -> 
+		if a.progt <> `Np && a.good <= 0 then incr unused) gs.g; 
 	Logs.info (fun m->m "Graf.edge_use: unused database nodes: %d" !unused)
+	;;
+	
+let remove_unused gs = 
+	Array.iteri (fun i a -> 
+		if a.progt <> `Np && a.good <= 0 then remove gs i) gs.g
 	;;
 		
 let gexf_out gs = 
@@ -542,7 +640,7 @@ let gexf_out gs =
 	Printf.fprintf fid "<attribute id=\"1\" title=\"used\" type=\"int\"/>\n";
 	Printf.fprintf fid "</attributes>\n"; 
 	Printf.fprintf fid "<nodes>\n"; 
-	Vector.iteri (fun i d -> 
+	Array.iteri (fun i d -> 
 		Printf.fprintf fid "<node id=\"%d\" label=\"%s\" >\n" i
 			(Logo.output_program_pstr d.ed.pro); 
 		let pts = match d.progt with
@@ -556,7 +654,7 @@ let gexf_out gs =
 	Printf.fprintf fid "</nodes>\n";
 	
 	Printf.fprintf fid "<edges>\n"; 
-	Vector.iteri (fun i d -> 
+	Array.iteri (fun i d -> 
 		SI.iter (fun (j,typ,_cnt,used) -> 
 			if used > 0 then (
 				Printf.fprintf fid "<edge source=\"%d\" target=\"%d\">\n" i j; 

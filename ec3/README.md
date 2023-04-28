@@ -38,7 +38,7 @@ Run the executable: `./run.sh -b 512 -g -p`
 -g : (optional) debug logging
 -p : parallel.  (turn it off when debugging )
 
-Training: in a separate terminal, run `python ec33.py -b 512`
+Training: in a separate terminal, run `python ec34.py -b 512`
 Batch size needs to be the same.
 
 Dreaming: Once it writes out a model, you can start dreaming in yet another terminal:

@@ -22,7 +22,7 @@ let () =
 				(Torch.Cuda.cudnn_is_available ()));
 	
 	let device = Torch.Device.cuda_if_available () in
-	let gs = Graf.create Program.image_alloc in
+	let gs = Graf.create Program.all_alloc Program.image_alloc in
 	let dbf = Torch.Tensor.zeros [2;2] in
 	let dbf_cpu = Torch.Tensor.zeros [2;2] in 
 	let dbf_enc = Torch.Tensor.zeros [2;2] in

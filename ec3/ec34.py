@@ -71,9 +71,15 @@ model.print_n_params()
 
 # TODO : replace this with the new loading logic !!
 from os.path import exists
-if exists("ec32.ptx"):
-	loaded_dict = torch.load("ec32.ptx")
+fname = "checkpoints/recognizer_checkpoint.ptx"
+if exists(fname): 
+	loaded_dict = torch.load(fname)
 	model.load_state_dict(loaded_dict)
+	print(f"loaded {fname}")
+else: 
+	if exists("ec32.ptx"):
+		loaded_dict = torch.load("ec32.ptx")
+		model.load_state_dict(loaded_dict)
 
 # model = nn.DataParallel(model)
 
