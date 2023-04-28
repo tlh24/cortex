@@ -69,7 +69,6 @@ model = Recognizer(
 
 model.print_n_params()
 
-# TODO : replace this with the new loading logic !!
 from os.path import exists
 fname = "checkpoints/recognizer_checkpoint.ptx"
 if exists(fname): 

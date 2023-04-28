@@ -612,9 +612,9 @@ let edge_use gs l =
 		let good1 = a.good + 1 in
 		gs.g.(pre) <- {a with outgoing; equivalents; good=good1}; 
 		(* update post too *) 
-		let b = gs.g.(post) in
-		let good2 = b.good + 1 in
-		gs.g.(post) <- {b with good=good2} ) l; 
+		let c = gs.g.(post) in
+		let good2 = c.good + 1 in
+		gs.g.(post) <- {c with good=good2} ) l; 
 	let unused = ref 0 in
 	Array.iter (fun a -> 
 		if a.progt <> `Np && a.good <= 0 then incr unused) gs.g; 
