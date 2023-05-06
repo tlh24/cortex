@@ -17,7 +17,14 @@ The original implementation kept these separate.
 let soi = string_of_int
 let ios = int_of_string
 
-module SI = Set.Make(Int);;
+module SI = Set.Make( 
+	(* set for outgoing connections *)
+	(* node, edit type, edit count, used count *)
+	(* type and count are for sorting / selecting *)
+	struct
+		let compare (a,_,_,_) (b,_,_,_) = compare a b
+		type t = int * string * int * int
+	end ) ;;
 
 type progtyp = [
 	| `Uniq  (* replace this with Bigarray image + imagef *)
@@ -41,7 +48,7 @@ type gdata =
 	; outgoing : SI.t (* within edit distance *)
 	; equivroot : int 
 	; equivalents : SI.t
-	; good : int (* count of correct decoding *)
+	; good : int (* count of correct decoding / used *)
 	(* equivalents is like union-find: Uniq nodes points to all equivalents, 
 		Equiv node points to the minimum cost.  
 		Network of edit-distance similarity unaffected *)
@@ -80,25 +87,44 @@ let create image_alloc =
 	let g = Vector.create ~dummy:nulgdata in
 	let img_inv = Array.make image_alloc 0 in
 	{g; image_alloc; img_inv; num_uniq = 0; num_equiv = 0 }
-	
-let edit_criteria edits = 
+
+let count_edit_types edits = 
 	let count_type typ = 
 		List.fold_left 
 		(fun a (t,_p,_c) -> if t = typ then a+1 else a) 0 edits 
 	in
-	if List.length edits > 0 then (
-		let nsub = count_type "sub" in
-		let ndel = count_type "del" in
-		let nins = count_type "ins" in
-		let r = ref false in
+	let nsub = count_type "sub" in
+	let ndel = count_type "del" in
+	let nins = count_type "ins" in
+	nsub,ndel,nins
+	
+let edit_criteria_b edits = 
+	if List.length edits > 0 && List.length edits <= 6 then (
+		let nsub,ndel,nins = count_edit_types edits in
+		let typ = ref "nul" in
 		(* note! these rules must be symmetric for the graph to make sense *)
-		if nsub <= 3 && ndel = 0 && nins = 0 then r := true;
-		if nsub = 0 && ndel <= 6 && nins = 0 then r := true; 
-		if nsub = 0 && ndel = 0 && nins <= 6 then r := true;
+		if nsub > ndel && nsub > nins then typ := "sub";
+		if ndel > nsub && ndel > nins then typ := "del"; 
+		if nins > nsub && nins > ndel then typ := "ins"; 
+		true,!typ
+	) else false,"nul"
+	
+let edit_criteria edits = 
+	if List.length edits > 0 then (
+		let nsub,ndel,nins = count_edit_types edits in
+		let r = ref false in
+		let typ = ref "nul" in
+		(* note! these rules must be symmetric for the graph to make sense *)
+		if nsub <= 3 && ndel = 0 && nins = 0 then (
+			r := true; typ := "sub" ); 
+		if nsub = 0 && ndel <= 6 && nins = 0 then (
+			r := true; typ := "del" ); 
+		if nsub = 0 && ndel = 0 && nins <= 6 then (
+			r := true; typ := "ins" );
 		(*if nsub <= 1 && ndel = 0 && nins <= 3 then r := true;
 		if nsub <= 1 && ndel <= 3 && nins <= 0 then r := true;*)
-		!r
-	) else false
+		!r,!typ
+	) else false,""
 
 let get_edits a_progenc b_progenc = 
 	let dist,edits = Levenshtein.distance a_progenc b_progenc true in
@@ -122,18 +148,22 @@ let connect_uniq g indx =
 	let nearby = ref [] in
 	Vector.iteri (fun i a -> 
 		if i <> indx then (
-			let _dist,edits = get_edits pe a.ed.progenc in
-			let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
-			if edit_criteria edits then (
-				nearby := i :: !nearby; 
+			let cnt,edits = get_edits pe a.ed.progenc in
+			let b,typ = edit_criteria edits in
+			if b then (
+				nearby := (i,typ,cnt,0) :: !nearby; 
 				(*Printf.printf "connect_uniq: [%d] conn [%d] : %d \n" indx i dist
 			) else (
 				Printf.printf "connect_uniq: [%d] nocon [%d] : %d\n" indx i dist*)
 			)
 		 ) ) g; 
-	List.iter (fun i -> 
+	List.iter (fun (i,typ,cnt,used) -> 
+		let invtyp = match typ with
+			| "del" -> "ins"
+			| "ins" -> "del"
+			| _ -> "sub" in
 		let d2 = Vector.get g i in
-		let d2o = SI.add indx d2.outgoing in
+		let d2o = SI.add (indx,invtyp,cnt,used) d2.outgoing in
 		Vector.set g i {d2 with outgoing=d2o} ) (!nearby) ; 
 	(* update current node *)
 	Vector.set g indx {d with outgoing=(SI.of_list (!nearby)) }
@@ -157,23 +187,32 @@ let replace_equiv gs indx ed =
 	(* add d2 the end, and update d1 = g[indx]. *)
 	(* outgoing connections are not changed *)
 	let d1 = Vector.get gs.g indx in
-	if d1.ed.progenc <> ed.progenc then (
-		let d2 = {nulgdata with ed; progt = `Uniq; 
-					equivalents = (SI.add indx d1.equivalents); 
-					imgi = d1.imgi} in
-		Vector.push gs.g d2;
-		gs.num_equiv <- gs.num_equiv + 1; 
-		let ni = (Vector.length gs.g) - 1 in (* new index *)
-		(*Logs.debug (fun m -> m "replace_equiv %d %d" d2.imgi ni);*) 
-		gs.img_inv.(d2.imgi) <- ni ; (* back pointer *)
-		(* update the incoming equivalent pointers; includes d1 !  *)
-		SI.iter (fun i -> 
-			let e = Vector.get gs.g i in
-			let e' = {e with progt = `Equiv; equivroot = ni; equivalents = SI.empty} in
-			Vector.set gs.g i e' ) d2.equivalents; 
-		(* finally, update d2's edit connections *)
-		connect_uniq gs.g ni ; 
-		ni,d2.imgi (* return the location of the new node, same as add_uniq *)
+	if SI.cardinal d1.equivalents < 16 then (
+		if d1.ed.progenc <> ed.progenc then (
+			let eq2 = SI.add (indx,"",0,0) d1.equivalents in
+			let equivalents = SI.map (fun (i,_,_,_) -> 
+				let e = Vector.get gs.g i in
+				let cnt,edits = get_edits ed.progenc e.ed.progenc in
+				let _,typ = edit_criteria edits in (* not constrained! *)
+				i,typ,cnt,0) eq2 in
+			let d2 = {nulgdata with ed; 
+						progt = `Uniq; 
+						equivalents;
+						imgi = d1.imgi} in
+			Vector.push gs.g d2;
+			gs.num_equiv <- gs.num_equiv + 1; 
+			let ni = (Vector.length gs.g) - 1 in (* new index *)
+			(*Logs.debug (fun m -> m "replace_equiv %d %d" d2.imgi ni);*) 
+			gs.img_inv.(d2.imgi) <- ni ; (* back pointer *)
+			(* update the incoming equivalent pointers; includes d1 !  *)
+			SI.iter (fun (i,_,_,_) -> 
+				let e = Vector.get gs.g i in
+				let e' = {e with progt = `Equiv; equivroot = ni; equivalents = SI.empty} in
+				Vector.set gs.g i e' ) d2.equivalents; 
+			(* finally, update d2's edit connections *)
+			connect_uniq gs.g ni ; 
+			ni,d2.imgi (* return the location of the new node, same as add_uniq *)
+		) else (-1),(-1)
 	) else (-1),(-1)
 	
 let add_equiv gs indx ed =
@@ -189,7 +228,7 @@ let add_equiv gs indx ed =
 	let d1 = Vector.get gs.g equivroot in
 	if d1.ed.progenc <> ed.progenc then (
 		(* need to verify that this is not in the graph.*)
-		let has = SI.fold (fun j a -> 
+		let has = SI.fold (fun (j,_,_,_) a -> 
 			let d = Vector.get gs.g j in
 			if d.ed.progenc = ed.progenc then true else a) 
 			d1.equivalents false in
@@ -198,7 +237,9 @@ let add_equiv gs indx ed =
 			Vector.push gs.g d2; 
 			gs.num_equiv <- gs.num_equiv + 1;
 			let ni = (Vector.length gs.g) - 1 in (* new index *)
-			let d1' = {d1 with equivalents = SI.add ni d1.equivalents} in
+			let cnt,edits = get_edits d1.ed.progenc ed.progenc in
+			let _b,typ = edit_criteria edits in (* NOTE not constrained! *)
+			let d1' = {d1 with equivalents = SI.add (ni,typ,cnt,0) d1.equivalents} in
 			Vector.set gs.g equivroot d1'; 
 			connect_uniq gs.g ni ; 
 			ni (* return the location of the new node, same as add_uniq *)
@@ -223,8 +264,12 @@ let sort_graph g =
 	Array.iteri (fun i a -> mappin.(a) <- i; 
 		(*Logs.debug (fun m -> m "old %d -> new %d\n" a i)*)) indxs; 
 	Array.map (fun a -> 
-		let outgoing = SI.map (fun b -> mappin.(b)) a.outgoing in
-		let equivalents = SI.map (fun b -> mappin.(b)) a.equivalents in
+		let outgoing = SI.map (fun (b,typ,cnt,used) -> 
+			mappin.(b),typ,cnt,used
+				) a.outgoing in
+		let equivalents = SI.map (fun (b,typ,cnt,used) -> 
+		mappin.(b),typ,cnt,used
+				) a.equivalents in
 		let equivroot = if a.equivroot >= 0 then
 			mappin.(a.equivroot) else (-1) in
 		{a with outgoing; equivalents; equivroot} ) sorted |>
@@ -243,9 +288,9 @@ let print_graph g =
 		Printf.printf "node [%d] = %s '%s'\n\tcost:%.2f, %.2f imgi:%d\n"
 			i c (Logo.output_program_pstr d.ed.pro) d.ed.scost d.ed.pcost d.imgi; 
 		Printf.printf "\toutgoing: "; 
-		SI.iter (fun j -> Printf.printf "%d," j) d.outgoing;
+		SI.iter (fun (j,typ,cnt,used) -> Printf.printf "%d(%s %d %d)," j typ cnt used) d.outgoing;
 		Printf.printf "\tequivalents: "; 
-		SI.iter (fun j -> Printf.printf "%d," j) d.equivalents; 
+		SI.iter (fun (j,typ,cnt,used) -> Printf.printf "%d(%s %d %d," j typ cnt used) d.equivalents; 
 		Printf.printf "\tequivroot: \027[31m %d\027[0m\n" d.equivroot
 	in
 	Vector.iteri print_node g 
@@ -287,7 +332,10 @@ let save fname g =
 	let open Sexplib in
 	(* output directly, preserving order -- indexes should be preserved *)
 	let intset_to_sexp o = 
-		Sexp.List (List.map (fun a -> Sexp.Atom (string_of_int a) )
+		Sexp.List (List.map (fun (i,typ,cnt,_used) -> Sexp.List
+			[ Sexp.Atom (soi i)
+			; Sexp.Atom typ
+			; Sexp.Atom (soi cnt) ])
 			(SI.elements o) ) 
 	in
 	let sexp = Sexp.List ( List.mapi (fun i d -> 
@@ -315,10 +363,14 @@ let load gs fname =
 	let sexp' = Conv.list_of_sexp (function 
 		|  Sexp.List(a) -> a
 		| _ ->  []) sexp in
-	let strip_int k =
+	let sexp_to_intset k =
 		Conv.list_of_sexp (function
-			| Sexp.Atom s -> ios s
-			| _ -> (-1) ) k |> SI.of_list in
+			| Sexp.List s -> (
+				match s with
+				| [Sexp.Atom i; Sexp.Atom typ; Sexp.Atom cnt] -> 
+					(ios i),typ,(ios cnt),0
+				| _ -> (-1,"",0,0) )
+			| _ -> (-1,"",0,0) ) k |> SI.of_list in
 	gs.num_uniq <- 0; 
 	gs.num_equiv <- 0; 
 	let gl = List.map (function 
@@ -330,8 +382,8 @@ let load gs fname =
 			(match prog with
 			| Some(pro) -> 
 				let progt = (str_to_progt pt) in
-				let outgoing = (strip_int out) in
-				let equivalents = (strip_int equiv) in
+				let outgoing = (sexp_to_intset out) in
+				let equivalents = (sexp_to_intset equiv) in
 				let equivroot = (ios eqrt) in
 				let good = (ios gd) in
 				let imgi = match progt with 
@@ -361,6 +413,167 @@ let load gs fname =
 		) g; 
 	{gs with g}
 	
+(* use a priority-search-queue to hold the list of nodes *)
+module QI = struct type t = int let compare (a: int) b = compare a b end
+module QF = struct type t = float let compare (a: float) b = compare a b end
+module Q = Psq.Make (QI) (QI) ;; (* make (key) (priority) *)
+
+let dijkstra gs start dbg = 
+	(* starting from node gs.g.(start), 
+		find the distances to all other nodes *)
+	let d = Vector.get gs.g start in
+	let n = Vector.length gs.g in
+	let dist = Array.make n (-1) in
+	let prev = Array.make n (-1) in
+	let visited = Array.make n false in 
+	dist.(start) <- 0; 
+	visited.(start) <- true; 
+	let q = SI.fold (fun (i,_,cnt,_) a -> 
+		dist.(i) <- cnt; 
+		prev.(i) <- start; 
+		Q.add i cnt a
+		) d.outgoing Q.empty in
+	if dbg then Logs.debug (fun m->m "psq size %d" (Q.size q));
+	if dbg then Logs.debug (fun m->m "outgoing size %d" (SI.cardinal d.outgoing));
+	
+	let rec dijk qq = 
+		if Q.is_empty qq then ()
+		else (
+			match Q.pop qq with
+			| Some ((i,p),q) -> (
+				let e = Vector.get gs.g i in
+				(* visited nodes are never added to the queue *)
+				assert(visited.(i) = false);
+				if dbg then Logs.debug (fun m -> m "dijk visit [%d] %d %s"
+					i p (Logo.output_program_pstr e.ed.pro));
+				if dbg then Logs.debug (fun m->m "psq size %d" (Q.size q));
+				if dbg then Logs.debug (fun m->m "outgoing size %d" (SI.cardinal e.outgoing));
+				if dbg then Logs.debug (fun m->m "equivalents size %d" (SI.cardinal e.equivalents));
+				visited.(i) <- true; 
+				let de = dist.(i) in
+				assert( p = de ); 
+				let foldadd set sq = 
+					SI.fold (fun (j,typ,cnt,_) a -> 
+					if not visited.(j) && typ <> "nul" then (
+						let nd = de + cnt in
+						if dist.(j) < 0 then (
+							(* new route *)
+							if dbg then Logs.debug (fun m -> m "new route to %d cost %d" j nd); 
+							dist.(j) <- nd; 
+							prev.(j) <- i; 
+							Q.add j nd a
+						) else (
+							if nd < dist.(j) then (
+								(* new route is shorter *)
+								if dbg then Logs.debug (fun m -> m "shorter route to %d cost %d" j nd); 
+								dist.(j) <- nd; 
+								prev.(j) <- i; 
+								Q.adjust j (fun _ -> nd) a
+							) else ( a ) )
+					) else ( a ) ) set sq 
+				in
+				q 
+				|> foldadd e.outgoing 
+				|> foldadd e.equivalents 
+				|> dijk )
+			| _ -> () 
+		) 
+	in
+	
+	dijk q; 
+	
+	let root = "/tmp/ec3/dijkstra" in
+	let fid = open_out (Printf.sprintf "%s/paths.txt" root) in
+	
+	let rec print_path final step present = 
+		let d = Vector.get gs.g present in
+		Printf.fprintf fid "final:%d step:%d present:%d %s \n" 
+			final step present (Logo.output_program_pstr d.ed.pro); 
+		let fname = Printf.sprintf "%s/%d_%d.png" root final step in
+		ignore(Logoext.run_prog (Some d.ed.pro) 64 fname false); 
+		let j = prev.(present) in
+		if j >= 0 then print_path final (step+1) j else ()
+	in
+
+	for i = 0 to 19 do (
+		Printf.fprintf fid "--%d--" i; 
+		let k = Random.int n in
+		print_path k 0 k
+	) done; 
+
+	close_out fid; 
+	
+	(dist, prev)
+	
+let edge_use gs l = 
+	(* increment the counts of the used edges from the list l *)
+	List.iter (fun (pre,post) -> 
+		let a = Vector.get gs.g pre in
+		let outgoing = SI.map (fun (b,typ,cnt,usd) -> 
+			let used = if b = post then usd+1 else usd in
+			(b,typ,cnt,used) ) a.outgoing in
+		(* note: 'nul' is filtered in dijkstra above *)
+		(* (equivalents can have large edit distance) *)
+		let equivalents = SI.map (fun (b,typ,cnt,usd) -> 
+			let used = if b = post then usd+1 else usd in
+			(b,typ,cnt,used) ) a.equivalents in
+		let good = a.good + 1 in
+		Vector.set gs.g pre {a with outgoing; equivalents; good}; 
+		(* update post too *) 
+		let b = Vector.get gs.g post in
+		let good = b.good + 1 in
+		Vector.set gs.g post {b with good} ) l; 
+	let unused = ref 0 in
+	Vector.iter (fun a -> if a.good = 0 then incr unused) gs.g; 
+	Logs.info (fun m->m "Graf.edge_use: unused database nodes: %d" !unused)
+	;;
+		
+let gexf_out gs = 
+	(* save GEXF file for gephi visualization *)
+	let fid = open_out "../prog-gephi-viz/db.gexf" in
+	Printf.fprintf fid "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"; 
+	Printf.fprintf fid "<gexf xmlns=\"http://gexf.net/1.3\" version=\"1.3\">\n"; 
+	Printf.fprintf fid "<graph mode=\"static\" defaultedgetype=\"directed\">\n"; 
+	Printf.fprintf fid "<attributes class=\"node\">\n"; 
+	Printf.fprintf fid "<attribute id=\"0\" title=\"progt\" type=\"string\"/>\n"; 
+	Printf.fprintf fid "</attributes>\n";
+	Printf.fprintf fid "<attributes class=\"edge\">\n"; 
+	Printf.fprintf fid "<attribute id=\"0\" title=\"typ\" type=\"string\"/>\n"; 
+	Printf.fprintf fid "<attribute id=\"1\" title=\"used\" type=\"int\"/>\n";
+	Printf.fprintf fid "</attributes>\n"; 
+	Printf.fprintf fid "<nodes>\n"; 
+	Vector.iteri (fun i d -> 
+		Printf.fprintf fid "<node id=\"%d\" label=\"%s\" >\n" i
+			(Logo.output_program_pstr d.ed.pro); 
+		let pts = match d.progt with
+			| `Uniq -> "uniq"
+			| `Equiv -> "equiv"
+			| _ -> "nul" in
+		Printf.fprintf fid 
+		"<attvalues><attvalue for=\"0\" value=\"%s\"/></attvalues>\n" pts; 
+		Printf.fprintf fid "</node>\n"
+		) gs.g ; 
+	Printf.fprintf fid "</nodes>\n";
+	
+	Printf.fprintf fid "<edges>\n"; 
+	Vector.iteri (fun i d -> 
+		SI.iter (fun (j,typ,_cnt,used) -> 
+			if used > 0 then (
+				Printf.fprintf fid "<edge source=\"%d\" target=\"%d\">\n" i j; 
+				Printf.fprintf fid "<attvalues>\n";
+				Printf.fprintf fid "<attvalue for=\"0\" value=\"%s\"/>\n" typ; 
+				Printf.fprintf fid "<attvalue for=\"1\" value=\"%d\"/>\n" used; 
+				Printf.fprintf fid "</attvalues>\n";
+				Printf.fprintf fid "</edge>\n"
+			)
+		) d.outgoing
+		) gs.g ; 
+	Printf.fprintf fid "</edges>\n";
+	Printf.fprintf fid "</graph>\n";
+	Printf.fprintf fid "</gexf>\n";
+	close_out fid; 
+	Printf.printf "saved ../prog-gephi-viz/db.gexf\n";; 
+
 (*let () = 
 	let gs = create 5 in
 	

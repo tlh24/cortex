@@ -1,5 +1,3 @@
-open Lexer
-open Lexing
 open Printf
 open Logo
 open Ast
@@ -8,9 +6,9 @@ open Graf
 
 let pi = 3.1415926
 (*let image_count = ref 0 *)
-let image_alloc = 6*2048 (*6*2048*2*) (* need to make this a parameter *)
+let image_alloc = 5*2048 (*6*2048*2*) (* need to make this a parameter *)
 let image_res = 30
-let batch_size = ref (256*3)
+let batch_size = ref 512
 let toklen = 30
 let p_ctx = 64
 let poslen = p_ctx / 2 (* onehot; two programs need to fit into the context *)
@@ -33,7 +31,9 @@ type dreamt = [
 	(* int = index; bool = dosub *)
 	| `Train  (* supervised edit application *)
 	| `Verify (* decode edit appl. *)
-	| `Mnist
+	| `Mnist of (Editree.t * int list)
+		(* root node * address being evaled *)
+	| `Nodream
 	]
 	
 type batche = (* batch edit structure, aka 'be' variable*)
@@ -94,15 +94,23 @@ let nuldream =
 	; correct_cnt = 0
 	}
 	
+type decode_tensors = 
+	{ shape : int list
+	; typ : Tensor.t
+	; chr : Tensor.t
+	; pos : Tensor.t
+	}
+	
 type tsteak = (* thread state *)
 	{ device : Torch.Device.t
 	; gs : Graf.gstat
 	; dbf : Tensor.t (* on the gpu, so we can run fast comparisons *)
 	; dbf_cpu : Tensor.t
 	; dbf_enc : Tensor.t
-	; mnist : Tensor.t (* on the CPU *)
+	; mnist : Tensor.t 
+	; mnist_cpu : Tensor.t 
 	; mnist_enc : Tensor.t (* on the GPU *)
-	; vae : Vae.VAE.t (* GPU *)
+	(*; vae : Vae.VAE.t (* GPU *)*)
 	; db_mutex : Mutex.t
 	; superv : bool (* supervised or dreaming *)
 	(*; sockno : int 4340 for supervised, 4341 dreaming *)
@@ -110,6 +118,8 @@ type tsteak = (* thread state *)
 	; fid_verify : out_channel (* log for verification *)
 	; mutable batchno : int (* for e.g doing garbage collection *)
 	; mutable pool : Domainslib.Task.pool (* needs to be replaced for dream *)
+	; de : decode_tensors
+	; training : (int*int) array
 	}
 
 let read_lines name : string list =
@@ -121,81 +131,12 @@ let read_lines name : string list =
 		| None -> close_in ic; List.rev acc in
 	loop []
 
-let print_position lexbuf = 
-	let pos = lexbuf.lex_curr_p in
-	let bf = Buffer.create 64 in
-	Printf.bprintf bf "%s:%d:%d" pos.pos_fname
-		pos.pos_lnum (pos.pos_cnum - pos.pos_bol + 1); 
-	(Buffer.contents bf)
-
-let parse_with_error lexbuf =
-	let prog = try Some (Parser.parse_prog Lexer.read lexbuf) with
-	| SyntaxError _msg ->
-		(*Logs.debug (fun m -> m "%s: %s" 
-			(print_position lexbuf) msg);*)  (* these errors overwhelm while dreaming *)
-		None
-	| Parser.Error ->
-		(*Logs.debug (fun m -> m "%s: syntax error" 
-			(print_position lexbuf));*)
-		None in
-	prog
-
 let bigarray_to_bytes arr = 
 	(* convert a bigarray to a list of bytes *)
 	(* this is not efficient.. *)
 	let len = Bigarray.Array1.dim arr in
 	Bytes.init len 
 		(fun i -> Bigarray.Array1.get arr i |> Char.chr)
-
-let run_prog prog res fname =
-	(*Logs.debug(fun m -> m "enter run_prog");*)
-	match prog with
-	| Some(prog) -> (
-		let (_,_,segs) = Logo.eval (Logo.start_state ()) prog in
-		(*Logs.debug(fun m -> m "%s" (Logo.output_program_pstr prog)); 
-		Logs.debug(fun m -> m "%s" (Logo.output_segments_str segs));*) 
-		Logo.segs_to_png segs res fname; 
-		(*let _arr,scost = Logo.segs_to_array_and_cost segs res in*)
-		(*Logs.debug(fun m -> m "run_prog cost %f" scost);*) 
-			(* another good way of doing it*)
-		(*Logs.debug(fun m -> m  "run_prog done");*)
-		true)
-	| None -> ( false )
-
-let parse_logo_string s = 
-	let lexbuf = Lexing.from_string s in
-	lexbuf.lex_curr_p <- { lexbuf.lex_curr_p with pos_fname = "from string" };
-	parse_with_error lexbuf
-	
-let run_logo_string s res fname = 
-	let pro = parse_logo_string s in
-	run_prog pro res fname 
-	
-let parse_logo_file fname = 
-	let ic = open_in fname in
-	let s = really_input_string ic (in_channel_length ic) in
-	close_in ic;
-	parse_logo_string s
-
-let run_logo_file fname =
-	let prog = parse_logo_file fname in
-	ignore(run_prog prog 256 (fname^".png") )
-	
-(*let program_to_gdata pro res = 
-	let progenc = Logo.encode_program_str pro in
-	let (_,_,segs) = Logo.eval (Logo.start_state ()) pro in
-	let scost = segs_to_cost segs in
-	let pcost = Logo.progenc_cost progenc in
-	let lx,hx,ly,hy = segs_bbx segs in
-	let dx = hx-.lx in
-	let dy = hy-.ly in
-	let maxd = max dx dy in
-	if maxd >= 2. && maxd <= 9. && scost >= 4. && scost <= 64. && List.length segs < 8 && String.length progenc < 24 then (
-		let img, _ = Logo.segs_to_array_and_cost segs res in
-		let progt = `Uniq in
-		Some ({Graf.nulgdata with 
-			progt; pro; progenc; scost; pcost; segs}, img)
-	) else None*)
 
 let progenc2str progenc =
 	progenc |>
@@ -282,10 +223,10 @@ let db_get steak i =
 	Mutex.unlock steak.db_mutex ; 
 	r
 
-let imgf_to_enc steak imgf =
-	Vae.encode1_ext steak.vae
-		(Tensor.view imgf ~size:[image_res*image_res])
-		
+let imgf_to_enc _steak _imgf =
+	Tensor.randn [12;]
+	(*Vae.encode1_ext steak.vae
+		(Tensor.view imgf ~size:[image_res*image_res])*)
 
 let db_add_uniq ?(doenc=true) steak ed imgf imgf_cpu =
 	(*imgf is a tensor on same device as dbf*)
@@ -297,7 +238,7 @@ let db_add_uniq ?(doenc=true) steak ed imgf imgf_cpu =
 	if imgi >= 0 then (
 		Tensor.copy_ ~src:imgf (Tensor.narrow steak.dbf ~dim:0 ~start:imgi ~length:1);
 		Tensor.copy_ ~src:imgf_cpu (Tensor.narrow steak.dbf_cpu ~dim:0 ~start:imgi ~length:1);
-		if doenc then
+		if doenc && false then
 			Tensor.copy_ ~src:enc (Tensor.narrow steak.dbf_enc ~dim:0 ~start:imgi ~length:1) ;
 		added := true
 	); 
@@ -380,50 +321,73 @@ let normalize_tensor m =
 	let len = Tensor.(f 1. / len) in
 	Tensor.einsum ~equation:"ij,i -> ij" [m;len] ~path:None 
 	
-let reset_bea dreaming =
-	(* dt sets the 'mode' of batchd, which persists thru update_bea*)
-	let dt = if dreaming then `Verify else `Train in
-	let bea = Array.init !batch_size
-		(fun _i -> {nulbatche with dt}) in
-	let fresh = Array.init !batch_size (fun _i -> true) in
-	bea,fresh
 	
-let init_batchd superv =
-	Logs.debug (fun m -> m "init_batchd"); 
-	let dreaming = not superv in
-	let filnum = if superv then 0 else 1 in
-	let mkfnam s = 
-		Printf.sprintf "%s_%d.mmap" s filnum in
-	let fd_bpro,bpro = mmap_bigarray3 (mkfnam "bpro") 
-			!batch_size p_ctx p_indim in
-	let fd_bimg,bimg = mmap_bigarray3 (mkfnam "bimg") 
-			(!batch_size*3) image_res image_res in
-			(* note: needs a reshape on python side!! *)
-	(* supervised batch of edits: ocaml to python *)
-	let fd_bedts,bedts = mmap_bigarray2 (mkfnam "bedts") 
-			!batch_size e_indim in
-	(* hallucinated batch of edits: python to ocaml *)
-	let fd_bedtd,bedtd = mmap_bigarray2 (mkfnam "bedtd") 
-			!batch_size e_indim in
-	let fd_posenc,posenc = mmap_bigarray2 (mkfnam "posenc")
-			p_ctx poslen in
-	let bea,fresh = reset_bea dreaming in
-	(* fill out the posenc matrix *)
-	(* just a diagonal matrix w one-hot! *)
-	for i = 0 to (poslen-1) do (
-		for j = 0 to (poslen-1) do (
-			posenc.{i,j} <- if i = j then 1.0 else 0.0; 
-		) done
-	) done ;
-	let device = Torch.Device.Cpu in
-	let posencn = tensor_of_bigarray2 posenc device |> normalize_tensor in
-	Bigarray.Array3.fill bpro 0.0 ;
-	Bigarray.Array3.fill bimg 0.0 ;
-	Bigarray.Array2.fill bedts 0.0 ;
-	Bigarray.Array2.fill bedtd 0.0 ; 
-	(* return batchd struct & list of files to close later *)
-	{bpro; bimg; bedts; bedtd; posenc; posencn; bea; fresh}, 
-	[fd_bpro; fd_bimg; fd_bedts; fd_bedtd; fd_posenc]
+module SX = Set.Make(Int);;
+	
+let mnist_closest steak = 
+	(* find the closest programs to many mnist digits *)
+	let nmnist = 256 in
+	let dbfn = steak.gs.num_uniq in
+	let size = [nmnist; dbfn; image_res; image_res] in
+	Logs.debug (fun m->m "entering mnist_closest. mnist:%d dbf:%d" nmnist dbfn); 
+	let training = ref [] in 
+	for u = 0 to 100 do (
+		let aa = 
+			Tensor.narrow steak.mnist ~dim:0 ~start:(nmnist*u) ~length:nmnist
+			|> Tensor.unsqueeze ~dim:1 
+			|> Tensor.expand ~size ~implicit:true in
+		let bb = 
+			Tensor.narrow steak.dbf ~dim:0 ~start:0 ~length:dbfn
+			|> Tensor.unsqueeze ~dim:0
+			|> Tensor.expand ~size ~implicit:true in
+		let c = Tensor.(sum_dim_intlist (square (aa - bb)) 
+			~dim:(Some [2;3]) ~keepdim:false ~dtype:(T Float)) in
+			(* this burns lots of memory, but I can't figure out another way..*)
+		let indx = Tensor.argmin c ~dim:(Some 1) ~keepdim:false in
+		(* indx is now a list of elements of dbf closest to mnist *)
+		let closest = match Tensor.to_int1 indx with
+			| Some x -> x
+			| _ -> [| |] in
+		if true then (
+			let root = "/tmp/ec3/mnist_closest" in
+			Array.iteri (fun i x -> 
+				if i < 100 then (
+					let j = steak.gs.img_inv.(x) in
+					Logs.debug (fun m->m "dbf %d (gs.g %d) is closest to mnist %d" x j (nmnist*u + i)); 
+					if u = 0 then (
+						dbf_to_png steak.dbf x
+							(Printf.sprintf "%s/%05d_dbf.png" root i);
+						dbf_to_png steak.mnist_cpu i
+							(Printf.sprintf "%s/%05d_mnist.png" root i);
+						let a = db_get steak j in
+						Logo.segs_to_png a.ed.segs 64
+							(Printf.sprintf "%s/%05d_segs.png" root i);
+					) ) ) closest ); 
+		let s = Array.fold_left (fun a b -> SX.add b a) SX.empty closest in
+		(* make a (repeating) list of (from, to) indexes for training *)
+		(* start from the root node *)
+		let _dist,prev = Graf.dijkstra steak.gs 0 false in
+		List.iter ( fun target -> 
+			let rec loop r = 
+				if r >= 0 then (
+					let q = prev.(r) in
+					if q >= 0 then (
+						training := (q,r) :: !training; 
+						loop q
+					)
+				)
+			in
+			loop target (* if there are no routes to root, don't add *)
+			) (SX.elements s); 
+		Caml.Gc.full_major(); 
+		Logs.debug (fun m->m "%d of 100" u)
+	) done; 
+	List.iteri (fun i (pre,post) -> 
+		if i < 100 then 
+			Logs.debug (fun m->m "training: %d -> %d" pre post)) !training; 
+	Graf.edge_use steak.gs !training; 
+	Graf.gexf_out steak.gs ;
+	Array.of_list !training ;;
 	
 (*let pdata_to_edits a b = 
 	let dist, edits = Levenshtein.distance a.progenc b.progenc true in
@@ -459,7 +423,7 @@ let init_batchd superv =
 	
 let make_batche_train a ai b bi dt = 
 	let _,edits = Graf.get_edits a.ed.progenc b.ed.progenc in
-	let edited = Array.make p_ctx 0.0 in
+	let edited = Array.make (p_ctx/2) 0.0 in
 	{ a_pid = ai 
 	; b_pid = bi
 	; a_progenc = a.ed.progenc
@@ -472,8 +436,16 @@ let make_batche_train a ai b bi dt =
 	; count = 0
 	; dt (* dreamt *)
 	}
-	
+
 let new_batche_train steak dt = 
+	let n = Array.length steak.training in
+	let i = Random.int n in
+	let (pre,post) = steak.training.(i) in
+	let d = Vector.get steak.gs.g pre in
+	let e = Vector.get steak.gs.g post in
+	make_batche_train d pre e post dt
+	
+let new_batche_train_b steak dt = 
 	(* supervised mode, any 'A' -- including eqiv *)
 	let rec selector () = 
 		let di = Random.int (Vector.length steak.gs.g) in 
@@ -481,11 +453,16 @@ let new_batche_train steak dt =
 		match d.progt with
 		| `Uniq -> (
 			if String.length d.ed.progenc < (p_ctx/2-2) then (
-				let o = SI.elements d.outgoing in
+				let typ = match (Random.int 8) with
+					| 0 -> "sub"
+					| 1 -> "del"
+					| _ -> "ins" in (* biased!! *)
+				let o = SI.elements d.outgoing 
+					|> List.filter (fun (_,t,_,_) -> t = typ) in
 				let ol = List.length o in
 				if ol > 0 then (
 					let k = Random.int ol in
-					let ei = List.nth o k in
+					let ei,_,_,_ = List.nth o k in
 					let e = Vector.get steak.gs.g ei in
 					if e.progt = `Uniq then (
 						make_batche_train d di e ei dt
@@ -493,13 +470,15 @@ let new_batche_train steak dt =
 				) else selector ()
 			) else selector () )
 		| `Equiv -> (
-			(* always simplify to the minimum desc *)
-			if String.length d.ed.progenc < (p_ctx/2-2) then (
-				let ei = d.equivroot in
-				let e = Vector.get steak.gs.g ei in
-				if e.progt = `Uniq then (
-					make_batche_train d di e ei dt
-				) else ( assert (0 <> 0); nulbatche ) 
+			if (Random.int 5) = 0 then (
+				(* always simplify to the minimum desc *)
+				if String.length d.ed.progenc < (p_ctx/2-2) && false then (
+					let ei = d.equivroot in
+					let e = Vector.get steak.gs.g ei in
+					if e.progt = `Uniq then (
+						make_batche_train d di e ei dt
+					) else ( assert (0 <> 0); nulbatche ) 
+				) else selector () 
 			) else selector () )
 		| _ -> assert (0 <> 0); nulbatche
 	in
@@ -526,12 +505,12 @@ let new_batche_train steak dt =
 	in
 	selector ()*)
 
-let new_batche_mnist steak =
+let new_batche_mnist_cos steak =
 	(* for now, just set the target B to a sample from MNIST; ultimately will need to have longer interactions & intermediate starting points *)
 	(*let len = match steak.dreams with
 		| Some dream -> Array.length dream
 		| _ -> 1 in*)
-	let mid = 1 + (Random.int 1000) in
+	let mid = 1 + (Random.int 2000) in
 	(* select a starting point closer to the target, w/threshold.
 		goal is conflated with longer interactions, guess ? *)
 	let imgcnt = steak.gs.num_uniq in (* may be updated in other threads *)
@@ -541,7 +520,7 @@ let new_batche_mnist steak =
 			|> Tensor.expand ~implicit:true ~size:[imgcnt;cols] in
 	let d = Tensor.cosine_similarity ~x1:a ~x2:b ~dim:1 ~eps:1e-7 in
 	(* add a bit of noise .. ?? *)
-	let d = Tensor.( d + (f 0.05 * (randn [imgcnt;]))) in
+	let d = Tensor.( d + (f 0.0005 * (randn [imgcnt;]))) in
 	assert ((Tensor.shape1_exn d) = imgcnt) ; (* sanity.. *)
 	let _,ind = Tensor.sort d ~dim:0 ~descending:true in
 	(* select the best match that is short enough *)
@@ -552,68 +531,119 @@ let new_batche_mnist steak =
 		let a = db_get steak indx in
 		if String.length a.ed.progenc < (p_ctx/2-2) then (
 			assert (h = a.imgi) ; 
-			let edited = Array.make p_ctx 0.0 in
+			let edited = Array.make (p_ctx/2) 0.0 in
+			let root = Editree.make_root a.ed.progenc in
+			let dt = `Mnist(root, []) in
 			{  a_pid = indx; b_pid = mid;
 				a_progenc = a.ed.progenc; 
 				b_progenc = ""; 
 				c_progenc = a.ed.progenc; 
 				a_imgi = a.imgi; 
 				b_imgi = mid; 
-				edits = []; edited; count=0; dt=`Mnist}
+				edits = []; edited; count=0; dt}
+		) else selector (k+1) in
+	selector 0
+	(* note: bd.fresh is set in the calling function (for consistency) *)
+	
+let distance_array = Array.make 512 0.0 
+
+let rec new_batche_mnist_mse steak bi =
+	(* for now, just set the target B to a sample from MNIST; ultimately will need to have longer interactions & intermediate starting points *)
+	(*let len = match steak.dreams with
+		| Some dream -> Array.length dream
+		| _ -> 1 in*)
+	let mid = 1 + (Random.int 1000) in
+	(* select a starting point closer to the target, w/threshold.
+		goal is conflated with longer interactions, guess ? *)
+	let imgcnt = steak.gs.num_uniq in (* may be updated in other threads *)
+	let a = Tensor.narrow steak.dbf ~dim:0 ~start:0 ~length:imgcnt 
+			|> Tensor.reshape ~shape:[imgcnt; image_res*image_res] in
+	let b = Tensor.narrow steak.mnist ~dim:0 ~start:mid ~length:1
+			|> Tensor.expand ~implicit:true ~size:[imgcnt;image_res;image_res]
+			|> Tensor.reshape ~shape:[imgcnt; image_res*image_res] in
+	let d = Tensor.(sum_dim_intlist (square(a - b)) 
+			~dim:(Some [1]) ~keepdim:false ~dtype:(T Float) ) in
+	assert ((Tensor.shape1_exn d) = imgcnt) ; (* sanity.. *)
+	let d = Tensor.(d + (randn_like d) * (f 4.0)) in (* noise *)
+	let d,ind = Tensor.sort d ~dim:0 ~descending:false in
+	(* if the problem is solved, select a new digit *)
+	let h = (Tensor.get_float1 d 0) /. (foi (image_res * image_res)) in
+	(*Logs.debug (fun m->m "new_batche_mnist_mse %d %f" bi h);*) 
+	if h > 0.025 then (
+	(* select the best match that is short enough *)
+	let rec selector k = 
+		assert (k < imgcnt); 
+		let h = Tensor.get_int1 ind k in
+		let indx = steak.gs.img_inv.(h) in 
+		let a = db_get steak indx in
+		if String.length a.ed.progenc < (p_ctx/2-2) then (
+			assert (h = a.imgi) ; 
+			distance_array.(bi) <- Tensor.get_float1 d h ; 
+			let edited = Array.make (p_ctx/2) 0.0 in
+			let root = Editree.make_root a.ed.progenc in
+			let dt = `Mnist(root, []) in
+			{  a_pid = indx; b_pid = mid;
+				a_progenc = a.ed.progenc; 
+				b_progenc = ""; 
+				c_progenc = a.ed.progenc; 
+				a_imgi = a.imgi; 
+				b_imgi = mid; 
+				edits = []; edited; count=0; dt}
+		) else selector (k+1) in
+	selector 0
+	) else (
+		Caml.Gc.major(); 
+		new_batche_mnist_mse steak bi
+	)
+	(* note: bd.fresh is set in the calling function (for consistency) *)
+
+
+let new_batche_mnist_mse_b steak bi =
+	(* for now, just set the target B to a sample from MNIST; ultimately will need to have longer interactions & intermediate starting points *)
+	(*let len = match steak.dreams with
+		| Some dream -> Array.length dream
+		| _ -> 1 in*)
+	let mid = 1 + (Random.int 1000) in
+	(* select a starting point closer to the target, w/threshold.
+		goal is conflated with longer interactions, guess ? *)
+	let imgcnt = steak.gs.num_uniq in (* may be updated in other threads *)
+	let d = Tensor.( 
+			sum_dim_intlist
+				(square
+					(narrow steak.dbf ~dim:0 ~start:0 ~length:imgcnt) - 
+					(narrow steak.mnist ~dim:0 ~start:mid ~length:1) )
+				~dim:(Some [1;2]) ~keepdim:false ~dtype:(T Float) ) in
+	assert ((Tensor.shape1_exn d) = imgcnt) ; (* sanity.. *)
+	let _,ind = Tensor.sort d ~dim:0 ~descending:false in
+	(* select the best match that is short enough *)
+	let rec selector k = 
+		assert (k < imgcnt); 
+		let h = Tensor.get_int1 ind k in
+		let indx = steak.gs.img_inv.(h) in 
+		let a = db_get steak indx in
+		if String.length a.ed.progenc < (p_ctx/2-2) then (
+			assert (h = a.imgi) ; 
+			distance_array.(bi) <- Tensor.get_float1 d h ; 
+			let edited = Array.make (p_ctx/2) 0.0 in
+			let root = Editree.make_root a.ed.progenc in
+			let dt = `Mnist(root, []) in
+			{  a_pid = indx; b_pid = mid;
+				a_progenc = a.ed.progenc; 
+				b_progenc = ""; 
+				c_progenc = a.ed.progenc; 
+				a_imgi = a.imgi; 
+				b_imgi = mid; 
+				edits = []; edited; count=0; dt}
 		) else selector (k+1) in
 	selector 0
 	(* note: bd.fresh is set in the calling function (for consistency) *)
 		
-let new_batche_unsup steak =
+let new_batche_unsup steak bi =
 	if (Random.int 10) < 6 then ( (* FIXME 5 *)
 		new_batche_train steak `Verify
 	) else (
-		new_batche_mnist steak
+		new_batche_mnist_mse steak bi
 	)
-	
-(*let new_batche_dream_x steak _bn =
-	(* not threaded !! *)
-	match steak.dreams with
-	| Some dreams -> (
-		let i = steak.dreamn in
-		let d = dreams.(i) in
-		steak.dreamn <- (i+1) mod (Array.length dreams); 
-		let edited = Array.make p_ctx 0.0 in (* memory thrash *)
-		let count = 0 in
-		{d.be with edited; count} )
-	| None -> ( nulbatche )*)
-	
-let update_edited be ed = 
-	(* update the 'edited' array, which indicates what has changed in the program string *)
-	let typ,pp,_chr = ed in 
-	let la = min (String.length be.a_progenc) (p_ctx/2) in
-	let lc = min (String.length be.c_progenc) (p_ctx/2) in
-	(* in-place array modification *)
-	(match typ with 
-	| "sub" -> (
-		let pp = if pp > lc-1 then lc-1 else pp in
-		let pp = if pp < 0 then 0 else pp in
-		be.edited.(la+pp) <- 0.5 )
-	| "del" -> (
-		(* lc is already one less at this point -- c has been edited *)
-		let pp = if pp > lc-1 then lc-1 else pp in
-		let pp = if pp < 0 then 0 else pp in
-		(* shift left *)
-		for i = la+pp to p_ctx-2 do (
-			be.edited.(i) <- be.edited.(i+1)
-		) done; 
-		assert ((la+pp) < p_ctx); 
-		be.edited.(la+pp) <- ( -1.0 ) ) 
-	| "ins" -> (
-		if lc < p_ctx/2 && la+pp < p_ctx then (
-			let pp = if pp > lc then lc else pp in
-			let pp = if pp < 0 then 0 else pp in
-			(* shift right one *)
-			for i = p_ctx-2 downto la+pp do (
-				be.edited.(i+1) <- be.edited.(i)
-			) done; 
-			be.edited.(la+pp) <- 1.0 ) )
-	| _ -> () )
 
 let sample_dist x = 
 	(* sample a discrete decoding from the weightings along dim 1 *)
@@ -634,7 +664,87 @@ let sample_dist x =
 let sample_dist_dum x = 
 	Tensor.argmax x ~dim:1 ~keepdim:false
 	
-let decode_edit _bd ba_edit = 
+(* fixed tensors for enumeration decoding *)
+let decode_edit_tensors batchsiz = 
+	let size = [batchsiz; 4; toklen; poslen] in
+	let shape = [batchsiz; 4 * toklen * poslen] in
+	let ityp = 
+		Tensor.range ~start:(Scalar.int 0) ~end_:(Scalar.int 3) 
+				~options:(T Float,Torch.Device.Cpu)
+		|> Tensor.unsqueeze ~dim:0
+		|> Tensor.unsqueeze ~dim:2
+		|> Tensor.unsqueeze ~dim:3
+		|> Tensor.expand ~size ~implicit:true in
+	let ichr = 
+		Tensor.range ~start:(Scalar.int 0) ~end_:(Scalar.int (toklen-1)) 
+				~options:(T Float,Torch.Device.Cpu)
+		|> Tensor.unsqueeze ~dim:0
+		|> Tensor.unsqueeze ~dim:1
+		|> Tensor.unsqueeze ~dim:3
+		|> Tensor.expand ~size ~implicit:true in
+	let ipos = 
+		Tensor.range ~start:(Scalar.int 0) ~end_:(Scalar.int (poslen-1)) 
+				~options:(T Float,Torch.Device.Cpu)
+		|> Tensor.unsqueeze ~dim:0
+		|> Tensor.unsqueeze ~dim:1
+		|> Tensor.unsqueeze ~dim:2
+		|> Tensor.expand ~size ~implicit:true in
+		
+	let typ = Tensor.reshape ityp ~shape in
+	let chr = Tensor.reshape ichr ~shape in
+	let pos = Tensor.reshape ipos ~shape in
+	(* index these tensors with index from argsort *)
+	(* they only need to be created once! *)
+	{shape;typ;chr;pos}
+
+let decode_edit_enumerate steak ba_edit = 
+	(* Rather than sampling the pseudo-probabilities emitted by the model, 
+		make 3 matrices of them.  
+		sorted by probability, descending.
+		This is used like beam search, which DreamCoder
+		& many other models use *)
+	let sta = Unix.gettimeofday () in
+	let device = Torch.Device.Cpu in
+	let m = tensor_of_bigarray2 ba_edit device in
+	let select start length = 
+		let o = Tensor.narrow m ~dim:1 ~start ~length in
+		Tensor.clamp_ o ~min:(Scalar.float 1e-5) ~max:(Scalar.float 1.0)
+		(* clamp above zero prob, so log works *)
+	in
+	let typ = select 0 4 in
+	let chr = select 4 toklen in
+	let pos = select (5+toklen) poslen in
+	(*Printf.printf "decode_edit_enumerate typ:\n"; 
+	Tensor.print typ;*) 
+	(* outer-product this *)
+	let x = Tensor.einsum ~equation:"bt,bc,bp -> btcp" [typ;chr;pos] 
+				~path:None in
+	let x2 = Tensor.reshape x ~shape:steak.de.shape in
+	let index = Tensor.argsort x2 ~dim:1 ~descending:true 
+		|> Tensor.narrow ~dim:1 ~start:0 ~length:32 in
+	(*let typ2 = Tensor.gather steak.de.typ ~dim:1 ~index ~sparse_grad:false in*)
+	(*Tensor.print typ2;*) 
+	let convert w = 
+		Tensor.gather w ~dim:1 ~index ~sparse_grad:false
+		|> Tensor.to_bigarray ~kind:Bigarray.float32 
+		|> Bigarray.array2_of_genarray 
+		(* output is batch_size x 10 *)
+	in
+	let ba_prob = convert x2 in
+	let ba_typ = convert steak.de.typ in (* float -> in conv later *)
+	let ba_chr = convert steak.de.chr in
+	let ba_pos = convert steak.de.pos in
+	
+	let fin = Unix.gettimeofday () in
+	if !gdisptime then 
+		Logs.debug (fun m -> m "decode_edit_enumerate time %f" (fin-.sta)); 
+	ba_prob, ba_typ, ba_chr, ba_pos
+	(* now we need to iterate over these tensors
+		-- for each batch element
+		& decide what to do with them. 
+		Maybe another function ? *)
+	
+let decode_edit ba_edit = 
 	(* decode model output (from python) *)
 	let sta = Unix.gettimeofday () in
 	let device = Torch.Device.Cpu in
@@ -643,25 +753,8 @@ let decode_edit _bd ba_edit =
 	(* stochastic decoding through sample_dist *)
 	let typ = sample_dist (Tensor.narrow m ~dim:1 ~start:0 ~length:4) in 
 	let chr = sample_dist (Tensor.narrow m ~dim:1 ~start:4 ~length:toklen) in
-	(* now need to compute cosine distance.  normalize vectors first *)
 	let pos = sample_dist 
 		(Tensor.narrow m ~dim:1 ~start:(5+toklen) ~length:poslen) in
-	(*let pos = Tensor.narrow bd.posencn ~dim:0 ~start:4 ~length:1 in
-	let pos = Tensor.expand pos ~size:[!batch_size;poslen*2] ~implicit:true in
-	Logs.debug (fun m -> m "decode_edit: normalized pos\n"); 
-	Tensor.print pos; *)
-	(* ^^ why 5? 4 edit types, toklen char options, and one for shakes *)
-	(* add a leading p_ctx dimension *)
-	(*let pos = Tensor.expand pos ~size:[p_ctx;!batch_size;poslen*2] ~implicit:true in
-	let posenc = Tensor.expand bd.posencn ~size:[!batch_size;p_ctx;poslen*2] ~implicit:true in*)
-	(*Logs.debug (fun m -> m "decode_edit: bd.posencn\n"); 
-	Tensor.print bd.posencn;*)
-	(*let sim = Tensor.einsum ~equation:"cbp,bcp -> bc" [pos;posenc] ~path:None in*)
-	(*Logs.debug (fun m -> m "decode_edit: sim\n"); 
-	Tensor.print sim;*)
-	(*let loc = sample_dist_dum sim in *)
-	(* cosine similarity is permissive; take top *)
-	(* location must be clipped to within the program. *)
 	let edit_arr = Array.init !batch_size (fun i -> 
 		let etyp = match Tensor.get_int1 typ i with
 			| 0 -> "sub"
@@ -671,11 +764,6 @@ let decode_edit _bd ba_edit =
 		let echr = (Tensor.get_int1 chr i) + Char.code('0') |> Char.chr in
 		let eloc = Tensor.get_int1 pos i in
 		(etyp,eloc,echr) ) in
-	(* debug *)
-	(*for i = 0 to (min 1 !batch_size) do (
-		let typ,loc,chr = edit_arr.(i) in
-		Logs.debug (fun m -> m "decode_edit %d: %s,%c,%d" i typ chr loc)
-	) done;*)
 	let fin = Unix.gettimeofday () in
 	if !gdisptime then Logs.debug (fun m -> m "decode_edit time %f" (fin-.sta)); 
 	edit_arr
@@ -688,7 +776,7 @@ let apply_edits be =
 	(* note: Levenshtein clips the edit positions *)
 	let c = Levenshtein.apply_edits be.c_progenc [ed] in
 	let be2 = { be with c_progenc=c; edits=(List.tl be.edits) } in
-	update_edited be2 ed; 
+	ignore(Editree.update_edited ~inplace:true be2.edited ed (String.length c)); 
 	be2
 	
 let better_counter = Atomic.make 0
@@ -698,31 +786,33 @@ let img_to_imgf steak img =
 	let imgf = Tensor.to_device ~device:steak.device imgf_cpu in
 	imgf_cpu,imgf
 	
-let try_add_program steak data img be = 
-	if 0 <> 0 then (
+let try_add_program steak data img be bi = 
+	if false then (
 		let progstr = Logo.output_program_pstr data.pro in
 		Logs.info (fun m -> m "try_add_program [%d]: %s \"%s\""
 			steak.batchno data.progenc progstr) );
 	let imgf_cpu,imgf = img_to_imgf steak img in
 	let good2,dist,minde = dbf_dist steak imgf in
+	let success = ref false in
 	if good2 then (
 	let mindex = steak.gs.img_inv.(minde) in
 	(* idea: if it's similar to a currently stored program, 
 		but has been hallucinated by the network, 
 		and is not too much more costly than what's there,
 		then replace the entry! *)
-	if dist > 0.02 then (
+	(* if dist > 0.02 then (
 		let added,l = db_add_uniq steak data imgf imgf_cpu in
 		if added then (
 			Logs.info(fun m -> m
 				"try_add_program: adding new [%d] = %s" l
-				(Logo.output_program_pstr data.pro) )
+				(Logo.output_program_pstr data.pro) ); 
+			(*success := true*)
 		) else (
 			Logs.debug(fun m -> m
 				"try_add_program: could not add new, db full. [%d]" l )
 		)
-	) ;
-	if dist < 0.0005 then (
+	) ; *)
+	if dist < 0.0002 then (
 		let data2 = db_get steak mindex in
 		let c1 = data.pcost in
 		let c2 = data2.ed.pcost in
@@ -732,7 +822,7 @@ let try_add_program steak data img be =
 			let r = db_replace_equiv steak mindex data imgf imgf_cpu in
 			if r >= 0 then (
 				let root = "/tmp/ec3/replace_verify" in
-				Logs.info (fun m -> m "#%d b:%d replacing equivalents [%d] %s with %s" !nreplace steak.batchno mindex progstr2 progstr);
+				Logs.info (fun m -> m "#%d b:%d replacing equivalents [%d] %f %s with %s" !nreplace steak.batchno mindex dist progstr2 progstr);
 				Printf.fprintf steak.fid
 					"(%d) [%d] d:%f %s --> %s | pcost %.2f -> %.2f\n"
 					!nreplace mindex dist progstr2 progstr c2 c1 ;
@@ -745,23 +835,23 @@ let try_add_program steak data img be =
 				let filename = Printf.sprintf
 					"%s/%05d_dbf.png" root !nreplace in
 				dbf_to_png steak.dbf minde filename;
-				incr nreplace
+				incr nreplace; 
+				(*success := true*)
 			)
 			(* those two operations are in-place, so subsequent batches should contain the new program :-) *)
 		)
 	) ;
-	if be.dt = `Mnist then (
+	if dist > 0.002 then (
+	match be.dt with 
+	| `Mnist(_,_) -> ( (* sigh, redundant info *)
 		(*let cpu = Torch.Device.Cpu in*)
 		let a = db_get steak be.a_pid in
 		let mid = be.b_pid in
 		let aimg = Tensor.narrow steak.dbf ~dim:0 ~start:a.imgi ~length:1 in
-		let bimg = Tensor.narrow steak.mnist ~dim:0 ~start:mid ~length:1
-			|> Tensor.to_device ~device:steak.device in
+		let bimg = Tensor.narrow steak.mnist ~dim:0 ~start:mid ~length:1 in
 		let cimg = imgf in
-		let encode v =
-			Tensor.view v ~size:[image_res*image_res;]
-			|> Vae.encode1_ext steak.vae in
-		let aenc = encode aimg in
+		let encode v = imgf_to_enc steak v in
+		let aenc = imgf_to_enc steak aimg in
 		let benc = encode bimg in
 		let cenc = encode cimg in
 		let cos_ab = Tensor.cosine_similarity ~x1:aenc ~x2:benc ~dim:0 ~eps:1e-7 |> Tensor.float_value in
@@ -770,126 +860,239 @@ let try_add_program steak data img be =
 			|> Tensor.float_value in
 		let cb = Tensor.( mean((cimg - bimg) * (cimg - bimg)) )
 			|> Tensor.float_value in
-		if cos_cb > cos_ab then (
-			let q = Atomic.get better_counter in
+		if cb < ab then (
+		(*if cos_cb > cos_ab then ( *)
+			let data2 = db_get steak mindex in
+			let progstr = progenc2str data.progenc in
+			let progstr2 = progenc2str data2.ed.progenc in
+			let progstr3 = progenc2str be.a_progenc in
+			let q = Atomic.fetch_and_add better_counter 1 in
 			let root = "/tmp/ec3/mnist_improve" in
-			Logs.info (fun m -> m "Made an improvement! see %d; cos: %f --> %f ; mse: %f --> %f" q cos_ab cos_cb ab cb);
+			Logs.info (fun m -> m "Made an improvement! see %d; cos: %f --> %f ; mse: %f --> %f (init %f); dist %f" q cos_ab cos_cb ab cb (distance_array.(bi) /. 900.0) dist);
+			Logs.info (fun m -> m "closest :%s [%d]" progstr2 mindex );
+			Logs.info (fun m -> m "new     :%s " progstr );
+			Logs.info (fun m -> m "original:%s [%d]" progstr3 be.a_pid);
+			assert (be.a_progenc = a.ed.progenc); 
 			let filename = Printf.sprintf "%s/b%05d_a_target.png" root q in
-			dbf_to_png steak.mnist mid filename;
+			dbf_to_png steak.mnist_cpu mid filename;
 			Logo.segs_to_png a.ed.segs 64
 				(Printf.sprintf "%s/b%05d_b_old.png" root q);
 			Logo.segs_to_png data.segs 64
 				(Printf.sprintf "%s/b%05d_c_new.png" root q);
-			Atomic.incr better_counter
-		)
-	);
-	)
+			
+			if dist > 0.005 then (
+				let added,l = db_add_uniq steak data imgf imgf_cpu in
+				if added then (
+					Logs.info(fun m -> m
+						"try_add_program: adding new [%d] = %s" l
+						(Logo.output_program_pstr data.pro) ); 
+					(*success := true*)
+				) else (
+					Logs.debug(fun m -> m
+						"try_add_program: could not add new, db full. [%d]" l )
+				)
+			); 
+			success := true
+		))
+	| _ -> ()
+	) ); 
+	!success
 	(* NOTE not sure if we need to call GC here *)
 	(* apparently not? *)
-
-let update_bea steak bd =
+	
+let update_bea_parallel body steak description =
 	let sta = Unix.gettimeofday () in
-	let edit_arr = decode_edit bd bd.bedtd in
-	let innerloop_update_bea bi =
-		let be = bd.bea.(bi) in
-		(* check edited array allocation *)
-		let be1 = if Array.length be.edited <> p_ctx
-			then ( let edited = Array.make p_ctx 0.0 in
-				{be with edited} ) else be in
-		let cnt = be1.count in
-		let typ,loc,chr = edit_arr.(bi) in
-		(*assert (Array.length be.edited = p_ctx) ;*)
-		let bnew = match be1.dt with
-		| `Train -> (
-			(* last edit is 'fin', in which case: new batche *)
-			if List.length be1.edits <= 1 then (
-				bd.fresh.(bi) <- true; (* update image flag *)
-				new_batche_train steak `Train
-				(*let bn = new_batche_train steak `Train in
-				if bi = 0 then (
-					Logs.debug (fun m -> m "|b0 new_batche_train; edit length %d"
-						(List.length bn.edits))
-				); 
-				bn*)
-			) else (
-				bd.fresh.(bi) <- false;
-				apply_edits be1
-			)
-			(* decoding verification after "decode_edits" command. *)
-			)
-		| `Verify -> (
-			(*if bi = 0 then (
-				Logs.debug (fun m -> m "update_bea Verify %s" be1.c_progenc)
-			) ;*)
-			let be2 = {be1 with edits=[(typ,loc,chr)];count=cnt+1} in
-			let be3 = apply_edits be2 in
-			if typ = "fin" || be3.count >= p_ctx/2 then (
-				(* write this to file for now; stats later *)
-				let c = if be3.c_progenc = be3.b_progenc then '+' else '-' in
-				Printf.fprintf steak.fid_verify "[%c] %s -> %s ; decode %s\n" c
-					(progenc2str be3.a_progenc)
-					(progenc2str be3.b_progenc)
-					(progenc2str be3.c_progenc); 
-				if c = '+' then (
-					Graf.incr_good steak.gs be3.a_pid; 
-					Graf.incr_good steak.gs be3.b_pid 
-				) else (
-					(* might be a simplification ? *)
-					let good,data,img = progenc_to_edata be3.c_progenc in
-					if good then try_add_program steak data img be3
-				); 
-				bd.fresh.(bi) <- true;
-				new_batche_unsup steak 
-			) else (
-				bd.fresh.(bi) <- false;
-				be3
-			) )
-		| `Mnist -> (
-			let be2 = {be1 with edits=[(typ,loc,chr)];count=cnt+1} in
-			let be3 = apply_edits be2 in
-			if typ = "fin" || be3.count >= p_ctx/2 then (
-				let good,data,img = progenc_to_edata be3.c_progenc in
-				if good then (
-					(* fix this later: keep around programs that improve fit *)
-					(*let imgf = tensor_of_bigarray2 img steak.device in
-					let enc = imgf_to_enc steak imgf in
-					let s = progenc2str data.progenc in
-					let j = be3.dt.indx in
-					let a = Tensor.narrow steak.mnist_enc ~dim:0 ~start:j ~length:1 in
-					let d = Tensor.cosine_similarity ~x1:a ~x2:enc ~dim:1 ~eps:1e-7
-						|> Tensor.float_value in
-					(match steak.dreams with
-					| Some dreams -> (
-						dreams.(j).decode <- (s :: dreams.(j).decode);
-						dreams.(j).cossim <- (d :: dreams.(j).cossim)
-						)
-					| None -> assert (0 <> 0); () );*)
-					try_add_program steak data img be3
-				);
-				bd.fresh.(bi) <- true;
-				new_batche_unsup steak
-			) else (
-				bd.fresh.(bi) <- false;
-				be3
-			) ) in
-		bd.bea.(bi) <- bnew;
-	in (* /innerloop_update_bea *)
-
+	
 	if !gparallel then
-		Dtask.parallel_for steak.pool ~start:0 ~finish:(!batch_size-1)
-			~body:innerloop_update_bea
+		Dtask.parallel_for steak.pool 
+			~start:0 ~finish:(!batch_size-1) ~body
 	else
 		for i=0 to (!batch_size-1) do
-			innerloop_update_bea i done;
-
+			body i done;
+			
 	let fin = Unix.gettimeofday () in
-	if !gdisptime then Logs.debug (fun m -> m "update_bea time %f" (fin-.sta));
-	if (steak.batchno mod 10) = 9 then (
-		Mutex.lock steak.db_mutex;
-		Caml.Gc.major (); (* clean up torch variables (slow..) *)
-		Mutex.unlock steak.db_mutex
-	);
+	if !gdisptime then Logs.debug (fun m -> m "%s time %f" 
+		description (fin-.sta));
 	steak.batchno <- steak.batchno + 1
+	
+let update_bea_train steak bd = 
+	let innerloop_bea_train bi =
+		let be = bd.bea.(bi) in
+		(* check edited array allocation *)
+		let be1 = if Array.length be.edited <> (p_ctx/2)
+			then ( let edited = Array.make (p_ctx/2) 0.0 in
+				{be with edited} ) else be in
+		(* last edit is 'fin', in which case: new batche *)
+		let bnew = 
+		 if List.length be1.edits <= 1 then (
+			bd.fresh.(bi) <- true; (* update image flag *)
+			new_batche_train steak `Train
+		) else (
+			bd.fresh.(bi) <- false;
+			apply_edits be1
+		) in
+		bd.bea.(bi) <- bnew
+	in
+	update_bea_parallel innerloop_bea_train steak "update_bea_train"
+	
+let update_bea_verify steak bd = 
+	let edit_arr = decode_edit bd.bedtd in
+	let innerloop_bea_verify bi =
+		let be = bd.bea.(bi) in
+		let typ,loc,chr = edit_arr.(bi) in
+		(* check edited array allocation *)
+		let be1 = if Array.length be.edited <> (p_ctx/2)
+			then ( let edited = Array.make (p_ctx/2) 0.0 in
+				{be with edited} ) else be in
+		let cnt = be1.count in
+		let be2 = {be1 with edits=[(typ,loc,chr)];count=cnt+1} in
+		let be3 = apply_edits be2 in
+		let bnew = 
+		 if typ = "fin" || be3.count >= p_ctx/2 then (
+			(* write this to file for now; stats later *)
+			let c = if be3.c_progenc = be3.b_progenc then '+' else '-' in
+			Printf.fprintf steak.fid_verify "[%c] %s -> %s ; decode %s\n" c
+				(progenc2str be3.a_progenc)
+				(progenc2str be3.b_progenc)
+				(progenc2str be3.c_progenc); 
+			if c = '+' then (
+				Graf.incr_good steak.gs be3.a_pid; 
+				Graf.incr_good steak.gs be3.b_pid 
+			) else (
+				(* might be a simplification ? *)
+				let good,data,img = progenc_to_edata be3.c_progenc in
+				if good then ignore( try_add_program steak data img be3 bi)
+			); 
+			bd.fresh.(bi) <- true;
+			new_batche_unsup steak bi
+		) else (
+			bd.fresh.(bi) <- false;
+			be3
+		) in
+		bd.bea.(bi) <- bnew
+	in
+	update_bea_parallel innerloop_bea_verify steak "update_bea_verify"
+
+module SE = Set.Make(
+	struct
+		let compare (_,at,ap,ac) (_,bt,bp,bc) = 
+			if at=bt && ap=bp && ac=bc then 0 else 1 
+		type t = float * string * int * char
+	end )
+	
+let update_bea_mnist steak bd = 
+	(*Logs.debug (fun m -> m "entering update_bea_mnist");*) 
+	let ba_prob, ba_typ, ba_chr, ba_pos = 
+		decode_edit_enumerate steak bd.bedtd in
+		
+	(*for j = 0 to 9 do (
+		for i = 0 to 9 do (
+			Logs.debug (fun m -> m "[%d,%d] pr%0.3f t%0.3f c%0.3f p%0.3f"
+				i j ba_prob.{i,j} ba_typ.{i,j} ba_chr.{i,j} ba_pos.{i,j})
+		) done
+	) done; *) (* looks ok *)
+		
+	let decode bi j lc = 
+		let prob = ba_prob.{bi,j} in
+		let chr = (iof ba_chr.{bi,j}) + Char.code('0') |> Char.chr in
+		let typ,lim,chr = match iof ba_typ.{bi,j} with
+			| 0 -> "sub", lc-1, chr
+			| 1 -> "del", lc-1, '0'
+			| 2 -> "ins", lc, chr
+			| _ -> "fin", 0, '0' in
+		(* pos has to exist within the string *)
+		let pos = iof ba_pos.{bi,j} in
+		let pos = if pos > lim then lim else pos in
+		prob,typ,pos,chr
+	in
+	
+	let rec getedits eset lc bi j = 
+		if (j < 32) && (SE.cardinal eset < 10) then (
+			getedits (SE.add ( decode bi j lc ) eset) lc bi (j+1)
+		) else ( eset )
+	in
+	let normedits elist = 
+		let sum = List.fold_left 
+			(fun a (p,_,_,_) -> a +. p) 0.0001 elist in
+		List.map (fun (pr,t,p,c) -> (pr /. sum, t,p,c)) elist
+	in
+	
+	let innerloop_bea_mnist bi = 
+		let newdream () = 
+			bd.fresh.(bi) <- true;
+			new_batche_mnist_mse steak bi
+		in
+		let be = bd.bea.(bi) in
+		let bnew = match be.dt with 
+		| `Mnist(root,adr) -> (
+			(* model has just been queried about adr *)
+			let lc = String.length be.c_progenc in
+			let eset = getedits SE.empty lc bi 0 
+					|> SE.elements 
+					|> normedits in
+			(*if bi = 0 then (
+				(* these will be sorted, descending *)
+				Editree.print root [] "" 0.0 ;
+				Logs.debug (fun m -> m "update_bea_mnist batch 0 edits:");
+				List.iteri (fun i (pr,t,p,c) -> 
+					Logs.debug(fun m -> m "  [%d] p:%0.3f %s %d %c"
+						i pr t p c)) eset; 
+			);*) 
+			let eds = List.map (fun (_,t,p,c) -> (t,p,c)) eset in
+			let pr = List.map (fun (p,_,_,_) -> log p) eset in
+			Editree.model_update root adr eds pr; 
+			let rec selec () = 
+				let nadr,edit,k_progenc,k_edited = Editree.model_select root in
+				let typ,pos,chr = edit in
+				if bi = -1 then ( 
+					Logs.debug (fun m -> m "[%d] selec'ted %s %d %c  @%s" 
+						bi typ pos chr (Editree.adr2str nadr));
+					Logs.debug (fun m -> m 
+						"[%d] editree \n\tc_ %s \n\tk_ %s\n\tr_ %s\n\ta_ %s count %d"
+						bi be.c_progenc k_progenc
+						(Editree.getprogenc root) be.a_progenc be.count); 
+					Editree.print root [] "" 0.0
+				); 
+				let toolong = be.count > 256 in
+				if toolong then 
+					Logs.debug (fun m -> m "[%d] search limit exceeded." bi); 
+				match toolong,edit with
+				| true,_ 
+				| false,("con",_,_) -> (
+					(* we did not find a suitable edit -- give up *)
+					newdream () )
+				| false,("fin",_,_) -> (
+					(* label 'done' this leaf *)
+					Editree.model_done root nadr;
+					let good,data,img = progenc_to_edata k_progenc in
+					if good then (
+						if try_add_program steak data img be bi then (
+							newdream ()
+						) else selec ()
+					) else selec () )
+				| false,(typ,pos,chr) -> (
+					(* apply the edit *)
+					assert (typ <> "fin"); 
+					if bi = -1 then (
+						Logs.debug (fun m -> m 
+							"[%d] applied %s %d %c @%s count %d\n\tr_ %s \n\tk_ %s"
+							bi typ pos chr (Editree.adr2str nadr) be.count 
+							(Editree.getprogenc root) k_progenc)
+					); 
+					let count = be.count+1 in
+					let dt = `Mnist(root,nadr) in (* so we can eval its leaves *)
+					{be with c_progenc=k_progenc; edited=k_edited; count; dt})
+			in
+			selec ()
+			)
+		| _ -> newdream () in
+		bd.bea.(bi) <- bnew
+	in (* / innerloop_ *)
+	update_bea_parallel innerloop_bea_mnist steak "update_bea_mnist"; 
+	(* mnist comparisons generate torch variables that need cleanup *)
+	Mutex.lock steak.db_mutex;
+	Caml.Gc.major (); (* clean up torch variables (slow..) *)
+	Mutex.unlock steak.db_mutex
 
 let bigfill_batchd steak bd = 
 	let sta = Unix.gettimeofday () in
@@ -913,6 +1116,7 @@ let bigfill_batchd steak bd =
 		String.iteri (fun i c -> 
 			let j = (Char.code c) - offs in
 			if i < llim then bd.bpro.{u,i,j} <- 1.0 ) be.a_progenc ; 
+		let la = String.length be.a_progenc in
 		let lc = String.length be.c_progenc in
 		if lc > llim then 
 			Logs.debug(fun m -> m  "c_progenc too long(%d):%s" lc be.c_progenc);
@@ -922,10 +1126,12 @@ let bigfill_batchd steak bd =
 				bd.bpro.{u,i+l,j} <- 1.0; 
 				(* indicate this is c, to be edited *)
 				bd.bpro.{u,i+l,toklen-1} <- 1.0 ) ) be.c_progenc ;
-		(* copy over the edited tags (set in apply_edits) *)
-		assert (Array.length be.edited = p_ctx) ; 
-		for i = 0 to p_ctx-1 do (
-			bd.bpro.{u,i,toklen} <- be.edited.(i)
+		(* copy over the edited tags (set in update_edited) *)
+		assert (Array.length be.edited = (p_ctx/2)) ; 
+		let lim = if la+lc > p_ctx then p_ctx else la+lc in
+		for i = la to lim-1 do (
+			bd.bpro.{u,i,toklen} <- be.edited.(i-la)
+			(* a_progenc is zeroed via fill above *)
 		) done; 
 		(* position encoding *)
 		let l = if l > llim then llim else l in 
@@ -944,15 +1150,15 @@ let bigfill_batchd steak bd =
 		if bd.fresh.(u) then (
 			let pid_to_ba2 imgi dt = 
 				assert (imgi >= 0) ; 
-				if dt = `Mnist then (
+				match dt with
+				| `Mnist(_,_) -> (
 					assert (imgi < 60000) ; 
-					Tensor.narrow steak.mnist ~dim:0 ~start:imgi ~length:1 
-					|> Tensor.squeeze |> bigarray2_of_tensor 
-				) else (
+					Tensor.narrow steak.mnist_cpu ~dim:0 ~start:imgi ~length:1 
+					|> Tensor.squeeze |> bigarray2_of_tensor ) 
+				| _ -> (
 					assert (imgi < steak.gs.num_uniq) ; 
 					Tensor.narrow steak.dbf_cpu ~dim:0 ~start:imgi ~length:1 
-					|> Tensor.squeeze |> bigarray2_of_tensor 
-				) 
+					|> Tensor.squeeze |> bigarray2_of_tensor ) 
 			in
 			(* would be good if this didn't require two copy ops *)
 			(* tensor to bigarray, bigarray to bigarray *)
@@ -976,7 +1182,7 @@ let bigfill_batchd steak bd =
 		bd.bedts.{u,0} <- 0.0; (* TEST python synchronization *)
 		let (typ,pp,c) = if (List.length be.edits) > 0 
 			then List.hd be.edits
-			else ("fin",0,'0') in
+			else ("sub",0,'0') in
 		(* during dreaming, the edit list is drained dry: 
 		we apply the edits (thereby emptying the 1-element list),
 		update the program encodings, 
@@ -1005,6 +1211,61 @@ let bigfill_batchd steak bd =
 	let fin = Unix.gettimeofday () in
 	if !gdisptime then 
 		Logs.debug (fun m -> m "bigfill_batchd time %f" (fin-.sta))
+		
+let reset_bea steak dreaming =
+	(* dt sets the 'mode' of batchd, which persists thru update_bea*)
+	let dt = `Train in
+	(*Printf.printf "\n------- reset_bea:\n"; 
+	Gc.print_stat stdout; *)
+	let bea = Array.init !batch_size
+		(fun i -> 
+			if dreaming then new_batche_mnist_mse steak i
+			else new_batche_train steak dt) in
+	let fresh = Array.init !batch_size (fun _i -> true) in
+	(*Printf.printf "\n------- after new_batche:\n"; 
+	Gc.print_stat stdout; 
+	Caml.Gc.full_major(); 
+	Printf.printf "\n------- after Gc.full_major ():\n"; 
+	Gc.print_stat stdout; 
+	flush stdout; *)
+	bea,fresh
+	
+let init_batchd steak superv =
+	Logs.debug (fun m -> m "init_batchd"); 
+	let dreaming = not superv in
+	let filnum = if superv then 0 else 1 in
+	let mkfnam s = 
+		Printf.sprintf "%s_%d.mmap" s filnum in
+	let fd_bpro,bpro = mmap_bigarray3 (mkfnam "bpro") 
+			!batch_size p_ctx p_indim in
+	let fd_bimg,bimg = mmap_bigarray3 (mkfnam "bimg") 
+			(!batch_size*3) image_res image_res in
+			(* note: needs a reshape on python side!! *)
+	(* supervised batch of edits: ocaml to python *)
+	let fd_bedts,bedts = mmap_bigarray2 (mkfnam "bedts") 
+			!batch_size e_indim in
+	(* hallucinated batch of edits: python to ocaml *)
+	let fd_bedtd,bedtd = mmap_bigarray2 (mkfnam "bedtd") 
+			!batch_size e_indim in
+	let fd_posenc,posenc = mmap_bigarray2 (mkfnam "posenc")
+			p_ctx poslen in
+	let bea,fresh = reset_bea steak dreaming in
+	(* fill out the posenc matrix *)
+	(* just a diagonal matrix w one-hot! *)
+	for i = 0 to (poslen-1) do (
+		for j = 0 to (poslen-1) do (
+			posenc.{i,j} <- if i = j then 1.0 else 0.0; 
+		) done
+	) done ;
+	let device = Torch.Device.Cpu in
+	let posencn = tensor_of_bigarray2 posenc device |> normalize_tensor in
+	Bigarray.Array3.fill bpro 0.0 ;
+	Bigarray.Array3.fill bimg 0.0 ;
+	Bigarray.Array2.fill bedts 0.0 ;
+	Bigarray.Array2.fill bedtd 0.0 ; 
+	(* return batchd struct & list of files to close later *)
+	{bpro; bimg; bedts; bedtd; posenc; posencn; bea; fresh}, 
+	[fd_bpro; fd_bimg; fd_bedts; fd_bedtd; fd_posenc]
 	
 let truncate_list n l = 
 	let n = min n (List.length l) in
@@ -1052,10 +1313,42 @@ let rec generate_random_logo res =
 	| Some q -> q
 	| _ -> generate_random_logo res
 
-let generate_empty_logo res =
-	(* the first program needs to be empty, for diffing *)
-	let pro = `Nop in
-	Graf.pro_to_edata pro res
+let generate_logo_fromstr str = 
+	match parse_logo_string str with
+	| Some pro -> Graf.pro_to_edata pro image_res
+	| _ -> Graf.pro_to_edata `Nop image_res
+	
+let permute_array a = 
+	let n = Array.length a in
+	let b = Array.init n (fun i -> i,(Random.float 10.0)) in
+	Array.sort (fun (_,d) (_,e) -> compare d e) b;
+	Array.map (fun (i,_) -> a.(i)) b
+
+let renderpng n s fid = 
+	let fname = Printf.sprintf "/tmp/ec3/init_database/%05d.png" !n in
+	ignore( Logoext.run_logo_string s 64 fname false); 
+	Printf.fprintf fid "[%d] %s\n" !n s; 
+	incr n
+	;;
+	
+let make_moves fid n = 
+	let lenopts = [|"1";"2";"3";"2*2";"1/2";"2/3"|] in
+	let angopts = [|"1/5";"2/5";"3/5";"4/5";"1/4";"3/4";"1/3";"2/3";"1/2";
+		"1";"2";"3";"4";"5";"6";"ua/5";"ua/4";"ua/3";"ua/2";"ua"|] in
+	let preopts = [| ""; "0 - "|] in
+	let r = ref [] in
+	for i = 0 to (Array.length lenopts)-1 do (
+		for j = 0 to (Array.length angopts)-1 do (
+			for k = 0 to (Array.length preopts)-1 do (
+				let s = "move "^ lenopts.(i)^
+						" , "^preopts.(k)^angopts.(j) in
+				r := s :: !r; 
+				renderpng n s fid
+			) done; 
+		) done;
+	) done;
+	List.rev !r
+	;;
 
 let init_database steak count = 
 	(* generate 'count' initial program & image pairs *)
@@ -1065,68 +1358,163 @@ let init_database steak count =
 	let steak = {steak with dbf; dbf_cpu} in
 	Logs.info(fun m -> m  "init_database %d" count); 
 	let root = "/tmp/ec3/init_database" in
-	let fid = open_out (Printf.sprintf "%s/newdbg.txt" root) in
-	let i = ref 0 in
+	let fid = open_out (Printf.sprintf "%s/enumerate.txt" root) in
+	let u = ref 0 in
 	let iters = ref 0 in
-	while !i < count do (
-		let data,img = if !i = 0 then
-			generate_empty_logo image_res else
-			generate_random_logo image_res in
+
+	let tryadd data img override =
 		let imgf_cpu,imgf = img_to_imgf steak img in
-		let good,dist,minde = if !i = 0 then true,0.5,0 
+		let good,dist,minde = if override then true,0.5,0
 			else dbf_dist steak imgf in
 		let mindex = steak.gs.img_inv.(minde) in
-		if (good || !i < 2) then (
+		let s = Logo.output_program_pstr data.pro in
+		if good then (
 		(* bug: white image sets distance to 1.0 to [0] *)
-		(*Logs.debug (fun m -> m "dbf_dist %f %d" dist mindex);*) 
-		if dist > 0.02 then ( 
-			let s = Logo.output_program_pstr data.pro in
-			Logs.debug(fun m -> m 
-				"%d: adding [%d] = %s" !iters !i s); 
-			ignore( db_add_uniq steak data imgf imgf_cpu ~doenc:false );
+		(*Logs.debug (fun m -> m "dbf_dist %f %d" dist mindex);*)
+		if dist > 0.0002 then (
+			Logs.debug(fun m -> m
+				"%d: adding [%d] = %s" !iters !u s);
+			let added,_ = db_add_uniq steak data imgf imgf_cpu ~doenc:false in
+			if not added then Logs.err (fun m->m "did not add %s to db" s);
 			Logo.segs_to_png data.segs 64
-				(Printf.sprintf "%s/db%05d_.png" root !i); 
-			dbf_to_png steak.dbf !i
-				(Printf.sprintf "%s/db%05d_f.png" root !i);
-			Printf.fprintf fid "[%d] %s (dist:%f to:%d)\n" !i s dist mindex; 
-			incr i;
-		) ; 
-		if dist < 0.0005 then (
+				(Printf.sprintf "%s/db%05d_.png" root !u);
+			dbf_to_png steak.dbf !u
+				(Printf.sprintf "%s/db%05d_f.png" root !u);
+			Printf.fprintf fid "[%d] %s (dist:%f to:%d)\n" !u s dist mindex;
+			incr u;
+		) ;
+		if dist < 0.0001 then (
 			(* see if there's a replacement *)
 			let data2 = db_get steak mindex in
 			let c1 = data.pcost in (* progenc_cost  *)
 			let c2 = data2.ed.pcost in
 			if c1 < c2 then (
-				let r = db_replace_equiv steak mindex data imgf imgf_cpu in 
-				if r >= 0 then 
-					Logs.debug(fun m -> m 
-					"%d: replacing [%d] = %s ( was %s)" 
+				let r = db_replace_equiv steak mindex data imgf imgf_cpu in
+				if r >= 0 then (
+					Logs.debug(fun m -> m
+					"%d: replacing [%d] = %s ( was %s) dist:%f new [%d]"
 					!iters mindex
-					(Logo.output_program_pstr data.pro) 
-					(Logo.output_program_pstr data2.ed.pro));
-			); 
+					(Logo.output_program_pstr data.pro)
+					(Logo.output_program_pstr data2.ed.pro) dist r);
+					incr u;
+				)
+			);
 			if c1 > c2 then (
-				if (SI.cardinal data2.equivalents) < 32 then (
+				if (SI.cardinal data2.equivalents) < 16 then (
 					let r = db_add_equiv steak mindex data in
-					if r >= 0 then 
-						Logs.debug(fun m -> m 
-						"iter %d: added equiv [loc %d] = %s [new loc %d] ( simpler %s) %s %s same:%b " 
+					if r >= 0 then (
+						Logs.debug(fun m -> m
+						"iter %d: added equiv [loc %d] = %s [new loc %d] ( simpler= %s) %s %s same:%b dist:%f"
 						!iters mindex
 						(Logo.output_program_pstr data.pro) r
 						(Logo.output_program_pstr data2.ed.pro)
 						data.progenc data2.ed.progenc
-						(data.progenc = data2.ed.progenc) );
+						(data.progenc = data2.ed.progenc) dist);
+						incr u;
+					)
 				)
-			); 
-		) );  
-		if !iters mod 40 = 39 then 
+			);
+		) ; 
+		if dist <= 0.0002 && dist >= 0.0001 then (
+			Logs.debug (fun m->m "%d: %s reject, dist: %f to: %d" 
+				!iters s dist mindex)
+		)
+		) else (
+			Logs.debug (fun m->m "%d: not good: %s" !iters s)
+		) ; 
+		if !iters mod 40 = 39 then
 			(* needed to clean up torch allocations *)
-			Caml.Gc.major (); 
+			Caml.Gc.major ();
 		incr iters
+	in
+
+	let tryadd_fromstr str override =
+		let data,img = generate_logo_fromstr str in
+		tryadd data img override
+	in
+
+	tryadd_fromstr "" true;
+	tryadd_fromstr "move 1, 1" false;
+	tryadd_fromstr "move 1, 0 - 1" false;
+	let n = ref 3 in
+	let r = make_moves fid n in
+	let rp = List.map (fun s -> "( "^s^")") r in
+	(* now outer-prod them in a sequence + pen *)
+	let penopts = [|"1";"2";"3";"4"|] 
+		|> Array.map (fun s -> "pen "^s^"; ") in
+	let r2 = ref [] in
+	for h = 0 to (Array.length penopts)-1 do (
+		let pen = penopts.(h) in
+		let t = List.map (fun s -> "("^pen^s^")") r in
+		List.iter (fun s -> renderpng n s fid) t; 
+		r2 := List.rev_append t !r2; 
 	) done; 
+	
+	(* for longer sequences, we need to sub-sample *)
+	let penopts = [|"0";"1";"2";"3";"4"|] 
+		|> Array.map (fun s -> "pen "^s) in
+	let r3 = ref [] in
+	let ra = Array.of_list r in
+	let nra = List.length r in
+	while !n < 5000 do (
+		let i = Random.int nra in
+		let j = Random.int nra in
+		let k = Random.int (Array.length penopts) in
+		let y = [| ra.(i); ra.(j); penopts.(k) |] |> permute_array in
+		let s,_ = Array.fold_left (fun (a,m) b -> 
+			(if m<2 then a^b^"; " else a^b),m+1) ("",0) y in
+		let s2 = "("^s^")" in
+		r3 := s2 :: !r3; 
+		renderpng n s2 fid
+	) done; 
+	while !n < 8000 do (
+		let i = Random.int nra in
+		let j = Random.int nra in
+		let k = Random.int (Array.length penopts) in
+		let y = [| ra.(i); penopts.(k); ra.(j) |] in
+		let s,_ = Array.fold_left (fun (a,m) b -> 
+			(if m<2 then a^b^"; " else a^b),m+1) ("",0) y in
+		let s2 = "(pen 0 ;"^s^")" in
+		r3 := s2 :: !r3; 
+		renderpng n s2 fid
+	) done;
+	while !n < 10000 do (
+		let i = Random.int nra in
+		let j = Random.int nra in
+		let k = Random.int nra in
+		let l = Random.int (Array.length penopts) in
+		let y = [| ra.(i); penopts.(l); ra.(j); ra.(k); |] in
+		let s,_ = Array.fold_left (fun (a,m) b -> 
+			(if m<2 then a^b^"; " else a^b),m+1) ("",0) y in
+		let s2 = "(pen 0 ;"^s^")" in
+		r3 := s2 :: !r3; 
+		renderpng n s2 fid
+	) done;
+	while !n < 13000 do (
+		let i = Random.int nra in
+		let j = Random.int nra in
+		let k = Random.int nra in
+		let l = Random.int (Array.length penopts) in
+		let m = Random.int (Array.length penopts) in
+		let y = [| ra.(i); penopts.(l); ra.(j); penopts.(m); ra.(k); |] in
+		let s,_ = Array.fold_left (fun (a,m) b -> 
+			(if m<2 then a^b^"; " else a^b),m+1) ("",0) y in
+		let s2 = "(pen 0 ;"^s^")" in
+		r3 := s2 :: !r3; 
+		renderpng n s2 fid
+	) done;
+	
+	r @ rp @ !r2 @ !r3
+	|> List.iter (fun s -> tryadd_fromstr s false);
+
+	(*while !i < count do (
+		(*Logs.debug (fun m->m "init_database %d" !i);*) 
+		let data,img = generate_random_logo image_res in
+		tryadd data img false
+	) done; *)
 	close_out fid; 
 	let steak = sort_database steak in
-	Logs.info(fun m -> m  "%d done; %d sampled; %d replacements; %d equivalents" !i !iters steak.gs.num_uniq steak.gs.num_equiv); 
+	Logs.info(fun m -> m  "%d done; %d sampled; %d replacements; %d equivalents" !u !iters steak.gs.num_uniq steak.gs.num_equiv); 
 	steak
 
 let verify_database steak =
@@ -1159,17 +1547,29 @@ let verify_database steak =
 		match d.progt with
 		| `Uniq -> (
 			(* verify that all equivalents are actually that. *)
-			SI.iter (fun j -> 
+			SI.iter (fun (j,typ,cnt,_) -> 
 				let e = Vector.get steak.gs.g j in
-				verify_equivalent i d j e
+				verify_equivalent i d j e; 
+				let cnt',edits = get_edits d.ed.progenc e.ed.progenc in
+				let _,typ' = edit_criteria edits in
+				if typ <> typ' then 
+					Logs.err (fun m -> m 
+						"%d %d equiv edit type wrong is %s should be %s " i j typ typ');
+				if cnt <> cnt' then 
+					Logs.err (fun m -> m 
+						"%d %d equiv edit count wrong is %d should be %d" i j cnt cnt'); 
 				) d.equivalents ; 
 			(* re-create outgoing to verify *)
-			let ii,_ = List.filter (fun (j,e) -> 
-				if j <> i then 
-				let _,edits = Graf.get_edits d.ed.progenc e.ed.progenc in
+			let ii = List.map (fun (j,e) -> 
+				if j <> i then (
+				let cnt,edits = Graf.get_edits d.ed.progenc e.ed.progenc in
 				let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
-				Graf.edit_criteria edits else false ) gi
-				|> List.split in
+				let b,typ = Graf.edit_criteria edits in
+				(j,b,typ,cnt) 
+				) else (0,false,"",0)
+				) gi
+				|> List.filter (fun (_,b,_,_) -> b) 
+				|> List.map (fun (j,_,typ,cnt) -> j,typ,cnt,0) in
 			let og = SI.of_list ii in
 			if og <> d.outgoing then (
 				let ogl = SI.cardinal og in
@@ -1179,7 +1579,7 @@ let verify_database steak =
 				let print_diff a b =
 					let df = SI.diff a b in
 					Printf.printf "diff:\n"; 
-					SI.iter (fun k -> 
+					SI.iter (fun (k,_,_,_) -> 
 						let e = Vector.get steak.gs.g k in
 						let dist,edits = Graf.get_edits d.ed.progenc e.ed.progenc in
 						Printf.printf "fwd\t%d, %s -> %s dist %d\n" k d.ed.progenc e.ed.progenc dist; 
@@ -1229,7 +1629,6 @@ let handle_message steak bd msg =
 	| "update_batch" -> (
 		(* supervised: sent when python has a working copy of data *)
 		(* dreaming : sent when the model has produced edits (maybe old) *)
-		update_bea steak bd;
 		bigfill_batchd steak bd; 
 		(*Logs.debug(fun m -> m "new batch %d" steak.batchno);*)
 		bd,(Printf.sprintf "ok %d" !nreplace)
@@ -1239,7 +1638,7 @@ let handle_message steak bd msg =
 		(* read this independently of updating bd.bedts; so as to determine acuracy. *)
 		let decode_edit_accuracy edit_arr = 
 			let typright, chrright, posright = ref 0, ref 0, ref 0 in
-			let print = ref false in
+			let print = ref true in
 			Array.iteri (fun i (typ,pos,chr) -> 
 				if List.length (bd.bea.(i).edits) > 0 then (
 					let styp,spos,schr = List.hd (bd.bea.(i).edits) in (* supervised *)
@@ -1247,20 +1646,26 @@ let handle_message steak bd msg =
 					if pos = spos then incr posright; 
 					if chr = schr then incr chrright; 
 					if !print then (
-						Logs.info (fun m -> m "|i%d |b%d true: %s [%d] %c ; decode: %s [%d] %c \"%s\""
+						Logs.debug (fun m -> m "|i%d |b%d true: %s [%d] %c ; decode: %s [%d] %c \"%s\""
 							steak.batchno i styp spos schr typ pos chr bd.bea.(i).c_progenc); 
 						print := false
 					)
 				) ) edit_arr ; 
 			let pctg v = (foi !v) /. (foi !batch_size) in
-			Logs.info (fun m -> m (* TODO: debug mode *)
+			Logs.debug (fun m -> m (* TODO: debug mode *)
 				"decode_edit: correct typ %0.3f chr %0.3f pos %0.3f " 
 				(pctg typright) (pctg chrright) (pctg posright) );
 		in
-		(*let edit_sup = decode_edit bd bd.bedts in *)(* verification *)
-		let edit_dream = decode_edit bd bd.bedtd in
-		(*decode_edit_accuracy edit_sup "superv"; *)
-		decode_edit_accuracy edit_dream; 
+		if steak.superv then (
+			let edit_dream = decode_edit bd.bedtd in
+			decode_edit_accuracy edit_dream
+		); 
+		
+		if steak.superv then 
+			update_bea_train steak bd
+		else
+			update_bea_mnist steak bd ; 
+		
 		bd, "ok" )
 	| _ -> bd,"Unknown command"
 
@@ -1296,7 +1701,7 @@ let servthread steak () = (* steak = thread state *)
 	bind server_sock (ADDR_INET (listen_address, sockno)) ;
 	listen server_sock 2 ; (* 2 max connections *)
 	while !glive do (
-		let bd,fdlist = init_batchd steak.superv in
+		let bd,fdlist = init_batchd steak steak.superv in
 		let (client_sock, _client_addr) = accept server_sock in
 		Logs.info (fun m -> m "new connection on %d" sockno); 
 		(* make new mmap files & batchd for each connection *)
@@ -1323,6 +1728,9 @@ let servthread steak () = (* steak = thread state *)
 		Logs.debug (fun m -> m "disconnect %d" sockno); 
 		List.iter (fun fd -> close fd) fdlist; 
 		save_database steak "db_improved.S"; 
+		Mutex.lock steak.db_mutex;
+		Caml.Gc.full_major (); (* clean up torch variables (slow..) *)
+		Mutex.unlock steak.db_mutex
 	) done; 
 	) (* )open Unix *)
 	

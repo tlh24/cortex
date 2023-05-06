@@ -410,7 +410,7 @@ let output_segments_str seglist =
 	(Buffer.contents bf)
 
 let start_state () = 
-	{x=0.0; y=0.0; t=0.0; p=1.0; r=0;
+	{x=d_from_origin; y=d_from_origin; t=0.0; p=1.0; r=0;
 		stk=Array.make 10 (-1.0e9)}
  
 (* eval needs to take a state & program
@@ -560,7 +560,7 @@ let center_segs l =
 		
 		
 let segs_to_canvas segs =
-  let segs = center_segs segs in
+  (*let segs = center_segs segs in*)
   let c = ref (new_canvas ()) in
   let lineto x y a = (c := (lineto !c x y a)) 
   and moveto x y = (c := (moveto !c x y)) in
@@ -600,3 +600,4 @@ let segs_to_array_and_cost segs resolution =
 		) done;
 		(o, cost)
 	) else ( nulimg, cost)
+
