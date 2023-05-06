@@ -14,8 +14,7 @@ source activate ec3
 # upgrade opam
 opam init --disable-sandboxing --yes
 opam update --confirm-level=unsafe-yes
-opam switch create myswitch ocaml-variants.5.0.0+options ocaml-option-flambda
-eval $(opam env --switch=myswitch)
+cd eval $(opam env --switch=myswitch)
 opam update --confirm-level=unsafe-yes
 
 # need to install libtorch
@@ -28,6 +27,34 @@ export LIBTORCH=~/libtorch
 opam install --confirm-level=unsafe-yes vg cairo2 pbrt vector lwt logs pcre torch domainslib ocamlgraph
 eval $(opam env --switch=myswitch)
 dune build
+
+
+
+# Get the path to the opam switch
+OPAM_SWITCH_ROOT=$(opam var switch:root)
+
+# Create the activate.d directory if it doesn't exist
+ACTIVATE_DIR=$CONDA_PREFIX/etc/conda/activate.d
+sudo mkdir -p $ACTIVATE_DIR
+
+# Create the deactivate.d directory if it doesn't exist
+DEACTIVATE_DIR=$CONDA_PREFIX/etc/conda/deactivate.d
+sudo mkdir -p $DEACTIVATE_DIR
+
+# Create the activate script
+ACTIVATE_SCRIPT=$ACTIVATE_DIR/opam-activate.sh
+echo "#!/bin/bash" > $ACTIVATE_SCRIPT
+echo "source $OPAM_SWITCH_ROOT/activate" >> $ACTIVATE_SCRIPT
+chmod +x $ACTIVATE_SCRIPT
+
+# Create the deactivate script
+DEACTIVATE_SCRIPT=$DEACTIVATE_DIR/opam-deactivate.sh
+echo "#!/bin/bash" > $DEACTIVATE_SCRIPT
+echo "source $OPAM_SWITCH_ROOT/deactivate" >> $DEACTIVATE_SCRIPT
+chmod +x $DEACTIVATE_SCRIPT
+
+echo "Opam switch '$OPAM_SWITCH_NAME' will now be automatically activated when you activate the '$CONDA_DEFAULT_ENV' conda environment."
+
 
 # need to install MNIST data
 mkdir ../otorch-test/data/
