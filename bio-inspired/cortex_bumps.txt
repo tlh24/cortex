@@ -4265,3 +4265,40 @@ But, need to:
 	turtle x, y -> move to new location, keep pen style, but don't emit a new segment. 
 	-> Ideally we could just have a call to do this... in a library say.. 
 		But do need the reset command. 
+
+May 8 2023
+https://news.ycombinator.com/item?id=35868065
+
+My emerging conception of this is to split this into two separate questions:
+
+1. Is the architecture _capable_, i.e. is it possible for a model with a given shape possible to perform some "reasoning"
+
+2. Is the architecture _trainable_, i.e. do we have the means to learn a configuration of the parameters that achieves what we know they are capable of.
+
+Recent interpretability work like that around Induction Heads [1] or the conclusion that transformers are Turing complete [2] combined with my own work to hand-specify transformer weights to do symbolic multi-digit addition (read: the same way we do it in grade school) has convinced me that reasoning over a finite domain is a capability of the even tiniest models.
+
+The emergent properties we see in models like GPT4 are more a consequence of the fact that we've found a way to train a fairly efficient representation of a significant fraction of "world rules" into a large number of parameters in a finite amount of time.
+
+[1] https://transformer-circuits.pub/2021/framework/index.html
+[2] https://jmlr.org/papers/volume22/20-302/20-302.pdf
+
+-------
+We can only see a short distance ahead, but we can see plenty there that needs to be done.
+A.M. Turing, Computing Machinery and Intelligence, 1950
+
+-------
+Q: Are transformers sample-efficient? 
+Chinchilla has 70B parameters, and was trained on 1.4T tokens - 
+	20 tokens per parameter. 
+How many epochs was this? 
+Just about one; 3.4 for the wiki data and 1.4 for the MassiveWeb data; less for other datasources. 
+Training was about 1e24 flops, so 1e12 flops per token.
+The 4090's in my computer run, peak, at ~120Tflops.
+	Wikipedia says 80 Tflops / or 300 fp16.  
+Training Chinchilla on my home machine (if it were possible) would take 132 years.  
+Training on a cluster of 1024 of my machines would take 47 days.  
+	Which would correspond to 49TB of VRAM.  
+	
+Anyway -- yes, it appears that transformers can be considered sample-efficient. 
+They need 20 examples per parameter.
+But apparently not compute efficient! 

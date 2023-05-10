@@ -81,10 +81,12 @@ let () =
 		(*Dtask.run supsteak.pool (fun () -> load_database supsteak )*)
 		load_database supstak "db_sorted.S"
 	) else ( 
-		let nprogs = image_alloc in
+		let nprogs = 2048 (*image_alloc*) in
 		Logs.app(fun m -> m "Generating %d programs" nprogs);
 		let start = Unix.gettimeofday () in
-		let stk = init_database supstak nprogs in
+		let stk = Dtask.run supstak.pool 
+				(fun () -> init_database supstak nprogs) in
+		(*let stk = init_database supstak nprogs in*)
 		(* init also sorts. *)
 		let stop = Unix.gettimeofday () in
 		Logs.app(fun m -> m "Execution time: %fs\n%!" (stop -. start)); 
@@ -96,6 +98,8 @@ let () =
 		) done; 
 		save_database stk "db_prog.S"; 
 		let stk = sort_database stk in
+		let dist,_prev = Graf.dijkstra stk.gs 0 false in
+		Graf.dist_to_good stk.gs dist; 
 		save_database stk "db_sorted.S";
 		stk
 	) in
@@ -127,7 +131,7 @@ let () =
 		Domains (train and dream) 
 		and pools (parfor, basically) *)
 	
-	let threadmode = 1 in
+	let threadmode = 0 in
 	
 	(match threadmode with
 	| 0 -> ( (* train only *)

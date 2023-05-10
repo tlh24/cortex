@@ -6,7 +6,7 @@ open Graf
 
 let pi = 3.1415926
 (*let image_count = ref 0 *)
-let image_alloc = 4*2048 (*6*2048*2*) (* need to make this a parameter *)
+let image_alloc = 9*1024 (*6*2048*2*) (* need to make this a parameter *)
 let all_alloc = 5*2048 (* including equivalents *)
 let image_res = 30
 let batch_size = ref 512
@@ -329,16 +329,22 @@ let img_to_imgf steak img =
 	
 let render_database steak = 
 	(* TODO: make the iter parallel *)
-	(* imgi index is set by load_database *)
+	(* imgi index is set by load_database / graph ops *)
 	let dbf_cpu = Tensor.( 
 		( ones [image_alloc; image_res; image_res] ) * (f (-1.0))) in
-	Array.iter (fun d -> 
+	Array.iteri (fun i _ -> steak.gs.img_inv.(i) <- -2) steak.gs.img_inv; 
+	Array.iteri (fun i d -> 
 		match d.progt with 
 		| `Uniq -> (
 			let _,img = Graf.pro_to_edata d.ed.pro image_res in
 			let imgf_cpu,_ = img_to_imgf steak img in
 			Tensor.copy_ ~src:imgf_cpu 
 				(Tensor.narrow dbf_cpu ~dim:0 ~start:d.imgi ~length:1); 
+			steak.gs.img_inv.(d.imgi) <- i; 
+			if d.imgi = 709 then (
+				Logs.debug (fun m->m "rendering imgi:709 i:%d" i);
+				assert ( 0 <> 0 )
+			)
 			)
 		| _ -> () ) steak.gs.g ; 
 	let dbf = Tensor.to_device ~device:steak.device dbf_cpu in
@@ -358,13 +364,20 @@ let mnist_closest steak =
 	let size = [nmnist; dbfn; image_res; image_res] in
 	Logs.debug (fun m->m "entering mnist_closest. mnist:%d dbf:%d" nmnist dbfn); 
 	let training = ref [] in 
-	for u = 0 to 230 do (
+	
+	Graf.remove_unreachable steak.gs; 
+	let steak = render_database steak in
+	
+	let _dist,prev = Graf.dijkstra steak.gs 0 false in
+	
+	let uu = 230 * 3 in
+	for u = 0 to uu do (
 		let aa = 
-			Tensor.narrow steak.mnist ~dim:0 ~start:(nmnist*u) ~length:nmnist
+			Tensor.narrow steak.mnist ~dim:0 ~start:(nmnist*u/3) ~length:nmnist
 			|> Tensor.unsqueeze ~dim:1 
 			|> Tensor.expand ~size ~implicit:true in
-		let bb = 
-			Tensor.narrow steak.dbf ~dim:0 ~start:0 ~length:dbfn
+		let bb = Tensor.narrow steak.dbf ~dim:0 ~start:0 ~length:dbfn in
+		let bb = Tensor.( bb + (randn_like bb) * (f 0.15))
 			|> Tensor.unsqueeze ~dim:0
 			|> Tensor.expand ~size ~implicit:true in
 		let c = Tensor.(sum_dim_intlist (square (aa - bb)) 
@@ -380,7 +393,7 @@ let mnist_closest steak =
 			Array.iteri (fun i x -> 
 				if i < 100 then (
 					let j = steak.gs.img_inv.(x) in
-					Logs.debug (fun m->m "dbf %d (gs.g %d) is closest to mnist %d" x j (nmnist*u + i)); 
+					(*Logs.debug (fun m->m "dbf %d (gs.g %d) is closest to mnist %d" x j (nmnist*u + i));*) 
 					if u = 0 then (
 						dbf_to_png steak.dbf x
 							(Printf.sprintf "%s/%05d_dbf.png" root i);
@@ -393,7 +406,6 @@ let mnist_closest steak =
 		let s = Array.fold_left (fun a b -> SX.add b a) SX.empty closest in
 		(* make a (repeating) list of (from, to) indexes for training *)
 		(* start from the root node *)
-		let _dist,prev = Graf.dijkstra steak.gs 0 false in
 		List.iter ( fun target -> 
 			let rec loop r = 
 				if r >= 0 then (
@@ -407,13 +419,15 @@ let mnist_closest steak =
 			loop target (* if there are no routes to root, don't add *)
 			) (SX.elements s); 
 		Caml.Gc.full_major(); 
-		Logs.debug (fun m->m "%d of 100" u)
+		Printf.printf "%d of %d\r" u uu; 
+		flush stdout
 	) done; 
 	let fid = open_out "training.txt" in
 	List.iteri (fun i (pre,post) -> 
 		Printf.fprintf fid "%d %d %d\n" i pre post) !training; 
 	Graf.edge_use steak.gs !training; 
 	Graf.remove_unused steak.gs ;
+	Graf.save "db_remove_unused2.S" steak.gs.g; 
 	let steak = render_database steak in
 	Graf.gexf_out steak.gs ;
 	let ta = Array.of_list !training in
@@ -1136,9 +1150,10 @@ let bigfill_batchd steak bd =
 				bd.bpro.{u,i+l,toklen-1} <- 1.0 ) ) be.c_progenc ;
 		(* copy over the edited tags (set in update_edited) *)
 		assert (Array.length be.edited = (p_ctx/2)) ; 
-		let lim = if la+lc > p_ctx then p_ctx else la+lc in
-		for i = la to lim-1 do (
-			bd.bpro.{u,i,toklen} <- be.edited.(i-la)
+		let lim = if lc > p_ctx/2 then p_ctx/2 else lc in
+		assert (la < p_ctx/2); 
+		for i = 0 to lim-1 do (
+			bd.bpro.{u,la+i,toklen} <- be.edited.(i)
 			(* a_progenc is zeroed via fill above *)
 		) done; 
 		(* position encoding *)
@@ -1353,20 +1368,26 @@ let init_database steak count =
 		let good,dist,minde = if override then true,0.5,0
 			else dbf_dist steak imgf in
 		let mindex = steak.gs.img_inv.(minde) in
+		if mindex < 0 then (
+			dbf_to_png steak.dbf minde "tryadd_error.png"; 
+			Logs.debug (fun m->m "tryadd imgi:%d i:%d" minde mindex); 
+		); 
 		let s = Logo.output_program_pstr data.pro in
 		if good then (
 		(* bug: white image sets distance to 1.0 to [0] *)
 		(*Logs.debug (fun m -> m "dbf_dist %f %d" dist mindex);*)
 		if dist > 0.0002 then (
-			Logs.debug(fun m -> m
-				"%d: adding [%d] = %s" !iters !u s);
-			let added,_ = db_add_uniq steak data imgf imgf_cpu ~doenc:false in
+			(*Logs.debug(fun m -> m
+				"%d: adding [%d] = %s" !iters !u s);*)
+			let added,y = db_add_uniq steak data imgf imgf_cpu ~doenc:false in
 			if not added then Logs.err (fun m->m "did not add %s to db" s);
-			Logo.segs_to_png data.segs 64
-				(Printf.sprintf "%s/db%05d_.png" root !u);
-			dbf_to_png steak.dbf !u
-				(Printf.sprintf "%s/db%05d_f.png" root !u);
-			Printf.fprintf fid "[%d] %s (dist:%f to:%d)\n" !u s dist mindex;
+			if added then (
+				Logo.segs_to_png data.segs 64
+					(Printf.sprintf "%s/db%05d_.png" root y);
+				dbf_to_png steak.dbf steak.gs.g.(y).imgi
+					(Printf.sprintf "%s/db%05d_f.png" root y);
+			); 
+			Printf.fprintf fid "[%d] %s (dist:%f to:%d)\n" y s dist mindex;
 			incr u;
 		) ;
 		if dist < 0.0001 then (
@@ -1377,11 +1398,11 @@ let init_database steak count =
 			if c1 < c2 then (
 				let r = db_replace_equiv steak mindex data imgf imgf_cpu in
 				if r >= 0 then (
-					Logs.debug(fun m -> m
+					(*Logs.debug(fun m -> m
 					"%d: replacing [%d] = %s ( was %s) dist:%f new [%d]"
 					!iters mindex
 					(Logo.output_program_pstr data.pro)
-					(Logo.output_program_pstr data2.ed.pro) dist r);
+					(Logo.output_program_pstr data2.ed.pro) dist r);*)
 					incr u;
 				)
 			);
@@ -1389,24 +1410,24 @@ let init_database steak count =
 				if (SI.cardinal data2.equivalents) < 16 then (
 					let r = db_add_equiv steak mindex data in
 					if r >= 0 then (
-						Logs.debug(fun m -> m
+						(*Logs.debug(fun m -> m
 						"iter %d: added equiv [loc %d] = %s [new loc %d] ( simpler= %s) %s %s same:%b dist:%f"
 						!iters mindex
 						(Logo.output_program_pstr data.pro) r
 						(Logo.output_program_pstr data2.ed.pro)
 						data.progenc data2.ed.progenc
-						(data.progenc = data2.ed.progenc) dist);
+						(data.progenc = data2.ed.progenc) dist);*)
 						incr u;
 					)
 				)
 			);
 		) ; 
 		if dist <= 0.0002 && dist >= 0.0001 then (
-			Logs.debug (fun m->m "%d: %s reject, dist: %f to: %d" 
-				!iters s dist mindex)
+			(*Logs.debug (fun m->m "%d: %s reject, dist: %f to: %d" 
+				!iters s dist mindex)*)
 		)
 		) else (
-			Logs.debug (fun m->m "%d: dist %f not good: %s %f" !iters dist s data.scost)
+			(*Logs.debug (fun m->m "%d: dist %f not good: %s %f" !iters dist s data.scost)*)
 		) ; 
 		if !iters mod 40 = 39 then
 			(* needed to clean up torch allocations *)
@@ -1415,7 +1436,7 @@ let init_database steak count =
 	in
 
 	let tryadd_fromstr str override =
-		Logs.debug (fun m->m "tryadd %s" str); 
+		(*Logs.debug (fun m->m "tryadd %s" str); *)
 		let data,img = generate_logo_fromstr str in
 		tryadd data img override
 	in
@@ -1440,62 +1461,85 @@ let init_database steak count =
 	) done; 
 	
 	(* for longer sequences, we need to sub-sample *)
-	let penopts = [|"0";"1";"2";"3";"4"|] 
-		|> Array.map (fun s -> "pen "^s) in
-	let r3 = ref [] in
-	let ra = Array.of_list r in
-	let nra = List.length r in
-	while !n < (iof ((foi count) *. 0.25)) do (
-		let i = Random.int nra in
-		let j = Random.int nra in
-		let k = Random.int (Array.length penopts) in
-		let y = [| ra.(i); ra.(j); penopts.(k) |] |> permute_array in
-		let s,_ = Array.fold_left (fun (a,m) b -> 
-			(if m<2 then a^b^"; " else a^b),m+1) ("",0) y in
-		let s2 = "("^s^")" in
-		r3 := s2 :: !r3; 
-		renderpng n s2 fid
-	) done; 
-	while !n < (iof ((foi count) *. 0.5)) do (
-		let i = Random.int nra in
-		let j = Random.int nra in
-		let k = Random.int (Array.length penopts) in
-		let y = [| ra.(i); penopts.(k); ra.(j) |] in
-		let s,_ = Array.fold_left (fun (a,m) b -> 
-			(if m<2 then a^b^"; " else a^b),m+1) ("",0) y in
-		let s2 = "(pen 0 ;"^s^")" in
-		r3 := s2 :: !r3; 
-		renderpng n s2 fid
-	) done;
-	while !n < (iof ((foi count) *. 0.75)) do (
-		let i = Random.int nra in
-		let j = Random.int nra in
-		let k = Random.int nra in
-		let l = Random.int (Array.length penopts) in
-		let y = [| ra.(i); penopts.(l); ra.(j); ra.(k); |] in
-		let s,_ = Array.fold_left (fun (a,m) b -> 
-			(if m<3 then a^b^"; " else a^b),m+1) ("",0) y in
-		let s2 = "(pen 0 ;"^s^")" in
-		r3 := s2 :: !r3; 
-		renderpng n s2 fid
-	) done;
-	while !n < count do (
-		let i = Random.int nra in
-		let j = Random.int nra in
-		let k = Random.int nra in
-		let l = Random.int (Array.length penopts) in
-		let m = Random.int (Array.length penopts) in
-		let y = [| ra.(i); penopts.(l); ra.(j); penopts.(m); ra.(k); |] in
-		let s,_ = Array.fold_left (fun (a,m) b -> 
-			(if m<4 then a^b^"; " else a^b),m+1) ("",0) y in
-		let s2 = "(pen 0 ;"^s^")" in
-		r3 := s2 :: !r3; 
-		renderpng n s2 fid
-	) done;
+	let sub_sample () = 
+		let penopts = [|"0";"1";"2";"3";"4"|] 
+			|> Array.map (fun s -> "pen "^s) in
+		let r3 = ref [] in
+		let ra = Array.of_list r in
+		let nra = List.length r in
+		n := 0; 
+		while !n < (iof ((foi count) *. 0.2)) do (
+			let i = Random.int nra in
+			let j = Random.int nra in
+			let k = Random.int (Array.length penopts) in
+			let y = [| ra.(i); ra.(j); penopts.(k) |] |> permute_array in
+			let s,_ = Array.fold_left (fun (a,m) b -> 
+				(if m<2 then a^b^"; " else a^b),m+1) ("",0) y in
+			let s2 = "("^s^")" in
+			r3 := s2 :: !r3; 
+			renderpng n s2 fid
+		) done; 
+		while !n < (iof ((foi count) *. 0.4)) do (
+			let i = Random.int nra in
+			let j = Random.int nra in
+			let k = Random.int (Array.length penopts) in
+			let y = [| ra.(i); penopts.(k); ra.(j) |] in
+			let s,_ = Array.fold_left (fun (a,m) b -> 
+				(if m<2 then a^b^"; " else a^b),m+1) ("",0) y in
+			let s2 = "(pen 0 ;"^s^")" in
+			r3 := s2 :: !r3; 
+			renderpng n s2 fid
+		) done;
+		while !n < (iof ((foi count) *. 0.7)) do (
+			let i = Random.int nra in
+			let j = Random.int nra in
+			let k = Random.int nra in
+			let l = Random.int (Array.length penopts) in
+			let y = [| ra.(i); penopts.(l); ra.(j); ra.(k); |] in
+			let s,_ = Array.fold_left (fun (a,m) b -> 
+				(if m<3 then a^b^"; " else a^b),m+1) ("",0) y in
+			let s2 = "(pen 0 ;"^s^")" in
+			r3 := s2 :: !r3; 
+			renderpng n s2 fid
+		) done;
+		while !n < (iof ((foi count) *. 1.0)) do (
+			let i = Random.int nra in
+			let j = Random.int nra in
+			let k = Random.int nra in
+			let l = Random.int (Array.length penopts) in
+			let m = Random.int (Array.length penopts) in
+			let y = [| ra.(i); penopts.(l); ra.(j); penopts.(m); ra.(k); |] in
+			let s,_ = Array.fold_left (fun (a,m) b -> 
+				(if m<4 then a^b^"; " else a^b),m+1) ("",0) y in
+			let s2 = "(pen 0 ;"^s^")" in
+			r3 := s2 :: !r3; 
+			renderpng n s2 fid
+		) done;
+		r @ rp @ !r2 @ !r3
+	in
 	
-	r @ rp @ !r2 @ !r3
-	|> List.iter (fun s -> tryadd_fromstr s false);
-
+	let ra = sub_sample () |> Array.of_list in
+	let ran = Array.length ra in
+	
+	let body i = tryadd_fromstr ra.(i) false in
+	
+	let rec runbatch stk n = 
+		if n > 1 then stk
+		else (
+			if !gparallel then
+				Dtask.parallel_for steak.pool 
+					~start:0 ~finish:(ran-1) ~body
+			else
+				for i=0 to (ran-1) do
+					body i done;
+			(* remove unreachable nodes *)
+			Graf.remove_unreachable stk.gs;
+			Graf.save "db_remove_unused.S" steak.gs.g; 
+			let stk = render_database stk in
+			runbatch stk (n+1)
+		)
+	in
+	let steak = runbatch steak 0 in
 	(*while !i < count do (
 		(*Logs.debug (fun m->m "init_database %d" !i);*) 
 		let data,img = generate_random_logo image_res in
@@ -1602,8 +1646,7 @@ let save_database steak fname =
 let load_database steak fname = 
 	(* returns a new steak, freshly sizzled *)
 	let gs = Graf.load steak.gs fname in
-	Logs.info (fun m -> m "Loaded into %d: %d uniq and %d equivalent"
-		(Array.length gs.g) gs.num_uniq gs.num_equiv ); 
+	Logs.debug (fun m->m "Loaded %s" (Graf.get_stats gs)); 
 	render_database {steak with gs} 
 	;;
 	

@@ -30,6 +30,12 @@ type progtyp = [
 	| `Np 
 ]
 
+let progt_to_str = function
+	| `Uniq -> "uniq" | `Equiv -> "equiv" | `Np -> "np"
+	
+let str_to_progt = function
+	| "uniq" -> `Uniq | "equiv" -> `Equiv | _ -> `Np
+
 type edata = 
 	{ pro : Logo.prog
 	; progenc : string
@@ -196,6 +202,8 @@ let add_uniq gs ed =
 	let ni = get_slot gs in
 	let imgi = get_slot_img gs in
 	if imgi >= 0 && ni >= 0 then (
+		if imgi = 709 then 
+			Logs.debug (fun m -> m "add_uniq ni:%d imgi:%d" ni imgi);
 		let d = {nulgdata with ed; progt = `Uniq; imgi} in
 		gs.g.(ni) <- d; 
 		gs.img_inv.(d.imgi) <- ni ; (* back pointer *)
@@ -209,10 +217,10 @@ let replace_equiv gs indx ed =
 	(* ed is equivalent to gs.g[indx], but lower cost *)
 	(* add ed the end, and update d1 = g[indx]. *)
 	(* outgoing connections are not changed *)
-	let ni = get_slot gs in
-	if ni >= 0 then (
-		let d1 = gs.g.(indx) in
-		if SI.cardinal d1.equivalents < 16 then (
+	let d1 = gs.g.(indx) in
+	if SI.cardinal d1.equivalents < 16 then (
+		let ni = get_slot gs in
+		if ni >= 0 then (
 			if d1.ed.progenc <> ed.progenc then (
 				let eq2 = SI.add (indx,"",0,0) d1.equivalents in (* fixed below *)
 				let equivalents = SI.map (fun (i,_,_,_) -> 
@@ -220,14 +228,16 @@ let replace_equiv gs indx ed =
 					let cnt,edits = get_edits ed.progenc e.ed.progenc in
 					let _,typ = edit_criteria edits in (* not constrained! *)
 					i,typ,cnt,0) eq2 in
+				let imgi = d1.imgi in
+				assert( imgi >= 0 ); 
 				let d2 = {nulgdata with ed; 
 							progt = `Uniq; 
-							equivalents;
-							imgi = d1.imgi} in
+							equivalents; 
+							imgi } in
 				gs.g.(ni) <- d2;
 				gs.num_equiv <- gs.num_equiv + 1; 
-				(*Logs.debug (fun m -> m "replace_equiv %d %d" d2.imgi ni);*) 
-				gs.img_inv.(d2.imgi) <- ni ; (* back pointer *)
+				Logs.debug (fun m -> m "replace_equiv ni:%d imgi:%d" ni d2.imgi); 
+				gs.img_inv.(imgi) <- ni ; (* back pointer *)
 				(* update the incoming equivalent pointers; includes d1 *)
 				SI.iter (fun (i,_,_,_) -> 
 					let e = gs.g.(i) in
@@ -235,7 +245,7 @@ let replace_equiv gs indx ed =
 					gs.g.(i) <- e' ) d2.equivalents; 
 				(* finally, update d2's edit connections *)
 				connect gs.g ni ; 
-				ni,d2.imgi (* return the location of the new node, same as add_uniq *)
+				ni,imgi (* return the location of the new node, same as add_uniq *)
 			) else (-1),(-1)
 		) else (-1),(-1)
 	) else (-1),(-1)
@@ -246,7 +256,7 @@ let add_equiv gs indx ed =
 	(* union-find the root equivalent *)
 	let rec find_root j = 
 		let d = gs.g.(j) in
-		if d.equivroot >= 0 then 
+		if d.equivroot >= 0 && d.equivroot <> j then 
 			find_root d.equivroot
 		else
 			j 
@@ -283,6 +293,13 @@ let remove gs indx =
 	(* our pointer from outgoing *)
 	let d = gs.g.(indx) in
 	
+	if d.imgi = 709 then (
+		Logs.debug (fun m->m 
+			"removing when imgi=709; i:%d typ:%s progenc:%s outgoing:%d equivalents:%d"
+			indx (progt_to_str d.progt) d.ed.progenc (SI.cardinal d.outgoing) (SI.cardinal d.equivalents) ); 
+		(*assert ( 0 <> 0 )*)
+	); 
+	
 	SI.iter (fun (i,_,_,_) -> 
 		let e = gs.g.(i) in
 		let outgoing = SI.filter (fun (a,_,_,_) -> a <> indx) e.outgoing in
@@ -291,7 +308,7 @@ let remove gs indx =
 	
 	if d.progt = `Uniq then (
 		(* complexity: root equivalent nodes need to be remapped *)
-		if d.equivroot = indx && SI.cardinal d.equivalents > 0 then (
+		if SI.cardinal d.equivalents > 0 then (
 			(* need to find a new equivroot *)
 			let equivroot,_ = 
 				SI.elements d.equivalents
@@ -311,12 +328,16 @@ let remove gs indx =
 			gs.g.(equivroot) <- e'; 
 			SI.iter (fun (a,_,_,_) ->
 				let h = gs.g.(a) in
-				gs.g.(a) <- {h with equivroot} ) equivalents
+				gs.g.(a) <- {h with equivroot} ) equivalents; 
+			(* update img_inv, too *)
+			gs.img_inv.(imgi) <- equivroot; 
+			(* if we have elected a new root, imgi needs to stay around! *)
+			gs.num_equiv <- gs.num_equiv - 1; 
+		) else (
+			(* otherwise, can free the imgf alloc *)
+			gs.free_img <- d.imgi :: gs.free_img; 
+			gs.num_uniq <- gs.num_uniq - 1; 
 		); 
-		(* need to free the imgf alloc *)
-		gs.free_img <- d.imgi :: gs.free_img;
-		gs.free_slots <- indx :: gs.free_slots;
-		gs.num_uniq <- gs.num_uniq - 1; 
 	) ;
 	
 	if d.progt = `Equiv then (
@@ -325,10 +346,10 @@ let remove gs indx =
 		let equivalents = SI.filter (fun (a,_,_,_) -> a <> indx) e.equivalents in
 		gs.g.(d.equivroot) <- {e with equivalents}; 
 		(* add to the free lists *)
-		gs.free_slots <- indx :: gs.free_slots;
 		gs.num_equiv <- gs.num_equiv - 1; 
 	); 
 	
+	gs.free_slots <- indx :: gs.free_slots;
 	gs.g.(indx) <- nulgdata
 	;;
 	
@@ -359,12 +380,6 @@ let sort_graph g =
 			mappin.(a.equivroot) else (-1) in
 		{a with outgoing; equivalents; equivroot} ) sorted 
 	(* does not update the img indexes *)
-
-let progt_to_str = function
-	| `Uniq -> "uniq" | `Equiv -> "equiv" | `Np -> "np"
-	
-let str_to_progt = function
-	| "uniq" -> `Uniq | "equiv" -> `Equiv | _ -> `Np
 	
 let print_graph g = 
 	let print_node i d = 
@@ -378,6 +393,11 @@ let print_graph g =
 		Printf.printf "\tequivroot: \027[31m %d\027[0m\n" d.equivroot
 	in
 	Array.iteri print_node g 
+	
+let get_stats gs = 
+	Printf.sprintf "uniq:%d equiv:%d all_alloc:%d image_alloc:%d free_slots:%d free_img:%d" 
+		gs.num_uniq gs.num_equiv gs.all_alloc gs.image_alloc 
+		(List.length gs.free_slots) (List.length gs.free_img)
 	
 (* these functions from program.ml *)
 let parse_with_error lexbuf =
@@ -475,14 +495,16 @@ let load gs fname =
 					| `Equiv -> gs.num_equiv <- gs.num_equiv + 1; (-1)
 					| _ -> (-1) in
 				let ed,_ = pro_to_edata pro 0 in
-				let d = {progt; ed; imgi ; outgoing; equivalents; equivroot; good} in
-				let ii = ios i in
-				if imgi >= 0 then gs.img_inv.(imgi) <- ii; 
-				gs.free_img <- List.filter (fun a -> a <> imgi) gs.free_img;
-				gs.free_slots <- List.filter (fun a -> a <> ii) gs.free_slots; 
-				if ii > gs.all_alloc then 
-					Logs.err (fun m->m "database too large for allocation."); 
-				gs.g.(ii) <- d
+				if progt <> `Np then (
+					let d = {progt; ed; imgi ; outgoing; equivalents; equivroot; good} in
+					let ii = ios i in
+					if imgi >= 0 then gs.img_inv.(imgi) <- ii; 
+					gs.free_img <- List.filter (fun a -> a <> imgi) gs.free_img;
+					gs.free_slots <- List.filter (fun a -> a <> ii) gs.free_slots; 
+					if ii > gs.all_alloc then 
+						Logs.err (fun m->m "database too large for allocation."); 
+					gs.g.(ii) <- d
+				)
 			| _ -> (
 				Logs.err (fun m -> m "Failed to parse pstr \"%s\"" pstr); 
 				assert(0 <> 0); 
@@ -621,9 +643,39 @@ let edge_use gs l =
 	Logs.info (fun m->m "Graf.edge_use: unused database nodes: %d" !unused)
 	;;
 	
+let dist_to_good gs dist = 
+	(* set the 'good' field to distance *)
+	Array.iteri (fun i e -> 
+		let e' = {e with good = dist.(i) } in
+		gs.g.(i) <- e' 
+		) gs.g 
+	;;
+	
 let remove_unused gs = 
 	Array.iteri (fun i a -> 
 		if a.progt <> `Np && a.good <= 0 then remove gs i) gs.g
+	;;
+	
+let remove_unreachable gs = 
+	let dist,_prev = dijkstra gs 0 false in
+	
+	let unreachable,_ = Array.fold_left (fun (a,i) b -> 
+		if gs.g.(i).progt <> `Np && b < 0 
+			then (a+1,i+1) 
+			else (a,i+1)
+			) (0,0) dist in
+	
+	Logs.debug (fun m->m "dijkstra: %d of %d unreachable." 
+		unreachable (gs.num_uniq + gs.num_equiv)); 
+		
+	Logs.debug (fun m->m "old graph, %s" (get_stats gs)); 
+	dist_to_good gs (Array.map (fun a -> a+1) dist); 
+	save "db_sorted_good.S" gs.g;
+	remove_unused gs ; 
+	Logs.debug (fun m->m "new graph, %s" (get_stats gs)); 
+	
+	(* caller must render the database!! *)
+	(* render_database steak *)
 	;;
 		
 let gexf_out gs = 
