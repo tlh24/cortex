@@ -90,7 +90,7 @@ else:
 
 lossfunc_cel = nn.CrossEntropyLoss(label_smoothing = 0.08, reduction='mean')
 lossfunc_mse = nn.MSELoss(reduction='mean')
-# !SGD does not work!  AdamW much better.  
+# !SGD does not work!  Adam or AdamW is much better.  
 optimizer = optim.Adam(model.parameters(), lr=mc.learning_rate)
 
 	
