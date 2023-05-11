@@ -81,7 +81,7 @@ let () =
 		(*Dtask.run supsteak.pool (fun () -> load_database supsteak )*)
 		load_database supstak "db_sorted.S"
 	) else ( 
-		let nprogs = 2048 (*image_alloc*) in
+		let nprogs = 4*2048 (*image_alloc*) in
 		Logs.app(fun m -> m "Generating %d programs" nprogs);
 		let start = Unix.gettimeofday () in
 		let stk = Dtask.run supstak.pool 

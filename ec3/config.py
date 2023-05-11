@@ -23,7 +23,7 @@ class ModelConfig(BaseModel):
     embed_dim: int = Field(256, description="Embedding dimension")
     # training
     train_iters: int = Field(100000, description="Number of training iterations")
-    learning_rate: float = Field(0.00025, description="Learning rate")
+    learning_rate: float = Field(0.00005, description="Learning rate")
         # model is quite sensitive to learning rate 
         # 0.0005 is a good start, but causes oscillations later
         # 0.00025 is better after 2000 batches of 512.

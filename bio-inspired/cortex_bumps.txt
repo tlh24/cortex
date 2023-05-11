@@ -4302,3 +4302,12 @@ Training on a cluster of 1024 of my machines would take 47 days.
 Anyway -- yes, it appears that transformers can be considered sample-efficient. 
 They need 20 examples per parameter.
 But apparently not compute efficient! 
+
+May 10 2023
+
+mnist_closest seems to eliminate too much of the existing dataset -- 
+	which really needs to be larger 
+	(Need a *much* beter datastructure for comparisons, 
+		like a K-d tree)
+-- so i think instead we need to train on everything. 
+Then rank solutions based on similarity to MNIST.

@@ -202,8 +202,8 @@ let add_uniq gs ed =
 	let ni = get_slot gs in
 	let imgi = get_slot_img gs in
 	if imgi >= 0 && ni >= 0 then (
-		if imgi = 709 then 
-			Logs.debug (fun m -> m "add_uniq ni:%d imgi:%d" ni imgi);
+		(*if imgi = 709 then 
+			Logs.debug (fun m -> m "add_uniq ni:%d imgi:%d" ni imgi);*)
 		let d = {nulgdata with ed; progt = `Uniq; imgi} in
 		gs.g.(ni) <- d; 
 		gs.img_inv.(d.imgi) <- ni ; (* back pointer *)
@@ -293,12 +293,12 @@ let remove gs indx =
 	(* our pointer from outgoing *)
 	let d = gs.g.(indx) in
 	
-	if d.imgi = 709 then (
+	(*if d.imgi = 709 then (
 		Logs.debug (fun m->m 
 			"removing when imgi=709; i:%d typ:%s progenc:%s outgoing:%d equivalents:%d"
 			indx (progt_to_str d.progt) d.ed.progenc (SI.cardinal d.outgoing) (SI.cardinal d.equivalents) ); 
 		(*assert ( 0 <> 0 )*)
-	); 
+	); *)
 	
 	SI.iter (fun (i,_,_,_) -> 
 		let e = gs.g.(i) in

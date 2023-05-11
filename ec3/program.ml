@@ -76,7 +76,7 @@ type batchd = (* batch data structure *)
 				Bigarray.Array2.t (* btch , e_indim - decode *)
 	; posenc : (float, Bigarray.float32_elt, Bigarray.c_layout) 
 				Bigarray.Array2.t (* p_ctx , poslen *)
-	; posencn : Tensor.t (* normalized position encoding *)
+	(*; posencn : Tensor.t*) (* normalized position encoding *)
 	; bea : batche array
 	; fresh : bool array
 	}
@@ -330,6 +330,8 @@ let img_to_imgf steak img =
 let render_database steak = 
 	(* TODO: make the iter parallel *)
 	(* imgi index is set by load_database / graph ops *)
+	let sum = Tensor.sum steak.dbf |> Tensor.float_value in
+	Logs.debug (fun m->m "render_database start; sum %f" sum); 
 	let dbf_cpu = Tensor.( 
 		( ones [image_alloc; image_res; image_res] ) * (f (-1.0))) in
 	Array.iteri (fun i _ -> steak.gs.img_inv.(i) <- -2) steak.gs.img_inv; 
@@ -341,13 +343,12 @@ let render_database steak =
 			Tensor.copy_ ~src:imgf_cpu 
 				(Tensor.narrow dbf_cpu ~dim:0 ~start:d.imgi ~length:1); 
 			steak.gs.img_inv.(d.imgi) <- i; 
-			if d.imgi = 709 then (
-				Logs.debug (fun m->m "rendering imgi:709 i:%d" i);
-				assert ( 0 <> 0 )
-			)
 			)
 		| _ -> () ) steak.gs.g ; 
 	let dbf = Tensor.to_device ~device:steak.device dbf_cpu in
+	
+	let sum = Tensor.sum dbf |> Tensor.float_value in
+	Logs.debug (fun m->m "render_database done; sum %f" sum); 
 	(* checksies *)
 	(*for k = 0 to (Array.length g) -1 do (
 		dbf_to_png dbf_cpu k (Printf.sprintf "/tmp/ec3/dbf_check_%d.png" k)
@@ -361,7 +362,6 @@ let mnist_closest steak =
 	(* find the closest programs to many mnist digits *)
 	let nmnist = 256 in
 	let dbfn = steak.gs.num_uniq in
-	let size = [nmnist; dbfn; image_res; image_res] in
 	Logs.debug (fun m->m "entering mnist_closest. mnist:%d dbf:%d" nmnist dbfn); 
 	let training = ref [] in 
 	
@@ -370,6 +370,8 @@ let mnist_closest steak =
 	
 	let _dist,prev = Graf.dijkstra steak.gs 0 false in
 	
+	(*
+	let size = [nmnist; dbfn; image_res; image_res] in
 	let uu = 230 * 3 in
 	for u = 0 to uu do (
 		let aa = 
@@ -421,14 +423,31 @@ let mnist_closest steak =
 		Caml.Gc.full_major(); 
 		Printf.printf "%d of %d\r" u uu; 
 		flush stdout
-	) done; 
+	) done;*) 
+	
+	(* add in everything to the training database *)
+	let s = Array.fold_left (fun a b -> SX.add b a) SX.empty prev in
+	List.iter ( fun target -> 
+		let rec loop r = 
+			if r >= 0 then (
+				let q = prev.(r) in
+				if q >= 0 then (
+					training := (q,r) :: !training; 
+					loop q
+				)
+			)
+		in
+		loop target (* if there are no routes to root, don't add *)
+		) (SX.elements s); 
+	
 	let fid = open_out "training.txt" in
 	List.iteri (fun i (pre,post) -> 
 		Printf.fprintf fid "%d %d %d\n" i pre post) !training; 
-	Graf.edge_use steak.gs !training; 
+	close_out fid; 
+	(*Graf.edge_use steak.gs !training; 
 	Graf.remove_unused steak.gs ;
-	Graf.save "db_remove_unused2.S" steak.gs.g; 
-	let steak = render_database steak in
+	Graf.save "db_remove_unused2.S" steak.gs.g;
+	let steak = render_database steak in *)
 	Graf.gexf_out steak.gs ;
 	let ta = Array.of_list !training in
 	{steak with training = ta}
@@ -588,7 +607,7 @@ let rec new_batche_mnist_mse steak bi =
 	let d = Tensor.(sum_dim_intlist (square(a - b)) 
 			~dim:(Some [1]) ~keepdim:false ~dtype:(T Float) ) in
 	assert ((Tensor.shape1_exn d) = imgcnt) ; (* sanity.. *)
-	let d = Tensor.(d + (randn_like d) * (f 4.0)) in (* noise *)
+	let d = Tensor.(d + (randn_like d) * (f 5.0)) in (* noise *)
 	let d,ind = Tensor.sort d ~dim:0 ~descending:false in
 	(* if the problem is solved, select a new digit *)
 	let h = (Tensor.get_float1 d 0) /. (foi (image_res * image_res)) in
@@ -666,7 +685,7 @@ let new_batche_mnist_mse_b steak bi =
 	(* note: bd.fresh is set in the calling function (for consistency) *)
 		
 let new_batche_unsup steak bi =
-	if (Random.int 10) < 6 then ( (* FIXME 5 *)
+	if (Random.int 10) < 3 then ( (* FIXME 5 *)
 		new_batche_train steak `Verify
 	) else (
 		new_batche_mnist_mse steak bi
@@ -758,7 +777,7 @@ let decode_edit_enumerate steak ba_edit =
 		(* output is batch_size x 10 *)
 	in
 	let ba_prob = convert x2 in
-	let ba_typ = convert steak.de.typ in (* float -> in conv later *)
+	let ba_typ = convert steak.de.typ in (* float -> int conv later *)
 	let ba_chr = convert steak.de.chr in
 	let ba_pos = convert steak.de.pos in
 	
@@ -768,8 +787,7 @@ let decode_edit_enumerate steak ba_edit =
 	ba_prob, ba_typ, ba_chr, ba_pos
 	(* now we need to iterate over these tensors
 		-- for each batch element
-		& decide what to do with them. 
-		Maybe another function ? *)
+		& decide what to do with them. *)
 	
 let decode_edit ba_edit = 
 	(* decode model output (from python) *)
@@ -977,6 +995,7 @@ let update_bea_verify steak bd =
 				(progenc2str be3.a_progenc)
 				(progenc2str be3.b_progenc)
 				(progenc2str be3.c_progenc); 
+			flush steak.fid_verify; 
 			if c = '+' then (
 				Graf.incr_good steak.gs be3.a_pid; 
 				Graf.incr_good steak.gs be3.b_pid 
@@ -1007,6 +1026,9 @@ let update_bea_mnist steak bd =
 	let ba_prob, ba_typ, ba_chr, ba_pos = 
 		decode_edit_enumerate steak bd.bedtd in
 		
+	(* deterministic decoding, for `Verify*)
+	let edit_arr = decode_edit bd.bedtd in
+		
 	(*for j = 0 to 9 do (
 		for i = 0 to 9 do (
 			Logs.debug (fun m -> m "[%d,%d] pr%0.3f t%0.3f c%0.3f p%0.3f"
@@ -1028,11 +1050,13 @@ let update_bea_mnist steak bd =
 		prob,typ,pos,chr
 	in
 	
+	(* make a set of the top 10 edits at this branch *)
 	let rec getedits eset lc bi j = 
 		if (j < 32) && (SE.cardinal eset < 10) then (
 			getedits (SE.add ( decode bi j lc ) eset) lc bi (j+1)
 		) else ( eset )
 	in
+	(* make the probabilities sum to 1 *)
 	let normedits elist = 
 		let sum = List.fold_left 
 			(fun a (p,_,_,_) -> a +. p) 0.0001 elist in
@@ -1042,7 +1066,7 @@ let update_bea_mnist steak bd =
 	let innerloop_bea_mnist bi = 
 		let newdream () = 
 			bd.fresh.(bi) <- true;
-			new_batche_mnist_mse steak bi
+			new_batche_unsup steak bi
 		in
 		let be = bd.bea.(bi) in
 		let bnew = match be.dt with 
@@ -1106,6 +1130,38 @@ let update_bea_mnist steak bd =
 					{be with c_progenc=k_progenc; edited=k_edited; count; dt})
 			in
 			selec ()
+			)
+		| `Verify -> (
+			let typ,loc,chr = edit_arr.(bi) in
+			(* check edited array allocation *)
+			(* let be1 = if Array.length be.edited <> (p_ctx/2)
+				then ( let edited = Array.make (p_ctx/2) 0.0 in
+					{be with edited} ) else be in *)
+			let cnt = be.count in
+			let be2 = {be with edits=[(typ,loc,chr)];count=cnt+1} in
+			let be3 = apply_edits be2 in
+			if typ = "fin" || be3.count >= p_ctx/2 then (
+				(* write result to verify.txt; stats later *)
+				let c = if be3.c_progenc = be3.b_progenc then '+' else '-' in
+				Printf.fprintf steak.fid_verify "[%c] %s -> %s ; decode %s\n" c
+					(progenc2str be3.a_progenc)
+					(progenc2str be3.b_progenc)
+					(progenc2str be3.c_progenc); 
+				flush steak.fid_verify; 
+				if c = '+' then (
+					Graf.incr_good steak.gs be3.a_pid; 
+					Graf.incr_good steak.gs be3.b_pid 
+				);  
+				(* else (
+					(* might be a simplification ? *)
+					let good,data,img = progenc_to_edata be3.c_progenc in
+					if good then ignore( try_add_program steak data img be3 bi)
+				) *)
+				newdream ()
+			) else ( 
+				bd.fresh.(bi) <- false;
+				be3 
+			)
 			)
 		| _ -> newdream () in
 		bd.bea.(bi) <- bnew
@@ -1185,7 +1241,7 @@ let bigfill_batchd steak bd =
 			in
 			(* would be good if this didn't require two copy ops *)
 			(* tensor to bigarray, bigarray to bigarray *)
-			if u = 0 then (
+			if u = -1 then (
 				Logs.debug (fun m -> m "bigfill_batchd a g:%d i:%d b g:%d i:%d" 
 				be.a_pid be.a_imgi be.b_pid be.b_imgi)); 
 			let aimg = pid_to_ba2 be.a_imgi `Train in
@@ -1242,7 +1298,7 @@ let reset_bea steak dreaming =
 	Gc.print_stat stdout; *)
 	let bea = Array.init !batch_size
 		(fun i -> 
-			if dreaming then new_batche_mnist_mse steak i
+			if dreaming then new_batche_unsup steak i
 			else new_batche_train steak dt) in
 	let fresh = Array.init !batch_size (fun _i -> true) in
 	(*Printf.printf "\n------- after new_batche:\n"; 
@@ -1281,13 +1337,13 @@ let init_batchd steak superv =
 		) done
 	) done ;
 	let device = Torch.Device.Cpu in
-	let posencn = tensor_of_bigarray2 posenc device |> normalize_tensor in
+	(*let posencn = tensor_of_bigarray2 posenc device |> normalize_tensor in*)
 	Bigarray.Array3.fill bpro 0.0 ;
 	Bigarray.Array3.fill bimg 0.0 ;
 	Bigarray.Array2.fill bedts 0.0 ;
 	Bigarray.Array2.fill bedtd 0.0 ; 
 	(* return batchd struct & list of files to close later *)
-	{bpro; bimg; bedts; bedtd; posenc; posencn; bea; fresh}, 
+	{bpro; bimg; bedts; bedtd; posenc; bea; fresh}, 
 	[fd_bpro; fd_bimg; fd_bedts; fd_bedtd; fd_posenc]
 	
 let truncate_list n l = 
@@ -1363,13 +1419,13 @@ let init_database steak count =
 	let u = ref 0 in
 	let iters = ref 0 in
 
-	let tryadd data img override =
-		let imgf_cpu,imgf = img_to_imgf steak img in
+	let tryadd stk data img override =
+		let imgf_cpu,imgf = img_to_imgf stk img in
 		let good,dist,minde = if override then true,0.5,0
-			else dbf_dist steak imgf in
-		let mindex = steak.gs.img_inv.(minde) in
+			else dbf_dist stk imgf in
+		let mindex = stk.gs.img_inv.(minde) in
 		if mindex < 0 then (
-			dbf_to_png steak.dbf minde "tryadd_error.png"; 
+			dbf_to_png stk.dbf minde "tryadd_error.png"; 
 			Logs.debug (fun m->m "tryadd imgi:%d i:%d" minde mindex); 
 		); 
 		let s = Logo.output_program_pstr data.pro in
@@ -1379,12 +1435,12 @@ let init_database steak count =
 		if dist > 0.0002 then (
 			(*Logs.debug(fun m -> m
 				"%d: adding [%d] = %s" !iters !u s);*)
-			let added,y = db_add_uniq steak data imgf imgf_cpu ~doenc:false in
+			let added,y = db_add_uniq stk data imgf imgf_cpu ~doenc:false in
 			if not added then Logs.err (fun m->m "did not add %s to db" s);
 			if added then (
 				Logo.segs_to_png data.segs 64
 					(Printf.sprintf "%s/db%05d_.png" root y);
-				dbf_to_png steak.dbf steak.gs.g.(y).imgi
+				dbf_to_png stk.dbf stk.gs.g.(y).imgi
 					(Printf.sprintf "%s/db%05d_f.png" root y);
 			); 
 			Printf.fprintf fid "[%d] %s (dist:%f to:%d)\n" y s dist mindex;
@@ -1392,11 +1448,11 @@ let init_database steak count =
 		) ;
 		if dist < 0.0001 then (
 			(* see if there's a replacement *)
-			let data2 = db_get steak mindex in
+			let data2 = db_get stk mindex in
 			let c1 = data.pcost in (* progenc_cost  *)
 			let c2 = data2.ed.pcost in
 			if c1 < c2 then (
-				let r = db_replace_equiv steak mindex data imgf imgf_cpu in
+				let r = db_replace_equiv stk mindex data imgf imgf_cpu in
 				if r >= 0 then (
 					(*Logs.debug(fun m -> m
 					"%d: replacing [%d] = %s ( was %s) dist:%f new [%d]"
@@ -1408,7 +1464,7 @@ let init_database steak count =
 			);
 			if c1 > c2 then (
 				if (SI.cardinal data2.equivalents) < 16 then (
-					let r = db_add_equiv steak mindex data in
+					let r = db_add_equiv stk mindex data in
 					if r >= 0 then (
 						(*Logs.debug(fun m -> m
 						"iter %d: added equiv [loc %d] = %s [new loc %d] ( simpler= %s) %s %s same:%b dist:%f"
@@ -1435,15 +1491,15 @@ let init_database steak count =
 		incr iters
 	in
 
-	let tryadd_fromstr str override =
+	let tryadd_fromstr stk str override =
 		(*Logs.debug (fun m->m "tryadd %s" str); *)
 		let data,img = generate_logo_fromstr str in
-		tryadd data img override
+		tryadd stk data img override
 	in
 
-	tryadd_fromstr "" true;
-	tryadd_fromstr "move 1, 1" false;
-	tryadd_fromstr "move 1, 0 - 1" false;
+	tryadd_fromstr steak "" true;
+	tryadd_fromstr steak "move 1, 1" false;
+	tryadd_fromstr steak "move 1, 0 - 1" false;
 	(*let y = db_get steak 1 in
 	Logs.debug (fun m->m "y %s" y.ed.progenc);*) 
 	let n = ref 3 in
@@ -1518,24 +1574,25 @@ let init_database steak count =
 		r @ rp @ !r2 @ !r3
 	in
 	
-	let ra = sub_sample () |> Array.of_list in
-	let ran = Array.length ra in
-	
-	let body i = tryadd_fromstr ra.(i) false in
-	
 	let rec runbatch stk n = 
-		if n > 1 then stk
+		if n > 3 then stk
 		else (
+			let ra = sub_sample () |> Array.of_list |> permute_array in
+			let ran = Array.length ra in
+			let body i = tryadd_fromstr stk ra.(i) false in
+			
 			if !gparallel then
-				Dtask.parallel_for steak.pool 
+				Dtask.parallel_for stk.pool 
 					~start:0 ~finish:(ran-1) ~body
 			else
 				for i=0 to (ran-1) do
 					body i done;
 			(* remove unreachable nodes *)
 			Graf.remove_unreachable stk.gs;
-			Graf.save "db_remove_unused.S" steak.gs.g; 
+			Graf.save "db_remove_unused.S" stk.gs.g; 
 			let stk = render_database stk in
+			let sum = Tensor.sum stk.dbf |> Tensor.float_value in
+			Logs.debug (fun m->m "remove_unused; dbf sum %f" sum);
 			runbatch stk (n+1)
 		)
 	in
@@ -1668,7 +1725,7 @@ let handle_message steak bd msg =
 		(* read this independently of updating bd.bedts; so as to determine acuracy. *)
 		let decode_edit_accuracy edit_arr = 
 			let typright, chrright, posright = ref 0, ref 0, ref 0 in
-			let print = ref true in
+			let print = ref false in (* NOTE *)
 			Array.iteri (fun i (typ,pos,chr) -> 
 				if List.length (bd.bea.(i).edits) > 0 then (
 					let styp,spos,schr = List.hd (bd.bea.(i).edits) in (* supervised *)
