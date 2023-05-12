@@ -5,8 +5,6 @@ channels:
   - pytorch
 dependencies:
   - python=3.10
-  - opam
-  - ocaml
   - pip
   - pydantic >= 1.10
   - pip:
