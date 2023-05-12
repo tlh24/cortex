@@ -42,7 +42,7 @@ gunzip train-labels-idx1-ubyte.gz
 gunzip t10k-images-idx3-ubyte.gz
 gunzip t10k-labels-idx1-ubyte.gz
 
-# Create
+# Create python env
 conda env create -f environment.yml
 
 
