@@ -7,10 +7,9 @@ sudo chmod +rw /usr/bin
 sudo apt-get update
 sudo apt-get install -y make gcc unzip bubblewrap
 
-
-# install ocaml
-sudo apt-get install ocaml
-sudo apt install opam
+# Create and activate the Conda environment
+conda env create -f environment.yml
+source activate ec3
 
 # upgrade opam
 opam init --disable-sandboxing --yes
@@ -41,10 +40,6 @@ gunzip train-images-idx3-ubyte.gz
 gunzip train-labels-idx1-ubyte.gz
 gunzip t10k-images-idx3-ubyte.gz
 gunzip t10k-labels-idx1-ubyte.gz
-
-# Create python env
-conda env create -f environment.yml
-
 
 # for accessing remotely:  (e.g.)
 # sshfs -o allow_other,default_permissions ubuntu@104.171.203.63:/home/ubuntu/cortex/ /home/tlh24/remote/
