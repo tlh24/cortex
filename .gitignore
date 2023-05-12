@@ -10,3 +10,5 @@ results/
 ec3/libtorch/
 ec3/poetry.lock
 ec3/checkpoints/
+ec3/wandb
+prog-gephi-viz

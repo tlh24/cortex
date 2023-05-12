@@ -7,7 +7,7 @@ import os
 from data_exchange import SocketClient, MemmapOrchestrator
 from config import ModelConfig
 from recognizer.model import Recognizer
-
+import wandb
 import torch._dynamo as dynamo
 dynamo.config.verbose=True
 # note: I can't seem to get this to work. tlh April 7 2023
@@ -22,6 +22,8 @@ dreaming = args.dreaming
 
 
 mc = ModelConfig(dreaming=args.dreaming, batch_size=args.batch_size)
+
+run = wandb.init(entity='cortex-ec3', project="cortex", config=mc.dict())
 
 print(f"batch_size:{mc.batch_size}")
 print(f"dreaming:{mc.dreaming}")
@@ -147,6 +149,7 @@ for u in range(mc.train_iters):
 		lossflat = 0.0
   
 	slowloss = 0.99*slowloss + 0.01 * lossflat
+	wandb.log({"loss": lossflat, "slowloss": slowloss})
  
 	if mc.training: 
 		losslog.write(f"{u}\t{slowloss}")
