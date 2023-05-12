@@ -657,16 +657,27 @@ let remove_unused gs =
 	;;
 	
 let remove_unreachable gs = 
-	let dist,_prev = dijkstra gs 0 false in
+	let dist,prev = dijkstra gs 0 false in
 	
 	let unreachable,_ = Array.fold_left (fun (a,i) b -> 
 		if gs.g.(i).progt <> `Np && b < 0 
 			then (a+1,i+1) 
 			else (a,i+1)
 			) (0,0) dist in
-	
-	Logs.debug (fun m->m "dijkstra: %d of %d unreachable." 
-		unreachable (gs.num_uniq + gs.num_equiv)); 
+			
+	(* need to remove `Equiv that are not stepping-points to `Uniq 
+		these will not be used in training. *)
+	let n = Array.length gs.g in
+	let terminal = Array.make n true in
+	Array.iter (fun p -> if p >= 0 then terminal.(p) <- false) prev; 
+	let term_equiv = ref 0 in
+	Array.iteri (fun i term -> 
+		if term && gs.g.(i).progt = `Equiv then (
+			incr term_equiv; 
+			dist.(i) <- (-1 ) ) ) terminal; 
+		
+	Logs.debug (fun m->m "dijkstra: %d of %d unreachable, %d terminal `Equiv" 
+		unreachable (gs.num_uniq + gs.num_equiv) !term_equiv ); 
 		
 	Logs.debug (fun m->m "old graph, %s" (get_stats gs)); 
 	dist_to_good gs (Array.map (fun a -> a+1) dist); 

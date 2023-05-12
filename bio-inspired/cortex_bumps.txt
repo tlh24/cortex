@@ -4311,3 +4311,22 @@ mnist_closest seems to eliminate too much of the existing dataset --
 		like a K-d tree)
 -- so i think instead we need to train on everything. 
 Then rank solutions based on similarity to MNIST.
+
+May 11 2023
+
+Need to get decoding accuracy up -- likely why things aren't working? 
+Seems better now ... unclear what change fixed it though!  
+	Something in the process of debugging?
+	
+Idea:  Need to make single character "synthetic errors" to a program, 
+	and train the transformer to fix it.  
+	In this way, it can learn to fix basic syntax errors, 
+	which are bound to occur in the process of stochastic decoding. 
+	Seems like it would be a cool feature! 
+		Also not so hard to implement?  
+		Particuarly since there is (presently) limited carry-over state during editing .. 
+			Which needs to be fixed! 
+	Better yet, can bootstrap this feature too: 
+		If the model makes a mistake, 
+		Store it and add it to the training data. 
+		But, don't store it if the program parses! 

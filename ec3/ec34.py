@@ -85,7 +85,7 @@ else:
 # loss is on the predicted edit: 
 # [0:4] is the categorical edit type, sub del ins fin
 # [4:toklen] is the categorical character/token.  
-# [5+toklen:5+toklen+poslen] is the (absolute) position encoding, vectoral.
+# [5+toklen:5+toklen+poslen] is the (absolute) position encoding.
 # not sure why there is a 5 in there.
 
 lossfunc_cel = nn.CrossEntropyLoss(label_smoothing = 0.08, reduction='mean')
@@ -131,7 +131,10 @@ for u in range(mc.train_iters):
 		model.zero_grad()
 		y,q = model(u, bimg.cuda(), bpro.cuda())
 		targ = bedts.cuda()
-		loss = lossfunc_mse(y, targ)
+		# loss = lossfunc_mse(y, targ)
+		loss = lossfunc_cel(y[:,0:4], targ[:,0:4]) + \
+				 lossfunc_cel(y[:,4:mc.toklen], targ[:,4:mc.toklen]) + \
+				 lossfunc_cel(y[:,5+mc.toklen:], targ[:,5+mc.toklen:])
 		lossflat = th.sum(loss)
 		lossflat.backward()
 		th.nn.utils.clip_grad_norm_(model.parameters(), 0.025)
