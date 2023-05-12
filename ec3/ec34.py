@@ -23,7 +23,7 @@ dreaming = args.dreaming
 
 mc = ModelConfig(dreaming=args.dreaming, batch_size=args.batch_size)
 
-run = wandb.init(project="cortex", config=mc.dict())
+run = wandb.init(entity='cortex-ec3', project="cortex", config=mc.dict())
 
 print(f"batch_size:{mc.batch_size}")
 print(f"dreaming:{mc.dreaming}")
