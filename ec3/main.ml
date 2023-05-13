@@ -58,7 +58,7 @@ let () =
 		(* Tensor.narrow returns a pointer/view; copy_ is in-place. *)
 	let mnist = Tensor.to_device mnist_cpu ~device in
 
-	let gs = Graf.create image_alloc in
+	let gs = Graf.create all_alloc image_alloc in
 	let dbf = Tensor.zeros [2;2] in
 	let dbf_cpu = Tensor.zeros [2;2] in 
 	let dbf_enc = Tensor.zeros [2;2] in
@@ -81,14 +81,16 @@ let () =
 		(*Dtask.run supsteak.pool (fun () -> load_database supsteak )*)
 		load_database supstak "db_sorted.S"
 	) else ( 
-		let nprogs = 8192 in
+		let nprogs = 4*2048 (*image_alloc*) in
 		Logs.app(fun m -> m "Generating %d programs" nprogs);
 		let start = Unix.gettimeofday () in
-		let stk = init_database supstak nprogs in
+		let stk = Dtask.run supstak.pool 
+				(fun () -> init_database supstak nprogs) in
+		(*let stk = init_database supstak nprogs in*)
 		(* init also sorts. *)
 		let stop = Unix.gettimeofday () in
 		Logs.app(fun m -> m "Execution time: %fs\n%!" (stop -. start)); 
-		Logs.info(fun m -> m ":: first 10 programs");
+		Logs.info(fun m -> m ":: first 8 programs");
 		for i = 0 to 7 do (
 			let p = db_get stk i in
 			Logs.info(fun m -> m "%d: %s" i
@@ -96,6 +98,8 @@ let () =
 		) done; 
 		save_database stk "db_prog.S"; 
 		let stk = sort_database stk in
+		let dist,_prev = Graf.dijkstra stk.gs 0 false in
+		Graf.dist_to_good stk.gs dist; 
 		save_database stk "db_sorted.S";
 		stk
 	) in
@@ -103,9 +107,9 @@ let () =
 	render_simplest supsteak; 
 	
 	Logs.info (fun m->m "generating training dataset.."); 
-	let training2 = mnist_closest supsteak in
-	Logs.info (fun m->m "training size: %d" (Array.length training2)); 
-	let supsteak = {supsteak with training = training2} in
+	let supsteak = mnist_closest supsteak in
+	Logs.info (fun m->m "training size: %d" (Array.length supsteak.training)); 
+	save_database supsteak "db_sorted_.S";
 	
 	(* try to train the vae? *)
 	(*let dbfs = Tensor.narrow supsteak.dbf ~dim:0 ~start:0 ~length:(supsteak.gs.num_uniq) in
@@ -127,7 +131,7 @@ let () =
 		Domains (train and dream) 
 		and pools (parfor, basically) *)
 	
-	let threadmode = 2 in
+	let threadmode = 1 in
 	
 	(match threadmode with
 	| 0 -> ( (* train only *)

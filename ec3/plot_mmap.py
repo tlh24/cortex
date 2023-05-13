@@ -19,7 +19,8 @@ def make_mmf(fname):
 def read_mmap(mmf, dims): 
 	mmf.seek(0)
 	mmb = mmf.read()
-	siz = len(mmb)
+	# siz = len(mmb)
+	siz = math.prod(dims) * 4
 	mmb2 = (c_char * siz).from_buffer_copy(mmb)
 	x = th.frombuffer(mmb2, dtype=th.float).clone()
 	x = th.reshape(x, dims)

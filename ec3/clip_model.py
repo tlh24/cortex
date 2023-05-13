@@ -212,6 +212,8 @@ class VisionTransformer(nn.Module):
         self.conv1 = nn.Conv2d(in_channels=3, out_channels=width, kernel_size=patch_size, stride=patch_size, bias=False)
 
         scale = width ** -0.5
+        # class embedding is not necessary.  see 
+        # https://ai.stackexchange.com/questions/28326/why-class-embedding-token-is-added-to-the-visual-transformer
         self.class_embedding = nn.Parameter(scale * torch.randn(width))
         self.positional_embedding = nn.Parameter(scale * torch.randn((input_resolution // patch_size) ** 2 + 1, width))
         self.ln_pre = LayerNorm(width)
@@ -222,7 +224,7 @@ class VisionTransformer(nn.Module):
         self.proj = nn.Parameter(scale * torch.randn(width, output_dim))
 
     def forward(self, x: torch.Tensor):
-        x = self.conv1(x)  # shape = [bs, width, grid, grid]
+        x = self.conv1(x)  # x shape = [bs, width, grid, grid]
         x = x.reshape(x.shape[0], x.shape[1], -1)  # shape = [bs, width, grid ** 2]
         x = x.permute(0, 2, 1)  # shape = [bs, grid ** 2, width]
         x = torch.cat([self.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device), x], dim=1)  # shape = [bs, grid ** 2 + 1, width]; ctx = grid ** 2 + 1 (+ class embedding)
