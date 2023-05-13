@@ -607,7 +607,7 @@ let rec new_batche_mnist_mse steak bi =
 	let d = Tensor.(sum_dim_intlist (square(a - b)) 
 			~dim:(Some [1]) ~keepdim:false ~dtype:(T Float) ) in
 	assert ((Tensor.shape1_exn d) = imgcnt) ; (* sanity.. *)
-	let d = Tensor.(d + (randn_like d) * (f 25.0)) in (* noise *)
+	let d = Tensor.(d + (rand_like d) * (f 30.0)) in (* noise *)
 	let d,ind = Tensor.sort d ~dim:0 ~descending:false in
 	(* if the problem is solved, select a new digit *)
 	let h = (Tensor.get_float1 d 0) /. (foi (image_res * image_res)) in
@@ -616,15 +616,17 @@ let rec new_batche_mnist_mse steak bi =
 	(* select the best match that is short enough *)
 	let rec selector k = 
 		assert (k < imgcnt); 
-		let h = Tensor.get_int1 ind k in
-		let indx = steak.gs.img_inv.(h) in 
+		let m = Tensor.get_int1 ind k in
+		let indx = steak.gs.img_inv.(m) in 
 		let a = db_get steak indx in
 		if String.length a.ed.progenc < (p_ctx/2-2) then (
-			if h <> a.imgi then (
-				Logs.err (fun m->m "consistency failure: mindex %d maps back to gs.g.(%d); gs.g.(%d).imgi = %d progenc=%s" h indx indx a.imgi a.ed.progenc); 
+			if m <> a.imgi then (
+				Logs.err (fun q->q "consistency failure: mindex %d maps back to gs.g.(%d); gs.g.(%d).imgi = %d progenc=%s" m indx indx a.imgi a.ed.progenc); 
 				assert (0 <> 0) 
 			); 
-			distance_array.(bi) <- Tensor.get_float1 d h ; 
+			if bi = 0 then 
+				Logs.debug (fun m->m "new_batche_mnist h %f k %d" h k); 
+			distance_array.(bi) <- Tensor.get_float1 d m ; 
 			let edited = Array.make (p_ctx/2) 0.0 in
 			let root = Editree.make_root a.ed.progenc in
 			let dt = `Mnist(root, []) in
@@ -638,7 +640,9 @@ let rec new_batche_mnist_mse steak bi =
 		) else selector (k+1) in
 	selector 0
 	) else (
-		Caml.Gc.major(); 
+		Caml.Gc.major();
+		if bi = 0 then 
+			Logs.debug (fun m->m "new_batche_mnist h %f" h); 
 		new_batche_mnist_mse steak bi
 	)
 	(* note: bd.fresh is set in the calling function (for consistency) *)
