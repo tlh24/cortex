@@ -4206,3 +4206,16 @@ Todo next:
 * Label the nodes (programs) that are close to any given specification (MNIST digit)
 * Think more about how this set can use to organize 1 above. 
 * Cull nodes that can't be visited or aren't visited on the way to a specification. 
+
+
+April 29 2023
+
+Idea: you need to learn both the forward and reverse model for real science!!
+We're starting with a infinitely-queriable foeward model.
+	This is quite limiting.
+
+Also had a hedon: need to give the current model more context as to what's happened / what's left to do.
+	This enables continuations, which seem to be quite necessary
+	And also enables the model to learn strategies through expeience.
+
+Look up new Baker lab de novo enzyme paper.
