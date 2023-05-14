@@ -660,3 +660,192 @@ let save_dreams steak =
 let hidden_nodes = 128
 let epochs = 10000
 let learning_rate = 1e-3
+
+
+(* keep the cosine distance calculation -- took a while to get right *)
+let decode_edit ba_edit = 
+	(* decode model output (from python) *)
+	let sta = Unix.gettimeofday () in
+	let device = Torch.Device.Cpu in
+	let m = tensor_of_bigarray2 ba_edit device in
+	(* typ = th.argmax(y[:,0:4], 1)  (0 is the batch dim) *)
+	(* stochastic decoding through sample_dist *)
+	let typ = sample_dist (Tensor.narrow m ~dim:1 ~start:0 ~length:4) in 
+	let chr = sample_dist (Tensor.narrow m ~dim:1 ~start:4 ~length:toklen) in
+	let pos = sample_dist 
+		(Tensor.narrow m ~dim:1 ~start:(5+toklen) ~length:poslen) in
+	(* now need to compute cosine distance.  normalize vectors first *)
+	(*let pos = Tensor.narrow bd.posencn ~dim:0 ~start:4 ~length:1 in
+	let pos = Tensor.expand pos ~size:[!batch_size;poslen*2] ~implicit:true in
+	Logs.debug (fun m -> m "decode_edit: normalized pos\n"); 
+	Tensor.print pos; *)
+	(* ^^ why 5? 4 edit types, toklen char options, 
+		and one for shakes (to go with the steaks) *)
+	(* add a leading p_ctx dimension *)
+	(*let pos = Tensor.expand pos ~size:[p_ctx;!batch_size;poslen*2] ~implicit:true in
+	let posenc = Tensor.expand bd.posencn ~size:[!batch_size;p_ctx;poslen*2] ~implicit:true in*)
+	(*Logs.debug (fun m -> m "decode_edit: bd.posencn\n"); 
+	Tensor.print bd.posencn;*)
+	(*let sim = Tensor.einsum ~equation:"cbp,bcp -> bc" [pos;posenc] ~path:None in*)
+	(*Logs.debug (fun m -> m "decode_edit: sim\n"); 
+	Tensor.print sim;*)
+	(*let loc = sample_dist_dum sim in *)
+	(* cosine similarity is permissive; take top *)
+	(* location must be clipped to within the program. *)
+	let edit_arr = Array.init !batch_size (fun i -> 
+		let etyp = match Tensor.get_int1 typ i with
+			| 0 -> "sub"
+			| 1 -> "del" 
+			| 2 -> "ins"
+			| _ -> "fin" in
+		let echr = (Tensor.get_int1 chr i) + Char.code('0') |> Char.chr in
+		let eloc = Tensor.get_int1 pos i in
+		(etyp,eloc,echr) ) in
+	(* debug *)
+	(*for i = 0 to (min 1 !batch_size) do (
+		let typ,loc,chr = edit_arr.(i) in
+		Logs.debug (fun m -> m "decode_edit %d: %s,%c,%d" i typ chr loc)
+	) done;*)
+	let fin = Unix.gettimeofday () in
+	if !gdisptime then Logs.debug (fun m -> m "decode_edit time %f" (fin-.sta)); 
+	edit_arr
+
+	
+(* this is the old system, p_ctx length edit array *)
+let update_edited edited edit la lc = 
+	(* update the 'edited' array, which indicates what has changed in the program string *)
+	let typ,pp,_chr = edit in 
+	(*let la = min (String.length be.a_progenc) (p_ctx/2) in
+	let lc = min (String.length be.c_progenc) (p_ctx/2) in*)
+	(* in-place array modification *)
+	(match typ with 
+	| "sub" -> (
+		let pp = if pp > lc-1 then lc-1 else pp in
+		let pp = if pp < 0 then 0 else pp in
+		edited.(la+pp) <- 0.5 )
+	| "del" -> (
+		(* lc is already one less at this point -- c has been edited *)
+		let pp = if pp > lc-1 then lc-1 else pp in
+		let pp = if pp < 0 then 0 else pp in
+		(* shift left *)
+		for i = la+pp to p_ctx-2 do (
+			edited.(i) <- edited.(i+1)
+		) done; 
+		assert ((la+pp) < p_ctx); 
+		edited.(la+pp) <- ( -1.0 ) ) 
+	| "ins" -> (
+		if lc < p_ctx/2 && la+pp < p_ctx then (
+			let pp = if pp > lc then lc else pp in
+			let pp = if pp < 0 then 0 else pp in
+			(* shift right one *)
+			for i = p_ctx-2 downto la+pp do (
+				edited.(i+1) <- edited.(i)
+			) done; 
+			edited.(la+pp) <- 1.0 ) )
+	| _ -> () )
+
+	
+(* old update_bea -- now it's split into multiple functions *)
+let update_bea steak bd =
+	let sta = Unix.gettimeofday () in
+	let ba_prob, ba_typ, ba_chr, ba_pos 
+			= decode_edit_enumerate bd.bedtd in
+	let innerloop_update_bea bi =
+		let be = bd.bea.(bi) in
+		(* check edited array allocation *)
+		let be1 = if Array.length be.edited <> (p_ctx/2)
+			then ( let edited = Array.make (p_ctx/2) 0.0 in
+				{be with edited} ) else be in
+		let cnt = be1.count in
+		let typ,loc,chr = edit_arr.(bi) in
+		let bnew = match be1.dt with
+		| `Train -> (
+			(* last edit is 'fin', in which case: new batche *)
+			if List.length be1.edits <= 1 then (
+				bd.fresh.(bi) <- true; (* update image flag *)
+				new_batche_train steak `Train
+				(*let bn = new_batche_train steak `Train in
+				if bi = 0 then (
+					Logs.debug (fun m -> m "|b0 new_batche_train; edit length %d"
+						(List.length bn.edits))
+				); 
+				bn*)
+			) else (
+				bd.fresh.(bi) <- false;
+				apply_edits be1
+			)
+			(* decoding verification after "decode_edits" command. *)
+			)
+		| `Verify -> (
+			(*if bi = 0 then (
+				Logs.debug (fun m -> m "update_bea Verify %s" be1.c_progenc)
+			) ;*)
+			let be2 = {be1 with edits=[(typ,loc,chr)];count=cnt+1} in
+			let be3 = apply_edits be2 in
+			if typ = "fin" || be3.count >= p_ctx/2 then (
+				(* write this to file for now; stats later *)
+				let c = if be3.c_progenc = be3.b_progenc then '+' else '-' in
+				Printf.fprintf steak.fid_verify "[%c] %s -> %s ; decode %s\n" c
+					(progenc2str be3.a_progenc)
+					(progenc2str be3.b_progenc)
+					(progenc2str be3.c_progenc); 
+				if c = '+' then (
+					Graf.incr_good steak.gs be3.a_pid; 
+					Graf.incr_good steak.gs be3.b_pid 
+				) else (
+					(* might be a simplification ? *)
+					let good,data,img = progenc_to_edata be3.c_progenc in
+					if good then try_add_program steak data img be3
+				); 
+				bd.fresh.(bi) <- true;
+				new_batche_unsup steak 
+			) else (
+				bd.fresh.(bi) <- false;
+				be3
+			) )
+		| `Mnist -> (
+			let be2 = {be1 with edits=[(typ,loc,chr)];count=cnt+1} in
+			let be3 = apply_edits be2 in
+			if typ = "fin" || be3.count >= p_ctx/2 then (
+				let good,data,img = progenc_to_edata be3.c_progenc in
+				if good then (
+					(* fix this later: keep around programs that improve fit *)
+					(*let imgf = tensor_of_bigarray2 img steak.device in
+					let enc = imgf_to_enc steak imgf in
+					let s = progenc2str data.progenc in
+					let j = be3.dt.indx in
+					let a = Tensor.narrow steak.mnist_enc ~dim:0 ~start:j ~length:1 in
+					let d = Tensor.cosine_similarity ~x1:a ~x2:enc ~dim:1 ~eps:1e-7
+						|> Tensor.float_value in
+					(match steak.dreams with
+					| Some dreams -> (
+						dreams.(j).decode <- (s :: dreams.(j).decode);
+						dreams.(j).cossim <- (d :: dreams.(j).cossim)
+						)
+					| None -> assert (0 <> 0); () );*)
+					try_add_program steak data img be3
+				);
+				bd.fresh.(bi) <- true;
+				new_batche_unsup steak
+			) else (
+				bd.fresh.(bi) <- false;
+				be3
+			) ) in
+		bd.bea.(bi) <- bnew;
+	in (* /innerloop_update_bea *)
+
+	if !gparallel then
+		Dtask.parallel_for steak.pool ~start:0 ~finish:(!batch_size-1)
+			~body:innerloop_update_bea
+	else
+		for i=0 to (!batch_size-1) do
+			innerloop_update_bea i done;
+
+	let fin = Unix.gettimeofday () in
+	if !gdisptime then Logs.debug (fun m -> m "update_bea time %f" (fin-.sta));
+	if (steak.batchno mod 10) = 9 then (
+		Mutex.lock steak.db_mutex;
+		Caml.Gc.major (); (* clean up torch variables (slow..) *)
+		Mutex.unlock steak.db_mutex
+	);
+	steak.batchno <- steak.batchno + 1

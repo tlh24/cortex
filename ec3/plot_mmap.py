@@ -6,6 +6,7 @@ import argparse
 import matplotlib.pyplot as plt
 from ctypes import * # for c_char
 import time
+import os
 
 from constants import *
 # remove menubar buttons
@@ -18,7 +19,8 @@ def make_mmf(fname):
 def read_mmap(mmf, dims): 
 	mmf.seek(0)
 	mmb = mmf.read()
-	siz = len(mmb)
+	# siz = len(mmb)
+	siz = math.prod(dims) * 4
 	mmb2 = (c_char * siz).from_buffer_copy(mmb)
 	x = th.frombuffer(mmb2, dtype=th.float).clone()
 	x = th.reshape(x, dims)
@@ -45,6 +47,9 @@ else:
 	filno = 0
 print(f"batch_size:{batch_size}")
 
+if not os.path.exists(f"editdiff_{filno}.mmap"): 
+	os.system(f'fallocate -l {batch_size*e_indim*4} editdiff_{filno}.mmap')
+
 
 fd_bpro = make_mmf(f"bpro_{filno}.mmap")
 fd_bimg = make_mmf(f"bimg_{filno}.mmap")
@@ -52,13 +57,15 @@ fd_bedts = make_mmf(f"bedts_{filno}.mmap")
 fd_bedtd = make_mmf(f"bedtd_{filno}.mmap")
 fd_posenc = make_mmf(f"posenc_{filno}.mmap")
 fd_editdiff = make_mmf(f"editdiff_{filno}.mmap")
-# fallocate -l 6016 editdiff.mmap for batch size 32
+
+
+# fallocate -l 6016 editdiff_0.mmap for batch size 32
 # 6016 = 32 * 47 * 4
 
 
 plot_rows = 2
 plot_cols = 3
-figsize = (16, 8)
+figsize = (22, 11)
 plt.ion()
 fig, axs = plt.subplots(plot_rows, plot_cols, figsize=figsize)
 initialized = False
@@ -92,7 +99,7 @@ while True:
 	posenc = read_mmap(fd_posenc, [p_ctx, poslen])
 	editdiff = read_mmap(fd_editdiff, [batch_size, e_indim])
 
-	plot_tensor(0, 0, bpro[0,:,:], "bpro[0,:,:]", -1.0, 1.0)
+	plot_tensor(0, 0, bpro[0,:,:], "bpro[0,:,:]", -2.0, 2.0)
 	plot_tensor(0, 1, bimg[0,0,:,:], "bimg[0,0,:,:]", -1.0, 1.0)
 	plot_tensor(0, 2, bimg[0,1,:,:], "bimg[0,1,:,:]", -1.0, 1.0)
 	plot_tensor(1, 0, bedts[:bs,:], "bedts[:,:]", -2.0, 2.0)

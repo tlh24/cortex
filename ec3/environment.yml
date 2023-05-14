@@ -1,0 +1,15 @@
+name: ec3
+channels:
+  - defaults
+  - conda-forge
+  - pytorch
+dependencies:
+  - python=3.10
+  - opam
+  - ocaml
+  - pip
+  - pydantic >= 1.10
+  - pip:
+    - torch==2.0.0
+    - torchvision==0.15.1
+    - wandb==0.14.2
