@@ -8,7 +8,7 @@
 
 #define WARPSTEPS 30
 #define NUM_BLOCKS 400
-#define BLOCK_SIZE 256 // 256 and 512 yield the same bandwidth.
+#define BLOCK_SIZE 256 // 256 and 512 yield similar bandwidths.
 #define BLOCK_STRIDE (BLOCK_SIZE/32)
 #define DIM (32 * WARPSTEPS)
 #define DB_SIZE (NUM_BLOCKS * BLOCK_SIZE)
@@ -29,7 +29,7 @@ __global__ void compute_distances(float* db, float* query, float* distances) {
     }
 }
 
-__global__ void compute_distances2(float* db, float* query, float* dist)
+__global__ void compute_distances2(unsigned char* db, unsigned char* query, float* dist)
 {
 	__shared__ float sacc[BLOCK_STRIDE][32];
 	int x = threadIdx.x;
@@ -38,7 +38,7 @@ __global__ void compute_distances2(float* db, float* query, float* dist)
 
 	float acc = 0.0;
 	for( int i = 0; i < WARPSTEPS; i++ ){
-		float diff = db[by*DIM + i*32 + x] - query[i*32 + x];
+		float diff = (float)(db[by*DIM + i*32 + x] - query[i*32 + x]);
 		acc += diff * diff;
 	}
 	sacc[y][x] = acc;
@@ -115,8 +115,8 @@ timespec diff(timespec start, timespec end)
 }
 
 int main() {
-	float* db;
-	float* query;
+	unsigned char* db;
+	unsigned char* query;
 	float* distances;
 	float* outDist;
 	int*   outIndx;
@@ -125,26 +125,27 @@ int main() {
 	printf("num blocks: %d\n", num_blocks); 
 
 	// Allocate memory for the database, query vector, distances, and best match index
-	cudaMalloc(&db, DB_SIZE * DIM * sizeof(float));
+	unsigned char* hdb = (unsigned char*)malloc(DB_SIZE * DIM);
+	cudaMalloc(&db, DB_SIZE * DIM * sizeof(unsigned char));
 	cudaMalloc(&query, DIM * sizeof(float));
 	cudaMalloc(&distances, DB_SIZE * sizeof(float));
 	cudaMalloc(&outDist, num_blocks * sizeof(int));
 	cudaMalloc(&outIndx, num_blocks * sizeof(float));
 
-	// Initialize the database and query vector
-	// Create a random number generator
-	curandGenerator_t gen;
-	curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
-	curandSetPseudoRandomGeneratorSeed(gen, static_cast<unsigned long long>(time(NULL)));
-
-	// Fill the database with normally distributed random numbers
-	curandGenerateNormal(gen, db, DB_SIZE * DIM, 0.0f, 1.0f);
-
-	// Fill the query vector with normally distributed random numbers
-	curandGenerateNormal(gen, query, DIM, 0.0f, 1.0f);
-
-	// Destroy the generator
-	curandDestroyGenerator(gen);
+	// // Initialize the database and query vector
+	// // Create a random number generator
+	// curandGenerator_t gen;
+	// curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
+	// curandSetPseudoRandomGeneratorSeed(gen, static_cast<unsigned long long>(time(NULL)));
+ //
+	// // Fill the database with normally distributed random numbers
+	// curandGenerateNormal(gen, db, DB_SIZE * DIM, 0.0f, 1.0f);
+ //
+	// // Fill the query vector with normally distributed random numbers
+	// curandGenerateNormal(gen, query, DIM, 0.0f, 1.0f);
+ //
+	// // Destroy the generator
+	// curandDestroyGenerator(gen);
 	
 	// Choose a random index
 	std::random_device rd;
@@ -153,6 +154,13 @@ int main() {
 	// Now generate random numbers with generator
 	std::uniform_int_distribution<int> distribution(1, DB_SIZE);
 	int random_indx = distribution(generator);
+
+	// fill the DB with random uchars
+	std::uniform_int_distribution<int> distribution256(1, 256);
+	for(int i=0; i<DB_SIZE * DIM; i++){
+		hdb[i] = (unsigned char)distribution256(generator);
+	}
+	cudaMemcpy(db, hdb, DB_SIZE*DIM, cudaMemcpyHostToDevice);
 
 	// Copy the query vector to the random index in the database
 	cudaMemcpy(db + random_indx * DIM, query, DIM * sizeof(float), cudaMemcpyDeviceToDevice);
@@ -190,7 +198,7 @@ int main() {
 	timespec duration = diff(time1, time2); 
 	cout<<duration.tv_nsec / 1e10 <<endl;
 	printf("Bandwidth: %f GB/sec\n",
-		(DB_SIZE*DIM*4)/((duration.tv_nsec / 1e10)* 1e9));
+		(DB_SIZE*DIM)/((duration.tv_nsec / 1e10)* 1e9));
 	printf("Best match: %d, should be %d; Minimum distance: %f\n",
 			 minIndx, random_indx, minDist);
 
