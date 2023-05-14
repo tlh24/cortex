@@ -1,3 +1,4 @@
+(
 (d0 : ( // arguments: 0: n sides ; 1: size
 	loop 2, v0, ( // 2 is loopvar (unused)
 		move ((ul / v0) * v1), (ua / v0))) ;
@@ -7,7 +8,7 @@ c0 20, 5;
 c0 20, 8;
 c0 20, 12;
 c0 20, 17
-)
+); 
 // task 0 triangle small 
 c0 3, 3; 
 // task 1 square
@@ -21,19 +22,21 @@ c0 7, 4;
 // task 5 circle
 c0 20, 3; 
 // task 6 vertical line
-(move 0, (ua / 4); move 2 0)
+(move 0, (ua / 4); move 2, 0);
 // task 7 l-shape
-(move 4, (ua / 4); move 2 0)
+(move 4, (ua / 4); move 2, 0);
 // task 8 point
-(move (ul/20), 0)
+(move (ul/20), 0);
 // task 9 horizontal line
-(move 2, 0)
+(move 2, 0);
 // task 10 rotated square
-(move 0 (ua / 6); c 4, 4)
+(move 0, (ua / 6); c0 4, 4);
 // task 11 half-circle
 (d1 : ( // arguments: 0: fraction (1=whole,2=half etc) 1: size
 	v2 = 20 / v0 ; 
 	loop 3, v2, ( // 3 is loopvar (unused)
 		move ((ul / 20) * v1), (ua / 20))) ;
-c1 2 5; 
-c1 2 3
+c1 2, 5; 
+c1 2, 3
+)
+)

@@ -4201,11 +4201,11 @@ Database is looking much healthier now -- and better connected / quicker to gene
 Graph seems to be working properly. 
 Dijkstra's is working well too. 
 Todo next: 
-* Figure out how to train the network by following edges *to* a result. 
-* Make sure there are enough of these edges that the network doesn't overfit
-* Label the nodes (programs) that are close to any given specification (MNIST digit)
-* Think more about how this set can use to organize 1 above. 
-* Cull nodes that can't be visited or aren't visited on the way to a specification. 
+1 - Figure out how to train the network by following edges *to* a result.
+2 - Make sure there are enough of these edges that the network doesn't overfit
+3 - Label the nodes (programs) that are close to any given specification (MNIST digit)
+4 - Think more about how this set can use to organize 1 above.
+5 - Cull nodes that can't be visited or aren't visited on the way to a specification.
 
 
 April 29 2023
@@ -4219,3 +4219,62 @@ Also had a hedon: need to give the current model more context as to what's happe
 	And also enables the model to learn strategies through expeience.
 
 Look up new Baker lab de novo enzyme paper.
+
+April 24 2023
+
+Ok, tried my hand at manually generating logo graphics to reproduce MNIST digits ... it's kinda hard without floats / decimal representations.  
+I wonder if the transformer would make more progress if floats were available?
+But then enumeration would indeed be super duper hard: 
+	Making axes of the program space continuous means that enumeration there is essentially impossible.
+	Yet it does make it significantly more navigable; 
+		While doing the task manually, 
+		I had to translate to/from decimal representations. 
+	The good thing is that this would not be so hard; 
+		Logo internally represents variables and constants as float. 
+		
+Eh, switching to float would only kick the ball slightly further down the field.. better to solve the todos from April 20th. 
+
+OK, so 1 seems to be working. 
+	Using the naive dijkstra's distance, with best-mnist-approximating dbf entries as the endpoint.
+and 2 seems to hold as well. 
+	Although, I'm confused as to why every time i restart training, performance goes down? 
+3 is also true.  
+5 is not done: 
+	Need to add a filter to the network -- so we don't run out of capacity. 
+	This is tricky, as all the pointers will change!! 
+	(Could also keep a list of the empty positions in the array, and annul all entries with that one.. kinda simpler)
+	
+April 25 2023
+
+Fixed more bugs with the pathfinding algo -- was getting upwards of 32M paths in the training set!  insane...  
+Reason was that these were disordered.  
+Fixed that to make more sense: started dijkstra from the root node, so only one pass needed. 
+Trying some training now .. 
+But, need to: 
+1 - Replace Vector with a fixed Array
+2 - Keep track of unused slots in the array with a list
+3 - Remove unused nodes periodically, without corrupting the rest of the graph. 
+	 Otherwise we end up running out of memory for the working programs! 
+	 (Certainly can make things a good bit larger, but still..)
+4 - ** figure out why it takes many batches for supervised decoding to "warm up" .. ? 
+5 - The 'programmer' tends to get stuck in dead-ends: 
+	 It's hard to make an improvement when the turtle is at the end of a stroke. 
+	 One solution would be to allow for a 'reset' operator -- 
+	 This cuts up the potentially long depedency graphs. 
+		And gets a bit closer to simply outputting segments directly. Hum. 
+		Would be better that the program learns to "lift up the pen"
+		but ... this is a large edit, 
+		and is not permitted with the current criteria: 
+	The model must output "fin" before getting to putting the pen back down, 
+	changing the pen size, and drawing another line. 
+	At minimum it needs to be allowed an "equv" or "cont" command -- 
+		e.g. keep running the model to get the next edits. 
+	Alternately, just get the model to emit more tokens. 
+	Need at least: 
+	; pen 0; move 4/5, 3; pen 3; move a/b c/d
+	That's 21 tokens!  
+	Easy easy with a LLM, but here we're trying to bootstrap incrementally. 
+	Another solution is to compress this into one smaller op: 
+	turtle x, y -> move to new location, keep pen style, but don't emit a new segment. 
+	-> Ideally we could just have a call to do this... in a library say.. 
+		But do need the reset command. 

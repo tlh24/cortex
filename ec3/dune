@@ -78,7 +78,7 @@
 (library
 	(name graf)
 	(modules graf)
-	(libraries vg vg.cairo vector torch torch.vision logs logs.threaded domainslib sexplib psq lexer parser logo vgwrapper colors levenshtein ast)
+	(libraries vg vg.cairo vector torch torch.vision logs logs.threaded domainslib sexplib psq lexer parser logo vgwrapper colors levenshtein ast logoext)
 	)
 	
 (library
@@ -95,20 +95,20 @@
 (library	
 	(name program)
 	(modules program)
-	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib graf lexer parser logo vgwrapper colors levenshtein ast vae editree logoext)
+	(libraries vg vg.cairo vector torch torch.vision pcre logs logs.threaded domainslib sexplib graf lexer parser logo vgwrapper colors levenshtein ast vae editree logoext)
 	)
 
 (executable
 	(name main)
 	(modules main )
-	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib program)
+	(libraries vg vg.cairo vector torch torch.vision pcre logs logs.threaded domainslib sexplib program)
 	(modes exe) ; options: byte exe
 	)
 
 (executable
 	(name verify)
 	(modules verify)
-	(libraries vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib program)
+	(libraries vg vg.cairo vector torch torch.vision pcre logs logs.threaded domainslib sexplib program)
 	(modes exe) ; options: byte exe
 	)
 	
@@ -116,6 +116,13 @@
 	(name editree_test)
 	(modules editree_test)
 	(libraries levenshtein editree))
+	
+(executable
+	(name logofilerun)
+	(modules logofilerun)
+	(libraries vg vg.cairo vector torch torch.vision pcre logs logs.threaded program logoext)
+	(modes exe)
+	)
 	
 ;(executable
 ;	(name graf)
