@@ -7,13 +7,15 @@
 #include <chrono>
 
 #define WARPSTEPS 30
+#define NUM_BLOCKS 400
+#define BLOCK_SIZE 256 // 256 and 512 yield the same bandwidth.
+#define BLOCK_STRIDE (BLOCK_SIZE/32)
 #define DIM (32 * WARPSTEPS)
-#define DB_SIZE 100000
-#define BLOCK_SIZE 256
+#define DB_SIZE (NUM_BLOCKS * BLOCK_SIZE)
 
 using namespace std;
 
-// whole computation takes 4.2ms on 3080 laptop.
+// this w reduce takes 4.2ms on 3080 laptop.
 __global__ void compute_distances(float* db, float* query, float* distances) {
     int idx = threadIdx.x + blockIdx.x * blockDim.x;
 
@@ -29,10 +31,10 @@ __global__ void compute_distances(float* db, float* query, float* distances) {
 
 __global__ void compute_distances2(float* db, float* query, float* dist)
 {
-	__shared__ float sacc[8][32];
+	__shared__ float sacc[BLOCK_STRIDE][32];
 	int x = threadIdx.x;
 	int y = threadIdx.y;
-	int by = blockIdx.x * 8 + threadIdx.y;
+	int by = blockIdx.x * BLOCK_STRIDE + threadIdx.y;
 
 	float acc = 0.0;
 	for( int i = 0; i < WARPSTEPS; i++ ){
@@ -48,34 +50,6 @@ __global__ void compute_distances2(float* db, float* query, float* dist)
 	if(x < 1 ) sacc[y][x] += sacc[y][x + 1 ];
 
 	dist[by] = sacc[y][x];
-}
-
-__global__ void find_global_best_match(int* best_match, float* min_distance, int* global_best_match, float* global_min_distance) {
-    __shared__ int indices[256];
-    __shared__ float dists[256];
-
-    int idx = threadIdx.x;
-
-    // Each thread loads its distance and index into shared memory
-    indices[threadIdx.x] = best_match[idx];
-    dists[threadIdx.x] = min_distance[idx];
-
-    __syncthreads();
-
-    // Reduction to find the minimum distance and corresponding index
-    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-        if (threadIdx.x < s && dists[threadIdx.x] > dists[threadIdx.x + s]) {
-            dists[threadIdx.x] = dists[threadIdx.x + s];
-            indices[threadIdx.x] = indices[threadIdx.x + s];
-        }
-        __syncthreads();
-    }
-
-    // Thread 0 writes the result to global memory
-    if (threadIdx.x == 0) {
-        *global_best_match = indices[0];
-        *global_min_distance = dists[0];
-    }
 }
 
 __device__ void warpReduce(volatile float *minDist, 
@@ -147,7 +121,7 @@ int main() {
 	float* outDist;
 	int*   outIndx;
 	
-	int num_blocks = std::ceil(static_cast<float>(DB_SIZE) / 256.0);
+	int num_blocks = NUM_BLOCKS;
 	printf("num blocks: %d\n", num_blocks); 
 
 	// Allocate memory for the database, query vector, distances, and best match index
@@ -187,17 +161,17 @@ int main() {
 	int* h_outIndx = (int*)malloc(num_blocks*sizeof(int));
 	float minDist; 
 	int minIndx; 
-	//dim3 dimBlock(32, 8, 1); // x, y, z
+	dim3 dimBlock(32, BLOCK_STRIDE, 1); // x, y, z
 	
 	timespec time1, time2;
 	clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &time1);
 
 	for(int u = 0; u < 10; u++){
 		// Compute the L2 distances
-		compute_distances<<<num_blocks, 256>>>(db, query, distances);
-		//compute_distances2<<<DB_SIZE/8, dimBlock>>>(db, query, distances);
+		//compute_distances<<<num_blocks, 256>>>(db, query, distances);
+		compute_distances2<<<DB_SIZE/BLOCK_STRIDE, dimBlock>>>(db, query, distances);
 
-		findMinOfArray<<<num_blocks, 256>>>(distances, outDist, outIndx);
+		findMinOfArray<<<num_blocks, BLOCK_SIZE>>>(distances, outDist, outIndx);
 		
 		cudaMemcpy(h_outDist, outDist, sizeof(float)*num_blocks, cudaMemcpyDeviceToHost);
 		cudaMemcpy(h_outIndx, outIndx, sizeof(int)*num_blocks, cudaMemcpyDeviceToHost);
@@ -215,7 +189,9 @@ int main() {
 	
 	timespec duration = diff(time1, time2); 
 	cout<<duration.tv_nsec / 1e10 <<endl;
-	printf("Best match: %d, should be %d; Minimum distance: %f\n", 
+	printf("Bandwidth: %f GB/sec\n",
+		(DB_SIZE*DIM*4)/((duration.tv_nsec / 1e10)* 1e9));
+	printf("Best match: %d, should be %d; Minimum distance: %f\n",
 			 minIndx, random_indx, minDist);
 
 	// Free the memory
