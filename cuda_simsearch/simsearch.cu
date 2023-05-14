@@ -6,12 +6,14 @@
 #include <random>
 #include <chrono>
 
-#define DIM 900
+#define WARPSTEPS 30
+#define DIM (32 * WARPSTEPS)
 #define DB_SIZE 100000
 #define BLOCK_SIZE 256
 
 using namespace std;
 
+// whole computation takes 4.2ms on 3080 laptop.
 __global__ void compute_distances(float* db, float* query, float* distances) {
     int idx = threadIdx.x + blockIdx.x * blockDim.x;
 
@@ -23,6 +25,29 @@ __global__ void compute_distances(float* db, float* query, float* distances) {
         }
         distances[idx] = distance;
     }
+}
+
+__global__ void compute_distances2(float* db, float* query, float* dist)
+{
+	__shared__ float sacc[8][32];
+	int x = threadIdx.x;
+	int y = threadIdx.y;
+	int by = blockIdx.x * 8 + threadIdx.y;
+
+	float acc = 0.0;
+	for( int i = 0; i < WARPSTEPS; i++ ){
+		float diff = db[by*DIM + i*32 + x] - query[i*32 + x];
+		acc += diff * diff;
+	}
+	sacc[y][x] = acc;
+	__syncthreads();
+	if(x < 16) sacc[y][x] += sacc[y][x + 16];
+	if(x < 8 ) sacc[y][x] += sacc[y][x + 8 ];
+	if(x < 4 ) sacc[y][x] += sacc[y][x + 4 ];
+	if(x < 2 ) sacc[y][x] += sacc[y][x + 2 ];
+	if(x < 1 ) sacc[y][x] += sacc[y][x + 1 ];
+
+	dist[by] = sacc[y][x];
 }
 
 __global__ void find_global_best_match(int* best_match, float* min_distance, int* global_best_match, float* global_min_distance) {
@@ -162,6 +187,7 @@ int main() {
 	int* h_outIndx = (int*)malloc(num_blocks*sizeof(int));
 	float minDist; 
 	int minIndx; 
+	//dim3 dimBlock(32, 8, 1); // x, y, z
 	
 	timespec time1, time2;
 	clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &time1);
@@ -169,6 +195,7 @@ int main() {
 	for(int u = 0; u < 10; u++){
 		// Compute the L2 distances
 		compute_distances<<<num_blocks, 256>>>(db, query, distances);
+		//compute_distances2<<<DB_SIZE/8, dimBlock>>>(db, query, distances);
 
 		findMinOfArray<<<num_blocks, 256>>>(distances, outDist, outIndx);
 		
