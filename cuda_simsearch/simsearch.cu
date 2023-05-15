@@ -33,6 +33,9 @@ __global__ void compute_distances(float* db, float* query, float* distances) {
 __global__ void compute_distances2(unsigned char* db, unsigned char* query, float* dist)
 {
 	__shared__ float sacc[BLOCK_STRIDE][32];
+	//__shared__ unsigned char qq[DIM]; // this makes no difference. 
+	// hidden by the HW cache. 
+	
 	int x = threadIdx.x;
 	int y = threadIdx.y;
 	int by = blockIdx.x * BLOCK_STRIDE + threadIdx.y;
@@ -128,7 +131,7 @@ struct imgdb {
 	int*   h_outIndx;
 };
 
-imgdb* simdb_allocate(int num)
+extern imgdb* simdb_allocate(int num)
 {
 	if(num != DB_SIZE){
 		printf("simdb_allocate: asked for %d, compiled with %d\n",
@@ -149,7 +152,7 @@ imgdb* simdb_allocate(int num)
 	return sdb;
 }
 
-void simdb_free(imgdb* sdb)
+extern void simdb_free(imgdb* sdb)
 {
 	cudaFree(sdb->db);
 	cudaFree(sdb->query);
@@ -162,14 +165,14 @@ void simdb_free(imgdb* sdb)
 	free(sdb);
 }
 
-void simdb_set(imgdb* sdb, int i, unsigned char* row)
+extern void simdb_set(imgdb* sdb, int i, unsigned char* row)
 {
 	if( i>=0 && i < DB_SIZE)
 		cudaMemcpy(sdb->db + i*DIM, row, DIMSHORT,
 				  cudaMemcpyHostToDevice);
 }
 
-void simdb_query(imgdb* sdb, unsigned char* query,
+extern void simdb_query(imgdb* sdb, unsigned char* query,
 				float* minDist, int* minIndx)
 {
 	cudaMemcpy(sdb->query, query, DIMSHORT,
@@ -200,7 +203,8 @@ void simdb_query(imgdb* sdb, unsigned char* query,
 
 int main()
 {
-	printf("num blocks: %d db_size:%d\n", NUM_BLOCKS, DB_SIZE);
+	printf("num blocks: %d db_size:%d, %f MB\n", NUM_BLOCKS, DB_SIZE, 
+			 (float)(DB_SIZE * DIMSHORT) / 1e6);
 
 	imgdb* sdb = simdb_allocate(DB_SIZE);
 
@@ -231,16 +235,16 @@ int main()
 
 	float minDist;
 	int minIndx;
-	for(int u = 0; u < 10; u++){
+	for(int u = 0; u < 20; u++){
 		simdb_query(sdb, q, &minDist, &minIndx);
 	}
 
 	clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &time2);
 
 	timespec duration = diff(time1, time2);
-	cout<<duration.tv_nsec / 1e10 <<endl;
+	cout<<duration.tv_nsec / 2e10 <<endl;
 	printf("Bandwidth: %f GB/sec\n",
-		(DB_SIZE*DIM)/((duration.tv_nsec / 1e10)* 1e9));
+		(DB_SIZE*DIM)/((duration.tv_nsec / 2e10)* 1e9));
 	printf("Best match: %d, should be %d; Minimum distance: %f\n",
 			 minIndx, random_indx, minDist);
 
