@@ -1,11 +1,14 @@
 
-all: simsearch.exe simsearch.so
+all: simsearch.exe libsimsearch.so
 
-simsearch.exe: simsearch.cu
-	nvcc $< -lcurand -o $@
+simsearch.exe: main.cpp libsimsearch.so
+	g++ main.cpp -L. -lsimsearch -o $@
 	
-simsearch.so: simsearch.cu
+libsimsearch.so: simsearch.cu
 	nvcc $< -lcurand -o $@ --compiler-options '-fPIC' --shared
 
 clean:
-	rm -rf simsearch.exe simsearch.so
+	rm -rf simsearch.exe libsimsearch.so
+
+# suggestion:
+# export LD_LIBRARY_PATH=`pwd`
