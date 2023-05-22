@@ -1,5 +1,3 @@
-[@@@part "0"]
-
 open Ctypes
 
 type window = unit ptr
@@ -8,16 +6,12 @@ let window : window typ = ptr void
 type imgdb = unit ptr
 let imgdb : imgdb typ = ptr void
 
-[@@@part "1"]
-
 open Foreign
 
 let libncurses = Dl.(dlopen ~filename:"libncurses.so.6.4" ~flags:[RTLD_NOW])
 let libss = Dl.(dlopen ~filename:"./simsearch.so" ~flags:[RTLD_NOW])
 
 let initscr = foreign "initscr" (void @-> returning window) ~from:libncurses
-
-[@@@part "2"]
 
 let newwin =
   foreign "newwin" (int @-> int @-> int @-> int @-> returning window) ~from:libncurses
@@ -29,6 +23,7 @@ let endwin = foreign "endwin" (void @-> returning void) ~from:libncurses
 let refresh = foreign "refresh" (void @-> returning void) ~from:libncurses
 let wrefresh = foreign "wrefresh" (window @-> returning void) ~from:libncurses
 let addstr = foreign "addstr" (string @-> returning void) ~from:libncurses
+
 
 let mvwaddch =
   foreign
