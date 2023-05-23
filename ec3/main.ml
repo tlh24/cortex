@@ -39,6 +39,9 @@ let () =
 				(Cuda.is_available ()));
 	Logs.info(fun m -> m "cudnn available: %b%!"
 				(Cuda.cudnn_is_available ()));
+				
+	(* check simdb *)
+	Simdb.test (); 
 	(*for _i = 0 to 4 do 
 		measure_torch_copy_speed device
 	done; *)

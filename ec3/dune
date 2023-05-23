@@ -28,6 +28,12 @@
 ;%{common} = (vg vg.cairo vector torch torch.vision pcre lwt lwt.unix logs logs.threaded domainslib sexplib))
 
 (library
+	(name simdb)
+	(modules simdb)
+	(libraries ctypes ctypes.foreign logs logs.threaded)
+	)
+
+(library
 	(name colors)
 	(modules colors)
 	(libraries vg vg.cairo logs logs.threaded)
@@ -101,7 +107,7 @@
 (executable
 	(name main)
 	(modules main )
-	(libraries vg vg.cairo vector torch torch.vision pcre logs logs.threaded domainslib sexplib program)
+	(libraries simdb vg vg.cairo vector torch torch.vision pcre logs logs.threaded domainslib sexplib program)
 	(modes exe) ; options: byte exe
 	)
 
