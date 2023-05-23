@@ -12,5 +12,5 @@ ec3/poetry.lock
 ec3/checkpoints/
 ec3/wandb
 prog-gephi-viz
-cuda_simsearch/simsearch.exe
-cuda_simsearch/simsearch.so
+*.exe
+

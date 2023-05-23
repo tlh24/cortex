@@ -1,0 +1,30 @@
+; this is the much more complicated way of doing it!
+; easier to just load the library dynamically, at runtime. 
+;(executable 
+;	(name simdb)
+;	(libraries ctypes)
+;	(flags (:standard -w -9-27))
+;	(ctypes
+;		(external_library_name libsimsearch)
+;		(build_flags_resolver
+;			(vendored 
+;				(c_flags -I/home/tlh24/cortex/cuda_simsearch/) 
+;				(c_library_flags -L/home/tlh24/cortex/cuda_simsearch/ -lsimsearch)
+;			) )
+;		(headers (include "simsearch.h"))
+;		(type_description
+;			(instance Type)
+;			(functor Type_description))
+;		(function_description
+;			(concurrency unlocked)
+;			(instance Function)
+;			(functor Function_description))
+;		(generated_types Types_generated)
+;		(generated_entry_point Cc))
+;	)
+
+(executable
+	(name simdb_test)
+	(modules simdb_test)
+	(libraries ctypes ctypes.foreign)
+	)

@@ -1,21 +1,22 @@
 #include <stdio.h>
-#include <iostream>
-#include <random>
+#include <time.h>
+#include <stdlib.h>
 #include "simsearch.h"
 
-using namespace std;
+// Function to compute the difference between two timespec values
+struct timespec diff_timespec(struct timespec start, struct timespec end) {
+    struct timespec diff;
 
-timespec diff(timespec start, timespec end)
-{
-    timespec temp;
-    if ((end.tv_nsec-start.tv_nsec)<0) {
-        temp.tv_sec = end.tv_sec-start.tv_sec-1;
-        temp.tv_nsec = 1000000000+end.tv_nsec-start.tv_nsec;
+    // If the nanoseconds value of 'end' is smaller
+    // it borrows 1 second from the seconds value
+    if (end.tv_nsec < start.tv_nsec) {
+        diff.tv_sec = end.tv_sec - start.tv_sec - 1;
+        diff.tv_nsec = end.tv_nsec - start.tv_nsec + 1E9;  // 1E9 == 1,000,000,000
     } else {
-        temp.tv_sec = end.tv_sec-start.tv_sec;
-        temp.tv_nsec = end.tv_nsec-start.tv_nsec;
+        diff.tv_sec = end.tv_sec - start.tv_sec;
+        diff.tv_nsec = end.tv_nsec - start.tv_nsec;
     }
-    return temp;
+    return diff;
 }
 
 int main()
@@ -26,28 +27,24 @@ int main()
 	imgdb* sdb = simdb_allocate(DB_SIZE);
 
 	// Choose a random index
-	std::random_device rd;
-	std::mt19937 generator(rd());
+	srand(time(NULL));   // Initialization, should only be called once.
+	int random_indx = rand() % DB_SIZE;
 
 	// fill the DB with random uchars
 	unsigned char* q = (unsigned char*)malloc(DIMSHORT);
-	std::uniform_int_distribution<int> distribution256(1, 256);
 	for(int i=0; i<DB_SIZE; i++){
 		for(int j=0; j<DIMSHORT; j++){
-			q[j] = (unsigned char)distribution256(generator);
+			q[j] = (unsigned char)(rand() % 256); 
 		}
 		simdb_set(sdb, i, q);
 	}
 
-	std::uniform_int_distribution<int> distribution(1, DB_SIZE);
-	int random_indx = distribution(generator);
-
 	for(int j=0; j<DIMSHORT; j++){
-		q[j] = (unsigned char)distribution256(generator);
+		q[j] = (unsigned char)(rand() % 256); 
 	}
 	simdb_set(sdb, random_indx, q);
-
-	timespec time1, time2;
+	
+	struct timespec time1, time2;
 	clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &time1);
 
 	float minDist;
@@ -55,14 +52,14 @@ int main()
 	for(int u = 0; u < 20; u++){
 		simdb_query(sdb, q, &minDist, &minIndx);
 	}
-
+	
 	clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &time2);
-
-	timespec duration = diff(time1, time2);
-	cout<<duration.tv_nsec / 2e10 <<endl;
+	struct timespec duration = diff_timespec(time1, time2);
+	
 	printf("Execution time: %f Bandwidth: %f GB/sec\n",
 		(duration.tv_nsec / 2e10), 
 		(DB_SIZE*DIM)/((duration.tv_nsec / 2e10)* 1e9));
+
 	printf("Best match: %d, should be %d; Minimum distance: %f\n",
 			 minIndx, random_indx, minDist);
 
