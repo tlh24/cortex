@@ -10,7 +10,7 @@ from recognizer.model import Recognizer
 import wandb
 import torch._dynamo as dynamo
 dynamo.config.verbose=True
-# note: I can't seem to get this to work. tlh April 7 2023
+# note: I can't seem to get dynamo to work. tlh April 7 2023
 
 
 parser = argparse.ArgumentParser(description='Transformer-based program synthesizer')
@@ -23,7 +23,7 @@ dreaming = args.dreaming
 
 mc = ModelConfig(dreaming=args.dreaming, batch_size=args.batch_size)
 
-run = wandb.init(entity='cortex-ec3', project="cortex", config=mc.dict())
+run = wandb.init(entity='cortex-ec3', project="cortex", config=mc.dict(), mode="disabled")
 
 print(f"batch_size:{mc.batch_size}")
 print(f"dreaming:{mc.dreaming}")

@@ -272,7 +272,9 @@ let simdb_dist steak img =
 
 let simdb_to_png steak i filename =
 	let ba = Simdb.rowget steak.sdb i in
-	let im = tensor_of_bigarray1 ba in
+	let im = tensor_of_bigarray1 ba 
+		|> Tensor.unsqueeze ~dim:2 
+		|> Tensor.expand ~size:[-1;-1;3] ~implicit:true in
 	Torch_vision.Image.write_image 
 		Tensor.((f 1. - im) * f 255.) ~filename
 	
@@ -447,7 +449,7 @@ let rec new_batche_mnist_mse steak bi =
 	let cba = bigarray1_of_tensor c in
 	(* select the closest in the database *)
 	let dist,ind = Simdb.query steak.sdb cba in
-	let distnorm = dist /. (foi (image_res * image_res)) in
+	let distnorm = dist /. (foi (image_res * image_res * 255)) in
 	let indx = steak.gs.img_inv.(ind) in
 	let a = db_get steak indx in
 		if ind <> a.imgi then (
@@ -627,7 +629,8 @@ let try_add_program steak data img be =
 		Logs.info (fun m -> m "try_add_program [%d]: %s \"%s\""
 			steak.batchno data.progenc progstr) );
 	let good2,dist,minde = simdb_dist steak img in
-	let distnorm = dist /. (foi (image_res * image_res)) in
+	(* dist is in uchar units; used to be floats. *)
+	let distnorm = dist /. (foi (image_res * image_res * 255)) in
 	let success = ref false in
 	if good2 then (
 	let mindex = steak.gs.img_inv.(minde) in
@@ -669,7 +672,7 @@ let try_add_program steak data img be =
 		let a = db_get steak be.a_pid in
 		let mid = be.b_pid in
 		let aimg = Simdb.rowget steak.sdb a.imgi |> tensor_of_bigarray1 in
-		let bimg = Tensor.narrow steak.mnist ~dim:0 ~start:mid ~length:1 in
+		let bimg = Tensor.narrow steak.mnist_cpu ~dim:0 ~start:mid ~length:1 in
 		let cimg = tensor_of_bigarray1 img in
 		
 		let ab = Tensor.( mean((aimg - bimg) * (aimg - bimg)) )
@@ -1174,8 +1177,9 @@ let init_database steak count =
 	let iters = ref 0 in
 
 	let tryadd stk data img override =
-		let good,dist,minde = if override then true,0.5,0
+		let good,dis,minde = if override then true,0.5,0
 			else simdb_dist stk img in
+		let dist = dis /. (foi (image_res*image_res*255)) in
 		let mindex = stk.gs.img_inv.(minde) in
 		if mindex < 0 then (
 			simdb_to_png stk minde "tryadd_error.png"; 
