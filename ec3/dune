@@ -101,7 +101,7 @@
 (library	
 	(name program)
 	(modules program)
-	(libraries vg vg.cairo vector torch torch.vision pcre logs logs.threaded domainslib sexplib graf lexer parser logo vgwrapper colors levenshtein ast vae editree logoext)
+	(libraries simdb vg vg.cairo vector torch torch.vision pcre logs logs.threaded domainslib sexplib graf lexer parser logo vgwrapper colors levenshtein ast vae editree logoext)
 	)
 
 (executable

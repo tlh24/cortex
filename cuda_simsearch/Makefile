@@ -2,7 +2,7 @@
 all: simsearch.exe libsimsearch.so simsearch2.exe
 
 libsimsearch.so: simsearch.cu simsearch.h
-	nvcc $< -lcurand -o $@ --compiler-options '-fPIC' --shared
+	nvcc $< -lcurand -o $@ --compiler-options '-fPIC' --shared -O3
 
 simsearch.exe: main.cpp libsimsearch.so
 	g++ main.cpp -L. -lsimsearch -o $@

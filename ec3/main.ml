@@ -62,10 +62,7 @@ let () =
 	let mnist = Tensor.to_device mnist_cpu ~device in
 
 	let gs = Graf.create all_alloc image_alloc in
-	let dbf = Tensor.zeros [2;2] in
-	let dbf_cpu = Tensor.zeros [2;2] in 
-	let dbf_enc = Tensor.zeros [2;2] in
-	let mnist_enc = Tensor.zeros [2;2] in
+	let sdb = Simdb.init image_alloc in
 	(*let vae = Vae.dummy_ext () in*)
 	let db_mutex = Mutex.create () in
 	let pool = Dtask.setup_pool ~num_domains:12 () in 
@@ -77,7 +74,7 @@ let () =
 	let fid_verify = open_out "/tmp/ec3/verify.txt" in
 	
 	let supstak = 
-		{device; gs; dbf; dbf_cpu; dbf_enc; mnist; mnist_cpu; mnist_enc; (*vae;*) db_mutex;
+		{device; gs; sdb; mnist; mnist_cpu; db_mutex;
 		superv=true; fid=supfid; fid_verify; batchno=0; pool; de; training} in
 	
 	let supsteak = if Sys.file_exists "db_sorted.S" then ( 
@@ -110,7 +107,7 @@ let () =
 	render_simplest supsteak; 
 	
 	Logs.info (fun m->m "generating training dataset.."); 
-	let supsteak = mnist_closest supsteak in
+	let supsteak = make_training supsteak in
 	Logs.info (fun m->m "training size: %d" (Array.length supsteak.training)); 
 	save_database supsteak "db_sorted_.S";
 	

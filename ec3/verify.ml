@@ -23,12 +23,9 @@ let () =
 	
 	let device = Torch.Device.cuda_if_available () in
 	let gs = Graf.create Program.all_alloc Program.image_alloc in
-	let dbf = Torch.Tensor.zeros [2;2] in
-	let dbf_cpu = Torch.Tensor.zeros [2;2] in 
-	let dbf_enc = Torch.Tensor.zeros [2;2] in
+	let sdb = Simdb.init image_alloc in
 	let mnist = Torch.Tensor.zeros [2;2] in
 	let mnist_cpu = Torch.Tensor.zeros [2;2] in
-	let mnist_enc = Torch.Tensor.zeros [2;2] in
 	(*let vae = Vae.dummy_ext () in*)
 	let db_mutex = Mutex.create () in
 	let pool = Dtask.setup_pool ~num_domains:12 () in 
@@ -40,7 +37,7 @@ let () =
 	let fid_verify = open_out "/tmp/ec3/verify.txt" in
 	
 	let supstak = 
-		{device; gs; dbf; dbf_cpu; dbf_enc; mnist; mnist_cpu; mnist_enc; (*vae;*) db_mutex;
+		{device; gs; sdb; mnist; mnist_cpu; db_mutex;
 		superv=true; fid=supfid; fid_verify; batchno=0; pool; de; training} in
 	
 	let supsteak = load_database supstak "db_sorted.S" in

@@ -139,31 +139,72 @@ void simdb_set(imgdb* sdb, int i, unsigned char* row)
 				  cudaMemcpyHostToDevice);
 }
 
+void simdb_get(imgdb* sdb, int i, unsigned char* row)
+{
+	if( i>=0 && i < DB_SIZE)
+		cudaMemcpy(row, sdb->db + i*DIM, DIMSHORT,
+				  cudaMemcpyDeviceToHost);
+}
+
 void simdb_query(imgdb* sdb, unsigned char* query,
 				float* minDist, int* minIndx)
 {
-	cudaMemcpy(sdb->query, query, DIMSHORT,
-				  cudaMemcpyHostToDevice);
+	// check if query is a blank image (all ones or all zeros)
+	// do it on the CPU: simpler / faster.  GCC should auto-vectorize.
+	int sum = 0; 
+	for(int i=0; i<DIMSHORT; i++){
+		sum += query[i]; 
+	}
+	if(sum == DIMSHORT*255 || sum == 0){
+		*minDist = -1.0; 
+		*minIndx = 0; 
+	} else {
+		cudaMemcpy(sdb->query, query, DIMSHORT,
+					cudaMemcpyHostToDevice);
 
-	dim3 dimBlock(32, BLOCK_STRIDE, 1); // x, y, z
+		dim3 dimBlock(32, BLOCK_STRIDE, 1); // x, y, z
 
-	compute_distances2<<<DB_SIZE/BLOCK_STRIDE, dimBlock>>>
-			(sdb->db, sdb->query, sdb->distances);
+		compute_distances2<<<DB_SIZE/BLOCK_STRIDE, dimBlock>>>
+				(sdb->db, sdb->query, sdb->distances);
 
-	findMinOfArray<<<NUM_BLOCKS, BLOCK_SIZE>>>
-			(sdb->distances, sdb->outDist, sdb->outIndx);
+		findMinOfArray<<<NUM_BLOCKS, BLOCK_SIZE>>>
+				(sdb->distances, sdb->outDist, sdb->outIndx);
 
-	cudaMemcpy(sdb->h_outDist, sdb->outDist, sizeof(float)*NUM_BLOCKS, cudaMemcpyDeviceToHost);
-	cudaMemcpy(sdb->h_outIndx, sdb->outIndx, sizeof(int)*NUM_BLOCKS, cudaMemcpyDeviceToHost);
+		cudaMemcpy(sdb->h_outDist, sdb->outDist, sizeof(float)*NUM_BLOCKS, cudaMemcpyDeviceToHost);
+		cudaMemcpy(sdb->h_outIndx, sdb->outIndx, sizeof(int)*NUM_BLOCKS, cudaMemcpyDeviceToHost);
 
-	float d = sdb->h_outDist[0];
-	float n = sdb->h_outIndx[0];
-	for(int i=1; i<NUM_BLOCKS; i++){
-		if(sdb->h_outDist[i] < d){
-			d = sdb->h_outDist[i];
-			n = sdb->h_outIndx[i];
+		float d = sdb->h_outDist[0];
+		float n = sdb->h_outIndx[0];
+		for(int i=1; i<NUM_BLOCKS; i++){
+			if(sdb->h_outDist[i] < d){
+				d = sdb->h_outDist[i];
+				n = sdb->h_outIndx[i];
+			}
+		}
+		*minDist = d;
+		*minIndx = n;
+	}
+}
+
+double simdb_checksum(imgdb* sdb)
+{
+	//checksum the whole database. 
+	unsigned char* buf = (unsigned char*)malloc(DB_SIZE * DIM); 
+	cudaMemcpy(buf, sdb->db, DB_SIZE * DIM,
+				  cudaMemcpyDeviceToHost);
+	
+	double sum = 0.0; 
+	for(int j=0; j<DB_SIZE; j++){
+		for(int i=0; i<DIMSHORT;i++){
+			sum += buf[j*DIM + i] / 255.0; 
 		}
 	}
-	*minDist = d;
-	*minIndx = n;
+	
+	free(buf); 
+	return sum; 
+}
+
+void simdb_clear(imgdb* sdb)
+{
+	cudaMemset(sdb->db, 0, DB_SIZE * DIM);
 }

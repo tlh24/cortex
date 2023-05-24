@@ -26,8 +26,11 @@ extern "C" {
 extern imgdb* simdb_allocate(int num);
 extern void simdb_free(imgdb* sdb);
 extern void simdb_set(imgdb* sdb, int i, unsigned char* row);
+extern void simdb_get(imgdb* sdb, int i, unsigned char* row); 
 extern void simdb_query(imgdb* sdb, unsigned char* query,
 				float* minDist, int* minIndx);
+extern double simdb_checksum(imgdb* sdb); 
+extern void simdb_clear(imgdb* sdb); 
 
 #ifdef __cplusplus
 }
