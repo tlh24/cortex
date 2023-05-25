@@ -97,7 +97,7 @@ let () =
 					(Logo.output_program_pstr p.ed.pro)); 
 		) done; 
 		save_database stk "db_prog.S"; 
-		let stk = sort_database stk in
+		(*let stk = sort_database stk in*)
 		let dist,_prev = Graf.dijkstra stk.gs 0 false in
 		Graf.dist_to_good stk.gs dist; 
 		save_database stk "db_sorted.S";

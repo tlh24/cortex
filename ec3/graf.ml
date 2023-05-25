@@ -136,19 +136,25 @@ let edit_criteria edits =
 	) else false,""
 
 let get_edits a_progenc b_progenc = 
-	let dist,edits = Levenshtein.distance a_progenc b_progenc true in
-	let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
-	(* verify .. a bit of overhead // NOTE: seems very safe! *)
-	(*let re = Levenshtein.apply_edits a_progenc edits in
-	if re <> b_progenc then (
-		Logs.err(fun m -> m  
-			"error! %s edits should be %s was %s"
-			a_progenc b_progenc re)
-	);*)
-	(* edits are applied in reverse order *)
-	(* & add a 'done' edit/indicator *)
-	let edits = ("fin",0,'0') :: edits in
-	dist, (List.rev edits)
+	(* eliminate out-of-criteria distances to save time *)
+	let d = abs ((String.length a_progenc) - (String.length b_progenc)) in
+	if d <= 6 then (
+		let dist,edits = Levenshtein.distance a_progenc b_progenc true in
+		let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
+		(* verify .. a bit of overhead // NOTE: seems very safe! *)
+		(*let re = Levenshtein.apply_edits a_progenc edits in
+		if re <> b_progenc then (
+			Logs.err(fun m -> m  
+				"error! %s edits should be %s was %s"
+				a_progenc b_progenc re)
+		);*)
+		(* edits are applied in reverse order *)
+		(* & add a 'done' edit/indicator *)
+		let edits = ("fin",0,'0') :: edits in
+		dist, (List.rev edits)
+	) else (
+		d, []
+	)
 	
 let connect g indx = 
 	let d = g.(indx) in
@@ -236,7 +242,8 @@ let replace_equiv gs indx ed =
 							imgi } in
 				gs.g.(ni) <- d2;
 				gs.num_equiv <- gs.num_equiv + 1; 
-				Logs.debug (fun m -> m "replace_equiv ni:%d imgi:%d" ni d2.imgi); 
+				Logs.debug (fun m -> m "replace_equiv newi:%d imgi:%d old:%d" 
+					ni d2.imgi indx); 
 				gs.img_inv.(imgi) <- ni ; (* back pointer *)
 				(* update the incoming equivalent pointers; includes d1 *)
 				SI.iter (fun (i,_,_,_) -> 
@@ -280,6 +287,8 @@ let add_equiv gs indx ed =
 				let d1' = {d1 with equivalents = SI.add (ni,typ,cnt,0) d1.equivalents} in
 				gs.g.(equivroot) <- d1'; 
 				connect gs.g ni ; 
+				Logs.debug (fun m -> m "add_equiv newi:%d imgi:%d old:%d" 
+					ni d2.imgi indx);
 				ni (* return the location of the new node, same as add_uniq *)
 			) else (-1)
 		) else (-1)
@@ -484,31 +493,47 @@ let load gs fname =
 				| "" -> Some(`Nop)
 				| _ -> parse_logo_string pstr in
 			(match prog with
-			| Some(pro) -> 
+			| Some(pro) -> (
 				let progt = (str_to_progt pt) in
-				let outgoing = (sexp_to_intset out) in
-				let equivalents = (sexp_to_intset equiv) in
-				let equivroot = (ios eqrt) in
-				let good = (ios gd) in
-				let imgi = match progt with 
-					| `Uniq -> gs.num_uniq <- gs.num_uniq + 1; (gs.num_uniq - 1)
-					| `Equiv -> gs.num_equiv <- gs.num_equiv + 1; (-1)
-					| _ -> (-1) in
-				let ed,_ = pro_to_edata pro 0 in
-				if progt <> `Np then (
-					let d = {progt; ed; imgi ; outgoing; equivalents; equivroot; good} in
-					let ii = ios i in
-					if imgi >= 0 then gs.img_inv.(imgi) <- ii; 
-					gs.free_img <- List.filter (fun a -> a <> imgi) gs.free_img;
-					gs.free_slots <- List.filter (fun a -> a <> ii) gs.free_slots; 
-					if ii > gs.all_alloc then 
-						Logs.err (fun m->m "database too large for allocation."); 
-					gs.g.(ii) <- d
-				)
+				if gs.num_uniq < gs.image_alloc 
+						&& gs.num_uniq + gs.num_equiv < gs.all_alloc then (
+					let outgoing = (sexp_to_intset out) in
+					let equivalents = (sexp_to_intset equiv) in
+					let equivroot = (ios eqrt) in
+					let good = (ios gd) in
+					let imgi = match progt with 
+						| `Uniq -> gs.num_uniq <- gs.num_uniq + 1; (gs.num_uniq - 1)
+						| `Equiv -> gs.num_equiv <- gs.num_equiv + 1; (-1)
+						| _ -> (-1) in
+					let ed,_ = pro_to_edata pro 0 in
+					if progt <> `Np then (
+						let d = {progt; ed; imgi ; outgoing; equivalents; equivroot; good} in
+						let ii = ios i in
+						if imgi >= gs.image_alloc then 
+							assert (0 <> 0) ; 
+						if ii >= gs.all_alloc then 
+							assert (0 <> 0) ; 
+						if imgi >= 0 then gs.img_inv.(imgi) <- ii; 
+						gs.free_img <- List.filter (fun a -> a <> imgi) 
+										gs.free_img;
+						gs.free_slots <- List.filter (fun a -> a <> ii) 
+										gs.free_slots; 
+						gs.g.(ii) <- d
+					)
+				) else (
+					if progt = `Uniq || progt = `Equiv then ( 
+					Logs.err (fun m->m "%s too big; num_uniq %d num_equiv %d image_alloc %d all_alloc %d (used %d) adding %s"
+						fname
+						gs.num_uniq gs.num_equiv gs.image_alloc gs.all_alloc
+						(gs.num_uniq + gs.num_equiv) 
+						(match progt with |`Uniq -> "uniq" |`Equiv -> "equiv" | _ -> "nul")
+						) )
+				) )
 			| _ -> (
 				Logs.err (fun m -> m "Failed to parse pstr \"%s\"" pstr); 
 				assert(0 <> 0); 
-				) ) )
+				) 
+			) )
 		| _ -> failwith "Invalid S-expression format") sexp' ; 
 	(*Printf.printf "check!!!\n"; 
 	print_graph g; *)

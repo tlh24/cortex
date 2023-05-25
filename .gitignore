@@ -13,4 +13,4 @@ ec3/checkpoints/
 ec3/wandb
 prog-gephi-viz
 *.exe
-
+perf.*

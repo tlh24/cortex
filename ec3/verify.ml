@@ -41,7 +41,8 @@ let () =
 		superv=true; fid=supfid; fid_verify; batchno=0; pool; de; training} in
 	
 	let supsteak = load_database supstak "db_sorted.S" in
-	ignore( Graf.dijkstra supsteak.gs 0 true); 
+	(* test dijsktra *)
+	ignore( Graf.dijkstra supsteak.gs 0 false); 
 	verify_database supsteak; 
 	save_database supsteak "db_rewrite.S"; 
 	
