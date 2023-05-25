@@ -1,5 +1,6 @@
 open Lexer
 open Lexing
+open Domainslib
 
 (* the Array stores the actual data,
 while the edges are stored as integers (pointers)
@@ -156,11 +157,33 @@ let get_edits a_progenc b_progenc =
 		d, []
 	)
 	
-let connect g indx = 
+let connect mtx pool g indx = 
 	let d = g.(indx) in
 	(* connect new node to the rest of the graph *)
 	let pe = d.ed.progenc in
-	let nearby = ref [] in
+	let pel = String.length pe in
+	(* levenshtein is very expensive, parallelize it! *)
+	let body i = 
+		let a = g.(i) in
+		let ae = a.ed.progenc in
+		let ael = String.length ae in
+		let dist = abs (pel - ael) in
+		if a.progt <> `Np && i <> indx && dist <= 6 then (
+			let cnt,edits = get_edits pe a.ed.progenc in
+			let b,typ = edit_criteria edits in
+			let u = if b then 1 else 0 in
+			[ (i,typ,cnt,u) ]
+		) else (
+			[ (0,"nul",0,0) ]
+		)
+	in
+	let reduce a b = List.rev_append a b in
+	let nearby = Task.run pool (fun () -> 
+		Task.parallel_for_reduce 
+			~chunk_size:32 ~start:0 ~finish:((Array.length g)-1) 
+			~body pool reduce [] )
+		|> List.filter (fun (_,_,_,b) -> b>0) in
+	(*let nearby = ref [] in
 	Array.iteri (fun i a -> 
 		if a.progt <> `Np && i <> indx then (
 			let cnt,edits = get_edits pe a.ed.progenc in
@@ -171,7 +194,9 @@ let connect g indx =
 			) else (
 				Printf.printf "connect: [%d] nocon [%d] : %d\n" indx i dist*)
 			)
-		 ) ) g; 
+		 ) ) g; *)
+	(* editing the graph; lock the mutex. *)
+	Mutex.lock mtx; 
 	List.iter (fun (i,typ,cnt,used) -> 
 		let invtyp = match typ with
 			| "del" -> "ins"
@@ -179,9 +204,10 @@ let connect g indx =
 			| _ -> "sub" in
 		let d2 = g.(i) in
 		let d2o = SI.add (indx,invtyp,cnt,used) d2.outgoing in
-		g.(i) <- {d2 with outgoing=d2o} ) (!nearby) ; 
+		g.(i) <- {d2 with outgoing=d2o} ) nearby ; 
 	(* update current node *)
-	g.(indx) <- {d with outgoing=(SI.of_list (!nearby)) }
+	g.(indx) <- {d with outgoing=(SI.of_list nearby) }; 
+	Mutex.unlock mtx; 
 	;;
 	
 let get_slot gs = 
@@ -202,30 +228,37 @@ let get_slot_img gs =
 	) else ( -1 )
 	;;
 	
-let add_uniq gs ed = 
+let add_uniq mtx pool gs ed = 
 	(* add a unique node to the graph structure *)
 	(* returns where it's stored; for now = imgf index *)
+	 Mutex.lock mtx; 
 	let ni = get_slot gs in
 	let imgi = get_slot_img gs in
+	 Mutex.unlock mtx; 
+	
 	if imgi >= 0 && ni >= 0 then (
 		(*if imgi = 709 then 
 			Logs.debug (fun m -> m "add_uniq ni:%d imgi:%d" ni imgi);*)
 		let d = {nulgdata with ed; progt = `Uniq; imgi} in
+		 Mutex.lock mtx;
 		gs.g.(ni) <- d; 
 		gs.img_inv.(d.imgi) <- ni ; (* back pointer *)
-		connect gs.g ni; 
 		gs.num_uniq <- gs.num_uniq + 1; 
+		 Mutex.unlock mtx;
+		connect mtx pool gs.g ni; 
 		ni,imgi (* index to gs.g and dbf respectively *)
 	) else (-1),(-1)
 	;;
 	
-let replace_equiv gs indx ed =
+let replace_equiv mtx pool gs indx ed =
 	(* ed is equivalent to gs.g[indx], but lower cost *)
 	(* add ed the end, and update d1 = g[indx]. *)
 	(* outgoing connections are not changed *)
 	let d1 = gs.g.(indx) in
 	if SI.cardinal d1.equivalents < 16 then (
+		 Mutex.lock mtx; 
 		let ni = get_slot gs in
+		 Mutex.unlock mtx; 
 		if ni >= 0 then (
 			if d1.ed.progenc <> ed.progenc then (
 				let eq2 = SI.add (indx,"",0,0) d1.equivalents in (* fixed below *)
@@ -240,26 +273,28 @@ let replace_equiv gs indx ed =
 							progt = `Uniq; 
 							equivalents; 
 							imgi } in
+				 Mutex.lock mtx;
 				gs.g.(ni) <- d2;
 				gs.num_equiv <- gs.num_equiv + 1; 
-				Logs.debug (fun m -> m "replace_equiv newi:%d imgi:%d old:%d" 
-					ni d2.imgi indx); 
 				gs.img_inv.(imgi) <- ni ; (* back pointer *)
 				(* update the incoming equivalent pointers; includes d1 *)
 				SI.iter (fun (i,_,_,_) -> 
 					let e = gs.g.(i) in
 					let e' = {e with progt = `Equiv; equivroot = ni; equivalents = SI.empty} in
 					gs.g.(i) <- e' ) d2.equivalents; 
+				 Mutex.unlock mtx;
+				Logs.debug (fun m -> m "replace_equiv newi:%d imgi:%d old:%d" 
+					ni d2.imgi indx);
 				(* finally, update d2's edit connections *)
-				connect gs.g ni ; 
+				connect mtx pool gs.g ni ; 
 				ni,imgi (* return the location of the new node, same as add_uniq *)
 			) else (-1),(-1)
 		) else (-1),(-1)
 	) else (-1),(-1)
 	;;
 	
-let add_equiv gs indx ed =
-	(* d2 is equivalent to gs.g[indx], but higher (or equivalent) cost *)
+let add_equiv mtx pool gs indx ed =
+	(* ed is equivalent to gs.g[indx], but higher (or equivalent) cost *)
 	(* union-find the root equivalent *)
 	let rec find_root j = 
 		let d = gs.g.(j) in
@@ -268,7 +303,9 @@ let add_equiv gs indx ed =
 		else
 			j 
 	in
+	 Mutex.lock mtx;
 	let ni = get_slot gs in
+	 Mutex.unlock mtx;
 	if ni >= 0 then (
 		let equivroot = find_root indx in
 		let d1 = gs.g.(equivroot) in
@@ -280,13 +317,16 @@ let add_equiv gs indx ed =
 				d1.equivalents false in
 			if not has then (
 				let d2 = {nulgdata with ed; progt = `Equiv; equivroot; imgi = d1.imgi} in
-				gs.g.(ni) <- d2; 
-				gs.num_equiv <- gs.num_equiv + 1;
 				let cnt,edits = get_edits d1.ed.progenc ed.progenc in
 				let _b,typ = edit_criteria edits in (* NOTE not constrained! *)
-				let d1' = {d1 with equivalents = SI.add (ni,typ,cnt,0) d1.equivalents} in
+				let d1' = {d1 with equivalents = 
+									SI.add (ni,typ,cnt,0) d1.equivalents} in
+				 Mutex.lock mtx;
+				gs.g.(ni) <- d2; 
+				gs.num_equiv <- gs.num_equiv + 1;
 				gs.g.(equivroot) <- d1'; 
-				connect gs.g ni ; 
+				 Mutex.unlock mtx;
+				connect mtx pool gs.g ni ; 
 				Logs.debug (fun m -> m "add_equiv newi:%d imgi:%d old:%d" 
 					ni d2.imgi indx);
 				ni (* return the location of the new node, same as add_uniq *)
@@ -295,19 +335,15 @@ let add_equiv gs indx ed =
 	) else (-1)
 	;;
 	
-let remove gs indx = 
+let remove mtx gs indx = 
 	(* remove a node from the graph, 
 		e.g. if it's never used, or not well connected
 		free up space for new nodes! *)
 	(* our pointer from outgoing *)
 	let d = gs.g.(indx) in
 	
-	(*if d.imgi = 709 then (
-		Logs.debug (fun m->m 
-			"removing when imgi=709; i:%d typ:%s progenc:%s outgoing:%d equivalents:%d"
-			indx (progt_to_str d.progt) d.ed.progenc (SI.cardinal d.outgoing) (SI.cardinal d.equivalents) ); 
-		(*assert ( 0 <> 0 )*)
-	); *)
+	(* this is a complex function, so just lock the whole thing *)
+	 Mutex.lock mtx;
 	
 	SI.iter (fun (i,_,_,_) -> 
 		let e = gs.g.(i) in
@@ -359,7 +395,9 @@ let remove gs indx =
 	); 
 	
 	gs.free_slots <- indx :: gs.free_slots;
-	gs.g.(indx) <- nulgdata
+	gs.g.(indx) <- nulgdata; 
+	
+	 Mutex.unlock mtx;
 	;;
 	
 let incr_good gs i = 
@@ -676,12 +714,12 @@ let dist_to_good gs dist =
 		) gs.g 
 	;;
 	
-let remove_unused gs = 
+let remove_unused mtx gs = 
 	Array.iteri (fun i a -> 
-		if a.progt <> `Np && a.good <= 0 then remove gs i) gs.g
+		if a.progt <> `Np && a.good <= 0 then remove mtx gs i) gs.g
 	;;
 	
-let remove_unreachable gs = 
+let remove_unreachable mtx gs = 
 	let dist,prev = dijkstra gs 0 false in
 	
 	let unreachable,_ = Array.fold_left (fun (a,i) b -> 
@@ -707,7 +745,7 @@ let remove_unreachable gs =
 	Logs.debug (fun m->m "old graph, %s" (get_stats gs)); 
 	dist_to_good gs (Array.map (fun a -> a+1) dist); 
 	save "db_sorted_good.S" gs.g;
-	remove_unused gs ; 
+	remove_unused mtx gs ; 
 	Logs.debug (fun m->m "new graph, %s" (get_stats gs)); 
 	
 	(* caller must render the database!! *)

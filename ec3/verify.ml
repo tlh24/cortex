@@ -27,7 +27,7 @@ let () =
 	let mnist = Torch.Tensor.zeros [2;2] in
 	let mnist_cpu = Torch.Tensor.zeros [2;2] in
 	(*let vae = Vae.dummy_ext () in*)
-	let db_mutex = Mutex.create () in
+	let mutex = Mutex.create () in
 	let pool = Dtask.setup_pool ~num_domains:12 () in 
 		(* tune this -- 8-12 seems ok *)
 	let de = decode_edit_tensors 4 in (* dummy *)
@@ -37,13 +37,14 @@ let () =
 	let fid_verify = open_out "/tmp/ec3/verify.txt" in
 	
 	let supstak = 
-		{device; gs; sdb; mnist; mnist_cpu; db_mutex;
+		{device; gs; sdb; mnist; mnist_cpu; mutex;
 		superv=true; fid=supfid; fid_verify; batchno=0; pool; de; training} in
 	
 	let supsteak = load_database supstak "db_sorted.S" in
 	(* test dijsktra *)
 	ignore( Graf.dijkstra supsteak.gs 0 false); 
-	verify_database supsteak; 
+	Dtask.run supsteak.pool 
+		(fun () -> verify_database supsteak) ;
 	save_database supsteak "db_rewrite.S"; 
 	
 	Graf.gexf_out supsteak.gs;

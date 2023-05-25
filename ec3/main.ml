@@ -64,7 +64,7 @@ let () =
 	let gs = Graf.create all_alloc image_alloc in
 	let sdb = Simdb.init image_alloc in
 	(*let vae = Vae.dummy_ext () in*)
-	let db_mutex = Mutex.create () in
+	let mutex = Mutex.create () in
 	let pool = Dtask.setup_pool ~num_domains:12 () in 
 		(* tune this -- 8-12 seems ok *)
 	let de = decode_edit_tensors !batch_size in
@@ -74,7 +74,7 @@ let () =
 	let fid_verify = open_out "/tmp/ec3/verify.txt" in
 	
 	let supstak = 
-		{device; gs; sdb; mnist; mnist_cpu; db_mutex;
+		{device; gs; sdb; mnist; mnist_cpu; mutex;
 		superv=true; fid=supfid; fid_verify; batchno=0; pool; de; training} in
 	
 	let supsteak = if Sys.file_exists "db_sorted.S" then ( 

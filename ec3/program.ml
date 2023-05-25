@@ -107,7 +107,7 @@ type tsteak = (* thread state *)
 	; mnist : Tensor.t 
 	; mnist_cpu : Tensor.t 
 	(*; vae : Vae.VAE.t (* GPU *)*)
-	; db_mutex : Mutex.t
+	; mutex : Mutex.t
 	; superv : bool (* supervised or dreaming *)
 	(*; sockno : int 4340 for supervised, 4341 dreaming *)
 	; fid : out_channel (* log for e.g. replacements *)
@@ -225,44 +225,42 @@ let bigarray1_of_tensor m =
 	ba
 		
 let db_get steak i = 
-	Mutex.lock steak.db_mutex ; 
+	Mutex.lock steak.mutex ; 
 	let r = steak.gs.g.(i) in
-	Mutex.unlock steak.db_mutex ; 
+	Mutex.unlock steak.mutex ; 
 	r
 
 let db_add_uniq steak ed img =
 	(* img is a bigarray uchar *)
 	let added = ref false in
-	Mutex.lock steak.db_mutex; 
-	let indx,imgi = Graf.add_uniq steak.gs ed in
+	let indx,imgi = Graf.add_uniq steak.mutex steak.pool steak.gs ed in
 	if imgi >= 0 then (
+		Mutex.lock steak.mutex ; 
 		Simdb.rowset steak.sdb imgi img; 
+		Mutex.unlock steak.mutex ; 
 		added := true
 	); 
-	Mutex.unlock steak.db_mutex; 
 	!added,indx
 	
 let db_replace_equiv steak indx d2 img = 
 	(*let d = db_get steak indx in
 	Logs.debug (fun m->m "replace_eqiv [%d] imgi %d" indx d.imgi);*)
-	Mutex.lock steak.db_mutex ; 
-	let r,imgi = Graf.replace_equiv steak.gs indx d2 in
+	let r,imgi = Graf.replace_equiv steak.mutex steak.pool steak.gs indx d2 in
 	if r > 0 then (
+		Mutex.lock steak.mutex ; 
 		Simdb.rowset steak.sdb imgi img; 
+		Mutex.unlock steak.mutex ; 
 	); 
-	Mutex.unlock steak.db_mutex ; 
 	r
 	
 let db_add_equiv steak indx d2 = 
-	Mutex.lock steak.db_mutex ; 
-	let r = Graf.add_equiv steak.gs indx d2 in
-	Mutex.unlock steak.db_mutex ; 
+	let r = Graf.add_equiv steak.mutex steak.pool steak.gs indx d2 in
 	r
 	
 let db_len steak = 
-	Mutex.lock steak.db_mutex ; 
+	Mutex.lock steak.mutex ; 
 	let r = Array.length steak.gs.g in
-	Mutex.unlock steak.db_mutex ; 
+	Mutex.unlock steak.mutex ; 
 	r
 	
 let simdb_dist steak img = 
@@ -314,7 +312,7 @@ let make_training steak =
 	Logs.debug (fun m->m "entering make_training. num_uniq %d" nuniq); 
 	let training = ref [] in 
 	
-	Graf.remove_unreachable steak.gs; 
+	Graf.remove_unreachable steak.mutex steak.gs; 
 	render_database steak; 
 	
 	let _dist,prev = Graf.dijkstra steak.gs 0 false in
@@ -927,9 +925,9 @@ let update_bea_mnist steak bd =
 	in (* / innerloop_ *)
 	update_bea_parallel innerloop_bea_mnist steak "update_bea_mnist" 
 	(* mnist comparisons generate torch variables that need cleanup *)
-	(*Mutex.lock steak.db_mutex;
+	(*Mutex.lock steak.mutex;
 	Caml.Gc.major (); (* clean up torch variables (slow..) *)
-	Mutex.unlock steak.db_mutex*)
+	Mutex.unlock steak.mutex*)
 	;;
 
 let bigfill_batchd steak bd = 
@@ -1213,7 +1211,7 @@ let init_database steak count =
 			if c1 < c2 then (
 				let r = db_replace_equiv stk mindex data img in
 				if r >= 0 then (
-					Logs.debug (fun m->m "   distance %f" dist);
+					(*Logs.debug (fun m->m "   distance %f" dist);*)
 					(*Logs.debug(fun m -> m
 					"%d: replacing [%d] = %s ( was %s) dist:%f new [%d]"
 					!iters mindex
@@ -1225,7 +1223,7 @@ let init_database steak count =
 			if c1 > c2 then (
 				if (SI.cardinal data2.equivalents) < 16 then (
 					let r = db_add_equiv stk mindex data in
-					Logs.debug (fun m->m "   distance %f" dist); 
+					(*Logs.debug (fun m->m "   distance %f" dist); *)
 					if r >= 0 then (
 						(*Logs.debug(fun m -> m
 						"iter %d: added equiv [loc %d] = %s [new loc %d] ( simpler= %s) %s %s same:%b dist:%f"
@@ -1286,8 +1284,12 @@ let init_database steak count =
 		r2 := List.rev_append t !r2; 
 	) done; 
 	
+	List.iter (fun s -> 
+		tryadd_fromstr steak s false)
+		(r @ rp @ !r2) ; 
+	
 	(* for longer sequences, we need to sub-sample *)
-	let _sub_sample () = 
+	let sub_sample () = 
 		let penopts = [|"0";"1";"2";"3";"4"|] 
 			|> Array.map (fun s -> "pen "^s) in
 		let r3 = ref [] in
@@ -1341,27 +1343,26 @@ let init_database steak count =
 			r3 := s2 :: !r3; 
 			renderpng n s2 fid
 		) done;
-		r @ rp @ !r2 @ !r3
+		!r3
 	in
 	
 	let rec runbatch stk n = 
-		if n > 0 then stk
+		if n > 2 then stk
 		else (
-			(*let ra = sub_sample () |> Array.of_list |> permute_array in*)
-			let ra =  Array.of_list (r @ rp @ !r2) in
-			(*let ra =  Array.of_list r in*)
+			let ra = sub_sample () |> Array.of_list |> permute_array in
 			let ran = Array.length ra in
 			let body i = tryadd_fromstr stk ra.(i) false in
 			
-			if !gparallel then
+			(*if !gparallel then
 				Dtask.parallel_for stk.pool 
 					~start:0 ~finish:(ran-1) ~body
-			else
+			else*)
+				(* moved parallelism into graf.ml *)
 				for i=0 to (ran-1) do
 					body i done;
 			(* remove unreachable nodes *)
-			(*Graf.remove_unreachable stk.gs;
-			Graf.save "db_remove_unused.S" stk.gs.g; *)
+			Graf.remove_unreachable stk.mutex stk.gs;
+			Graf.save "db_remove_unused.S" stk.gs.g; 
 			render_database stk; 
 			let sum = Simdb.checksum steak.sdb in
 			Logs.debug (fun m->m "remove_unused; simdb sum %f" sum);
@@ -1394,7 +1395,9 @@ let verify_database steak =
 			(Printf.sprintf "%s/db%05d_.png" root i); 
 		) steak.gs.g; 
 	Printf.printf "done rendering.\n";
-	let good = ref true in
+	
+	let errors = Atomic.make 0 in
+	
 	let verify_equivalent i d j e =
 		let u = Tensor.narrow imf ~dim:0 ~start:i ~length:1 in
 		let v = Tensor.narrow imf ~dim:0 ~start:j ~length:1 in
@@ -1404,13 +1407,15 @@ let verify_database steak =
 				w i j 
 				(Logo.output_program_pstr d.ed.pro) 
 				(Logo.output_program_pstr e.ed.pro) ; 
-			good := false
+			Atomic.incr errors
 		)
 	in
 	let gi = Array.to_list steak.gs.g 
-		|> List.filter (fun d -> d.progt = `Uniq || d.progt = `Equiv)
-		|> List.mapi (fun i d -> i,d) in
-	Array.iteri (fun i d -> 
+		|> List.mapi (fun i d -> i,d) 
+		|> List.filter (fun (_,d) -> d.progt = `Uniq || d.progt = `Equiv) in
+	
+	let body i = 
+		let d = steak.gs.g.(i) in
 		match d.progt with
 		| `Uniq -> (
 			(* verify that all equivalents are actually that. *)
@@ -1443,31 +1448,39 @@ let verify_database steak =
 				let doutl = SI.cardinal d.outgoing in
 				Printf.printf "%d %s outgoing wrong! len %d should be %d\n"
 					i (Logo.output_program_pstr d.ed.pro) doutl ogl ; 
-				let print_diff a b =
+				let print_diff a b sorder =
 					let df = SI.diff a b in
-					Printf.printf "diff:\n"; 
+					(* diff s1 s2 contains the elements of s1 that are not in s2. *)
+					Printf.printf "diff %s:\n" sorder; 
 					SI.iter (fun (k,_,_,_) -> 
 						let e = steak.gs.g.(k) in
 						let dist,_edits = Graf.get_edits d.ed.progenc e.ed.progenc in
-						Printf.printf "fwd\t%d, %s -> %s dist %d\n" k d.ed.progenc e.ed.progenc dist; 
+						Printf.printf " fwd %d -> %d, dist %d \n |%s -> \n |%s\n" 
+							i k dist
+							(progenc2str d.ed.progenc) 
+							(progenc2str e.ed.progenc) ; 
 						(*Levenshtein.print_edits edits; -- working*) 
 						(* flip it and do it again *)
-						let dist,_edits = Graf.get_edits e.ed.progenc d.ed.progenc in
-						Printf.printf "rev\t%d, %s -> %s dist %d\n" k e.ed.progenc d.ed.progenc dist; 
+						(*let dist,_edits = Graf.get_edits e.ed.progenc d.ed.progenc in
+						Printf.printf "rev\t%d, %s -> %s dist %d\n" k e.ed.progenc d.ed.progenc dist;*) 
 						(*Levenshtein.print_edits edits; -- working *)
 						) df ;  
 				in
-				if ogl > doutl then print_diff og d.outgoing;
-				if doutl > ogl then print_diff d.outgoing og ; 
-				good := false )
+				print_diff og d.outgoing "missing";
+				print_diff d.outgoing og "extra"; 
+				Atomic.incr errors )
 			)
 		| `Equiv -> (
 			let j = d.equivroot in
 			let e = steak.gs.g.(j) in
 			verify_equivalent i d j e)
 		| _ -> () 
-		) steak.gs.g; 
-	if !good then 
+	in 
+	
+	Dtask.parallel_for steak.pool 
+		~start:0 ~finish:((Array.length steak.gs.g)-1) ~body; 
+	
+	if (Atomic.get errors) = 0 then 
 		Printf.printf "database verified.\n"
 
 let save_database steak fname = 
@@ -1590,9 +1603,9 @@ let servthread steak () = (* steak = thread state *)
 		Logs.debug (fun m -> m "disconnect %d" sockno); 
 		List.iter (fun fd -> close fd) fdlist; 
 		save_database steak "db_improved.S"; 
-		Mutex.lock steak.db_mutex;
+		Mutex.lock steak.mutex;
 		Caml.Gc.full_major (); (* clean up torch variables (slow..) *)
-		Mutex.unlock steak.db_mutex
+		Mutex.unlock steak.mutex
 	) done; 
 	) (* )open Unix *)
 	
