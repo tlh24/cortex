@@ -4343,3 +4343,18 @@ Idea:  Need to make single character "synthetic errors" to a program,
 		If the model makes a mistake, 
 		Store it and add it to the training data. 
 		But, don't store it if the program parses! 
+
+May 25 2023
+
+Alrighty, on branch simdb, perormance has been improved
+and the network seems to be training to convergence
+	quite quickly, too! 
+Yet yet:
+1 -- I don't think the one-hot position encoding is correct.  
+	Maybe rotary encoding, or the more complicated AST encoding is correct. 
+		Have the code in there already.. 
+2 -- Dreaming does not seem to introduce new programs. 
+	Need to check that 'verify' is working OK before proceeding. 
+	I've been burned enough to know that everything needs to be tested ...
+		many many times! 
+	

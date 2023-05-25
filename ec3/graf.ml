@@ -738,9 +738,18 @@ let remove_unreachable mtx gs =
 		if term && gs.g.(i).progt = `Equiv then (
 			incr term_equiv; 
 			dist.(i) <- (-1 ) ) ) terminal; 
+			
+	(* remove programs that are too long *)
+	let too_long = ref 0 in
+	Array.iteri (fun i d -> 
+		let p_ctx = 96 in
+		if String.length d.ed.progenc > p_ctx/2-2 then (
+			dist.(i) <- (-1) ; 
+			incr too_long
+		) ) gs.g; 
 		
-	Logs.debug (fun m->m "dijkstra: %d of %d unreachable, %d terminal `Equiv" 
-		unreachable (gs.num_uniq + gs.num_equiv) !term_equiv ); 
+	Logs.debug (fun m->m "dijkstra: \n\t%d of %d unreachable, \n\t%d terminal `Equiv; \n\t%d too long" 
+		unreachable (gs.num_uniq + gs.num_equiv) !term_equiv !too_long); 
 		
 	Logs.debug (fun m->m "old graph, %s" (get_stats gs)); 
 	dist_to_good gs (Array.map (fun a -> a+1) dist); 

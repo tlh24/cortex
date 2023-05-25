@@ -6,12 +6,12 @@ open Graf
 
 let pi = 3.1415926
 (*let image_count = ref 0 *)
-let image_alloc = 12*1024 (*6*2048*2*) (* need to make this a parameter *)
-let all_alloc = 14*1024 (* including equivalents *)
+let image_alloc = 24*1024 (*6*2048*2*) (* need to make this a parameter *)
+let all_alloc = 25*1024 (* including equivalents *)
 let image_res = 30
 let batch_size = ref 512
 let toklen = 30
-let p_ctx = 64
+let p_ctx = 96
 let poslen = p_ctx / 2 (* onehot; two programs need to fit into the context *)
 let p_indim = toklen + 1 + poslen (* 31 + 12 = 43 *)
 let e_indim = 5 + toklen + poslen
@@ -839,7 +839,7 @@ let update_bea_mnist steak bd =
 						(Editree.getprogenc root) be.a_progenc be.count); 
 					Editree.print root [] "" 0.0
 				); 
-				let toolong = be.count > 256 in
+				let toolong = be.count > 100 in
 				if toolong then 
 					Logs.debug (fun m -> m "[%d] search limit exceeded." bi); 
 				match toolong,edit with
@@ -1347,7 +1347,7 @@ let init_database steak count =
 	in
 	
 	let rec runbatch stk n = 
-		if n > 2 then stk
+		if n > 6 then stk
 		else (
 			let ra = sub_sample () |> Array.of_list |> permute_array in
 			let ran = Array.length ra in

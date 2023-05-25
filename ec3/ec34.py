@@ -133,11 +133,14 @@ for u in range(mc.train_iters):
 		model.zero_grad()
 		y,q = model(u, bimg.cuda(), bpro.cuda())
 		targ = bedts.cuda()
-		# loss = lossfunc_mse(y, targ)
-		loss = lossfunc_cel(y[:,0:4], targ[:,0:4]) + \
-				 lossfunc_cel(y[:,4:mc.toklen], targ[:,4:mc.toklen]) + \
-				 lossfunc_cel(y[:,5+mc.toklen:], targ[:,5+mc.toklen:])
-		lossflat = th.sum(loss)
+		
+		loss_mse = lossfunc_mse(y, targ)
+		
+		loss_cel = lossfunc_cel(y[:,0:4], targ[:,0:4]) + \
+					lossfunc_cel(y[:,4:mc.toklen], targ[:,4:mc.toklen]) + \
+					lossfunc_cel(y[:,5+mc.toklen:], targ[:,5+mc.toklen:])
+				
+		lossflat = th.sum(2*loss_mse + loss_cel)
 		lossflat.backward()
 		th.nn.utils.clip_grad_norm_(model.parameters(), 0.025)
 		optimizer.step() 

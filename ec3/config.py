@@ -5,12 +5,18 @@ class ModelConfig(BaseModel):
     dreaming: bool = Field(False, description="Dreaming mode")
     
     # data
+    toklen_ = 30
+    p_ctx_ = 96
+    poslen_ = p_ctx_ // 2
+    p_indim_ = toklen_ + 1 + poslen_
+    e_indim_ = 5 + toklen_ + poslen_
+    
     image_res: int = Field(30, description="Image resolution")
-    toklen: int = Field(30, description="Token length")
-    p_ctx: int = Field(64, description="Context for program")
-    poslen: int = Field(32, description="Position length")
-    p_indim: int = Field(63, description="Program input dimension")
-    e_indim: int = Field(67, description="Encoder input dimension")
+    toklen: int = Field(toklen_, description="Token length")
+    p_ctx: int = Field(p_ctx_, description="Context for program")
+    poslen: int = Field(poslen_, description="Position length")
+    p_indim: int = Field(p_indim_, description="Program input dimension")
+    e_indim: int = Field(e_indim_, description="Encoder input dimension")
     patch_size: int = Field(5, description="Patch size for vision model")
     # Recognizer model
     v_ctx: int = Field(None, description="Context for vision model")

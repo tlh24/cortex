@@ -16,7 +16,7 @@ let nuledtree =
 	; kids = Array.make 1 None
 	}
 	
-let p_ctx = 64
+let p_ctx = 96
 let soi = string_of_int
 let iof = int_of_float
 let adr2str adr = 
