@@ -510,7 +510,7 @@ let rec new_batche_mnist_mse steak bi =
 	(* note: bd.fresh is set in the calling function (for consistency) *)
 		
 let new_batche_unsup steak bi =
-	if (Random.int 10) < 10 then ( (* FIXME 5 *)
+	if (Random.int 10) < 5 then ( (* FIXME 5 *)
 		new_batche_train steak `Verify
 	) else (
 		new_batche_mnist_mse steak bi
