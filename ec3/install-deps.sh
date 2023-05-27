@@ -12,7 +12,7 @@ conda env create -f environment.yml
 source activate ec3
 
 # upgrade opam
-opam init --disable-sandboxing --yes
+opam init
 opam update --confirm-level=unsafe-yes
 opam switch create myswitch ocaml-variants.5.0.0+options ocaml-option-flambda
 eval $(opam env --switch=myswitch)
@@ -25,7 +25,7 @@ unzip ~/libtorch-cxx11-abi-shared-with-deps-1.13.1+cu116.zip
 mv libtorch ~
 export LIBTORCH=~/libtorch
 
-opam install --confirm-level=unsafe-yes vg cairo2 pbrt vector lwt logs pcre torch domainslib ocamlgraph psq
+opam install --confirm-level=unsafe-yes vg cairo2 vector lwt logs pcre torch domainslib ocamlgraph psq ctypes utop
 eval $(opam env --switch=myswitch)
 dune build
 

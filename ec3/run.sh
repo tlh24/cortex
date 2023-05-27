@@ -18,6 +18,8 @@ rm -rf /tmp/ec3/verify_database/*
 mkdir -p /tmp/ec3/dijkstra
 rm -rf /tmp/ec3/dijkstra/*
 
+mkdir -p ../prog-gephi-viz/ # for looking at the graphs..
+
 export OCAMLPARAM='_,rounds=4,O3=1,inline=100,inline-max-unroll=5'
 # use the first 4090 (Second one for python)
 export CUDA_VISIBLE_DEVICES=0
