@@ -115,7 +115,7 @@ type tsteak = (* thread state *)
 	; mutable batchno : int (* for e.g doing garbage collection *)
 	; mutable pool : Domainslib.Task.pool (* needs to be replaced for dream *)
 	; de : decode_tensors
-	; training : (int*int) array
+	; training : (int*int*int) array
 	}
 
 let read_lines name : string list =
@@ -304,20 +304,96 @@ let render_database steak =
 	Logs.debug (fun m->m "render_database done; sum %f" sum); 
 	;;
 	
+(* new training: we need to select the target image from
+	*anywhere* 'downstream' of the current edit.
+	for example, if an edit chain (from dijkstra) is
+	(..) -> a -> b -> c -> d
+	and we select edit a -> b
+		to gen the supervised edits
+	then possible context for the image is b, c, or d.
+
+	It probably makes the most sense to store this datastructure
+	a bit differently, so we can sample a, b, c.
+		a = start (anywhere along causal chain except end)
+		b = start+1 (one edit from start)
+		c = context (select an image)
+	*)
+
 module SX = Set.Make(Int);;
 	
 let make_training steak = 
 	(* make/remake the training array *)
 	let nuniq = steak.gs.num_uniq in
 	Logs.debug (fun m->m "entering make_training. num_uniq %d" nuniq); 
-	let training = ref [] in 
+	let fid = open_out "training.txt" in
 	
 	Graf.remove_unreachable steak.mutex steak.gs; 
+	(* removes terminal `Equiv nodes *)
 	render_database steak; 
 	
-	let _dist,prev = Graf.dijkstra steak.gs 0 false in
+	let dist,prev = Graf.dijkstra steak.gs 0 false in
+
+	let rec make_devlist l r =
+		(* assemble a list, reverse order, for the chain of programs
+		leading to a terminal r *)
+		if r >= 0 then (
+			let q = prev.(r) in
+			if q >= 0 then (
+				make_devlist ( r :: l ) q
+			) else l
+		) else l
+	in
+
+	let print_devlist k l =
+		List.iteri (fun i j ->
+			let d = db_get steak j in
+			let s = progenc2str d.ed.progenc in
+			Printf.fprintf fid "terminal [%d] step %d node [%d] %s\n" k i j s;
+		) l
+	in
+
+	(* only start from terminal nodes, to avoid redundancy *)
+	let terminal = Array.make (Array.length dist) false in
+	Array.iteri (fun i d -> if d > 0 then terminal.(i) <- true) dist;
+	Array.iter (fun p -> if p >= 0 then terminal.(p) <- false) prev;
+
+	let (_,training) = Array.fold_left (fun (k,lst) term ->
+		if term then (
+			let l = make_devlist [] k in
+			print_devlist k l ;
+
+			(* this would probably be simpler with nested for-loops
+				but ohwell, let's do it the ocaml way *)
+			let rec select_c acc ll a b =
+				if List.length ll > 0 then (
+					let c = List.hd ll in
+					select_c ((a,b,c) :: acc) (List.tl ll) a b
+				) else acc
+			in
+
+			let rec select_bc acc ll a =
+				if List.length ll > 0 then (
+					let b = List.hd ll in
+					let bacc = select_c acc ll a b in
+					select_bc bacc (List.tl ll) a
+				) else acc
+			in
+
+			let rec select_abc acc ll =
+				if List.length ll >= 2 then (
+					let a = List.hd ll in
+					let aacc = select_bc acc (List.tl ll) a in
+					select_abc aacc (List.tl ll)
+				) else acc
+			in
+
+			let acc = select_abc [] l in
+			(k+1, List.rev_append acc lst)
+		) else (
+			(k+1, lst)
+		) ) (0, []) terminal in
 	
-	(* add in everything to the training database *)
+	(*(* add in everything to the training database *)
 	let s = Array.fold_left (fun a b -> SX.add b a) SX.empty prev in
 	List.iter ( fun target -> 
 		let rec loop r = 
@@ -330,15 +406,14 @@ let make_training steak =
 			)
 		in
 		loop target (* if there are no routes to root, don't add *)
-		) (SX.elements s); 
+		) (SX.elements s); *)
 	
-	let fid = open_out "training.txt" in
-	List.iteri (fun i (pre,post) -> 
-		Printf.fprintf fid "%d %d %d\n" i pre post) !training; 
+	List.iteri (fun i (pre,post,context) ->
+		Printf.fprintf fid "[%d] %d %d %d\n" i pre post context) training;
 	close_out fid; 
 	
 	Graf.gexf_out steak.gs ;
-	let ta = Array.of_list !training in
+	let ta = Array.of_list training in
 	{steak with training = ta}
 	;;
 	
@@ -373,69 +448,28 @@ let make_training steak =
 		if nsub = 0 && ndel = 0 && nins <= 6 then r := true
 	);
 	!r*)
-	
-let make_batche_train a ai b bi dt = 
+
+let new_batche_train steak dt = 
+	let n = Array.length steak.training in
+	let i = Random.int n in
+	let (pre,post,context) = steak.training.(i) in
+	let a = steak.gs.g.(pre) in
+	let b = steak.gs.g.(post) in
+	let c = steak.gs.g.(context) in
 	let _,edits = Graf.get_edits a.ed.progenc b.ed.progenc in
 	let edited = Array.make (p_ctx/2) 0.0 in
-	{ a_pid = ai 
-	; b_pid = bi
+	{ a_pid = pre
+	; b_pid = post
 	; a_progenc = a.ed.progenc
 	; b_progenc = b.ed.progenc
 	; c_progenc = a.ed.progenc
 	; a_imgi = a.imgi
-	; b_imgi = b.imgi
+	; b_imgi = c.imgi (* harder! :-) *)
 	; edits
 	; edited
 	; count = 0
 	; dt (* dreamt *)
 	}
-
-let new_batche_train steak dt = 
-	let n = Array.length steak.training in
-	let i = Random.int n in
-	let (pre,post) = steak.training.(i) in
-	let d = steak.gs.g.(pre) in
-	let e = steak.gs.g.(post) in
-	make_batche_train d pre e post dt
-	
-let new_batche_train_b steak dt = 
-	(* supervised mode, any 'A' -- including eqiv *)
-	let rec selector () = 
-		let di = Random.int (Array.length steak.gs.g) in 
-		let d = steak.gs.g.(di) in
-		match d.progt with
-		| `Uniq -> (
-			if String.length d.ed.progenc < (p_ctx/2-2) then (
-				let typ = match (Random.int 8) with
-					| 0 -> "sub"
-					| 1 -> "del"
-					| _ -> "ins" in (* biased!! *)
-				let o = SI.elements d.outgoing 
-					|> List.filter (fun (_,t,_,_) -> t = typ) in
-				let ol = List.length o in
-				if ol > 0 then (
-					let k = Random.int ol in
-					let ei,_,_,_ = List.nth o k in
-					let e = steak.gs.g.(ei) in
-					if e.progt = `Uniq then (
-						make_batche_train d di e ei dt
-					) else selector ()
-				) else selector ()
-			) else selector () )
-		| `Equiv -> (
-			if (Random.int 5) = 0 then (
-				(* always simplify to the minimum desc *)
-				if String.length d.ed.progenc < (p_ctx/2-2) && false then (
-					let ei = d.equivroot in
-					let e = steak.gs.g.(ei) in
-					if e.progt = `Uniq then (
-						make_batche_train d di e ei dt
-					) else ( assert (0 <> 0); nulbatche ) 
-				) else selector () 
-			) else selector () )
-		| _ -> assert (0 <> 0); nulbatche
-	in
-	selector ()
 
 let rec new_batche_mnist_mse steak bi =
 	(* select a random mnist image *)
