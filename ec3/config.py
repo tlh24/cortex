@@ -5,18 +5,13 @@ class ModelConfig(BaseModel):
     dreaming: bool = Field(False, description="Dreaming mode")
     
     # data
-    toklen_ = 30
-    p_ctx_ = 96
-    poslen_ = p_ctx_ // 2
-    p_indim_ = toklen_ + 1 + poslen_
-    e_indim_ = 5 + toklen_ + poslen_
-    
     image_res: int = Field(30, description="Image resolution")
-    toklen: int = Field(toklen_, description="Token length")
-    p_ctx: int = Field(p_ctx_, description="Context for program")
-    poslen: int = Field(poslen_, description="Position length")
-    p_indim: int = Field(p_indim_, description="Program input dimension")
-    e_indim: int = Field(e_indim_, description="Encoder input dimension")
+    toklen: int = Field(30, description="Token length")
+    p_ctx: int = Field(96, description="Context for program")
+    
+    poslen: int = Field(None, description="Position length")
+    p_indim: int = Field(None, description="Program input dimension")
+    e_indim: int = Field(None, description="Encoder input dimension")
     patch_size: int = Field(5, description="Patch size for vision model")
     # Recognizer model
     v_ctx: int = Field(None, description="Context for vision model")
@@ -60,3 +55,15 @@ class ModelConfig(BaseModel):
     @property
     def edsiz_allocate_command(self):
         return f"fallocate -l {self.edsiz} editdiff_{self.mmapno}.mmap"
+
+    @property
+    def poslen(self):
+        return self.p_ctx // 2
+    
+    @property
+    def p_indim(self):
+        return self.toklen + 1 + self.poslen
+    
+    @property
+    def e_indim(self):
+        return 5 + self.toklen + self.poslen
