@@ -131,7 +131,7 @@ let () =
 		Domains (train and dream) 
 		and pools (parfor, basically) *)
 	
-	let threadmode = 0 in
+	let threadmode = 1 in
 	
 	(match threadmode with
 	| 0 -> ( (* train only *)

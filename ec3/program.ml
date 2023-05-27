@@ -476,7 +476,7 @@ let rec new_batche_mnist_mse steak bi =
 	(* note: bd.fresh is set in the calling function (for consistency) *)
 		
 let new_batche_unsup steak bi =
-	if (Random.int 10) < 7 then ( (* FIXME 5 *)
+	if (Random.int 10) < 10 then ( (* FIXME 5 *)
 		new_batche_train steak `Verify
 	) else (
 		new_batche_mnist_mse steak bi
@@ -873,7 +873,7 @@ let update_bea_mnist steak bd =
 			)
 		| `Verify -> (
 			let dtyp,dloc,dchr = edit_arr.(bi) in (* deterministic *)
-			let etyp,eloc,echr = List.hd eds in (* editree *)
+			let etyp,eloc,echr = List.hd eds in (* editree; compare *)
 			let styp,sloc,schr = if List.length be.edits > 0 then 
 				List.hd be.edits else ("fin",0,'0') in (* supervised *)
 			(* check edited array allocation *)
@@ -892,9 +892,10 @@ let update_bea_mnist steak bd =
 									(progenc2str eb), 
 									(progenc2str ec) in
 				let cnt = be3.count in
-				Logs.debug (fun m -> m "i%d b%d t:\027[34m %s [%d] %c\027[0m ; dd:\027[31m %s [%d] %c\027[0m et:\027[32m %s [%d] %c\027[0m cnt:%d \n|a:%s\"%s\" \n|b:%s \"%s\" \n|c:%s \"%s\""
-							steak.batchno bi styp sloc schr 
-							dtyp dloc dchr etyp eloc echr  
+				Logs.debug (fun m -> m "\n\ttrue: \027[34m %s [%d] %c\027[0m ; ( i%d b%d ) \n\tdetrm:\027[31m %s [%d] %c\027[0m \n\teditr:\027[32m %s [%d] %c\027[0m cnt:%d \n|a:%s \027[34m %s \027[0m \n|b:%s \027[31m %s \027[0m \n|c:%s \027[32m %s \027[0m"
+							styp sloc schr   steak.batchno bi
+							dtyp dloc dchr
+							etyp eloc echr
 							cnt ea sa eb sb ec sc)
 			);
 			if dtyp = "fin" || be3.count >= p_ctx/2 then (
