@@ -12,6 +12,7 @@
 typedef struct {
 	unsigned char* db;
 	unsigned char* query;
+	unsigned char* db_activ;
 	float* distances;
 	float* outDist;
 	int*   outIndx;

@@ -1,4 +1,6 @@
 (
-	loop 0, 4, (
-		move ul, (ua / 4) )
+loop 0, 4, (
+	move ul, (ua / 5) );
+pen 2 / 9;
+move 6, 0
 )

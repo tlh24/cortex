@@ -15,14 +15,16 @@ The original implementation kept these separate.
 *)
 let soi = string_of_int
 let ios = int_of_string
+let foi = float_of_int
+let iof = int_of_float
 
 module SI = Set.Make( 
 	(* set for outgoing connections *)
-	(* node#, edit type, edit count, used count *)
+	(* node#, edit type, edit count, cost *)
 	(* type and count are for sorting / selecting *)
 	struct
 		let compare (a,_,_,_) (b,_,_,_) = compare a b
-		type t = int * string * int * int
+		type t = int * string * int * float
 	end ) ;;
 
 type progtyp = [
@@ -107,6 +109,19 @@ let count_edit_types edits =
 	let ndel = count_type "del" in
 	let nins = count_type "ins" in
 	nsub,ndel,nins
+
+let edit_cost edits =
+	(* find the first edit *)
+	let firsted = List.fold_left
+			(fun a (_t,p,_c) ->
+				if p < a then p else a) 99999 edits in
+	(* number of edits minus position of first edit *)
+	(* might require tweking!! TODO *)
+	let cost = (foi (List.length edits)) *. 0.8 +.
+					(foi (256-firsted)) in
+	(*Logs.debug (fun m->m "edit cost %f" cost);*)
+	cost
+	;;
 	
 let edit_criteria_b edits = 
 	if List.length edits > 0 && List.length edits <= 6 then (
@@ -124,17 +139,18 @@ let edit_criteria edits =
 		let nsub,ndel,nins = count_edit_types edits in
 		let r = ref false in
 		let typ = ref "nul" in
+		let cost = edit_cost edits in
 		(* note! these rules must be symmetric for the graph to make sense *)
 		if nsub <= 3 && ndel = 0 && nins = 0 then (
-			r := true; typ := "sub" ); 
+			r := true; typ := "sub" );
 		if nsub = 0 && ndel <= 6 && nins = 0 then (
 			r := true; typ := "del" ); 
 		if nsub = 0 && ndel = 0 && nins <= 6 then (
 			r := true; typ := "ins" );
 		(*if nsub <= 1 && ndel = 0 && nins <= 3 then r := true;
 		if nsub <= 1 && ndel <= 3 && nins <= 0 then r := true;*)
-		!r,!typ
-	) else false,""
+		!r,!typ,cost
+	) else false,"",-1.0
 
 let get_edits a_progenc b_progenc = 
 	(* eliminate out-of-criteria distances to save time *)
@@ -170,11 +186,10 @@ let connect mtx pool g indx =
 		let dist = abs (pel - ael) in
 		if a.progt <> `Np && i <> indx && dist <= 6 then (
 			let cnt,edits = get_edits pe a.ed.progenc in
-			let b,typ = edit_criteria edits in
-			let u = if b then 1 else 0 in
-			[ (i,typ,cnt,u) ]
+			let _b,typ,cost = edit_criteria edits in
+			[ (i,typ,cnt,cost) ]
 		) else (
-			[ (0,"nul",0,0) ]
+			[ (0,"nul",0,-1.0) ]
 		)
 	in
 	let reduce a b = List.rev_append a b in
@@ -182,7 +197,7 @@ let connect mtx pool g indx =
 		Task.parallel_for_reduce 
 			~chunk_size:32 ~start:0 ~finish:((Array.length g)-1) 
 			~body pool reduce [] )
-		|> List.filter (fun (_,_,_,b) -> b>0) in
+		|> List.filter (fun (_,_,_,b) -> b >= 0.0) in
 	(*let nearby = ref [] in
 	Array.iteri (fun i a -> 
 		if a.progt <> `Np && i <> indx then (
@@ -197,13 +212,15 @@ let connect mtx pool g indx =
 		 ) ) g; *)
 	(* editing the graph; lock the mutex. *)
 	Mutex.lock mtx; 
-	List.iter (fun (i,typ,cnt,used) -> 
+	List.iter (fun (i,typ,cnt,cost) ->
 		let invtyp = match typ with
 			| "del" -> "ins"
 			| "ins" -> "del"
 			| _ -> "sub" in
+		(* note: cost does not depend on edit type.
+			position of first edit should also not change. *)
 		let d2 = g.(i) in
-		let d2o = SI.add (indx,invtyp,cnt,used) d2.outgoing in
+		let d2o = SI.add (indx,invtyp,cnt,cost) d2.outgoing in
 		g.(i) <- {d2 with outgoing=d2o} ) nearby ; 
 	(* update current node *)
 	g.(indx) <- {d with outgoing=(SI.of_list nearby) }; 
@@ -261,12 +278,12 @@ let replace_equiv mtx pool gs indx ed =
 		 Mutex.unlock mtx; 
 		if ni >= 0 then (
 			if d1.ed.progenc <> ed.progenc then (
-				let eq2 = SI.add (indx,"",0,0) d1.equivalents in (* fixed below *)
+				let eq2 = SI.add (indx,"",0,-1.0) d1.equivalents in (* fixed below *)
 				let equivalents = SI.map (fun (i,_,_,_) -> 
 					let e = gs.g.(i) in
 					let cnt,edits = get_edits ed.progenc e.ed.progenc in
-					let _,typ = edit_criteria edits in (* not constrained! *)
-					i,typ,cnt,0) eq2 in
+					let _,typ,cost = edit_criteria edits in (* not constrained! *)
+					i,typ,cnt,cost) eq2 in
 				let imgi = d1.imgi in
 				assert( imgi >= 0 ); 
 				let d2 = {nulgdata with ed; 
@@ -318,9 +335,9 @@ let add_equiv mtx pool gs indx ed =
 			if not has then (
 				let d2 = {nulgdata with ed; progt = `Equiv; equivroot; imgi = d1.imgi} in
 				let cnt,edits = get_edits d1.ed.progenc ed.progenc in
-				let _b,typ = edit_criteria edits in (* NOTE not constrained! *)
+				let _b,typ,cost = edit_criteria edits in (* NOTE not constrained! *)
 				let d1' = {d1 with equivalents = 
-									SI.add (ni,typ,cnt,0) d1.equivalents} in
+									SI.add (ni,typ,cnt,cost) d1.equivalents} in
 				 Mutex.lock mtx;
 				gs.g.(ni) <- d2; 
 				gs.num_equiv <- gs.num_equiv + 1;
@@ -417,11 +434,11 @@ let sort_graph g =
 	Array.iteri (fun i a -> mappin.(a) <- i; 
 		(*Logs.debug (fun m -> m "old %d -> new %d\n" a i)*)) indxs; 
 	Array.map (fun a -> 
-		let outgoing = SI.map (fun (b,typ,cnt,used) -> 
-			mappin.(b),typ,cnt,used
+		let outgoing = SI.map (fun (b,typ,cnt,cost) ->
+			mappin.(b),typ,cnt,cost
 				) a.outgoing in
-		let equivalents = SI.map (fun (b,typ,cnt,used) -> 
-		mappin.(b),typ,cnt,used
+		let equivalents = SI.map (fun (b,typ,cnt,cost) ->
+		mappin.(b),typ,cnt,cost
 				) a.equivalents in
 		let equivroot = if a.equivroot >= 0 then
 			mappin.(a.equivroot) else (-1) in
@@ -434,9 +451,9 @@ let print_graph g =
 		Printf.printf "node [%d] = %s '%s'\n\tcost:%.2f, %.2f imgi:%d\n"
 			i c (Logo.output_program_pstr d.ed.pro) d.ed.scost d.ed.pcost d.imgi; 
 		Printf.printf "\toutgoing: "; 
-		SI.iter (fun (j,typ,cnt,used) -> Printf.printf "%d(%s %d %d)," j typ cnt used) d.outgoing;
+		SI.iter (fun (j,typ,cnt,cost) -> Printf.printf "%d(%s %d %f)," j typ cnt cost) d.outgoing;
 		Printf.printf "\tequivalents: "; 
-		SI.iter (fun (j,typ,cnt,used) -> Printf.printf "%d(%s %d %d," j typ cnt used) d.equivalents; 
+		SI.iter (fun (j,typ,cnt,cost) -> Printf.printf "%d(%s %d %f," j typ cnt cost) d.equivalents;
 		Printf.printf "\tequivroot: \027[31m %d\027[0m\n" d.equivroot
 	in
 	Array.iteri print_node g 
@@ -483,7 +500,7 @@ let save fname g =
 	let open Sexplib in
 	(* output directly, keeping order -- indexes should be preserved *)
 	let intset_to_sexp o = 
-		Sexp.List (List.map (fun (i,typ,cnt,_used) -> Sexp.List
+		Sexp.List (List.map (fun (i,typ,cnt,_cost) -> Sexp.List
 			[ Sexp.Atom (soi i)
 			; Sexp.Atom typ
 			; Sexp.Atom (soi cnt) ])
@@ -519,9 +536,9 @@ let load gs fname =
 			| Sexp.List s -> (
 				match s with
 				| [Sexp.Atom i; Sexp.Atom typ; Sexp.Atom cnt] -> 
-					(ios i),typ,(ios cnt),0
-				| _ -> (-1,"",0,0) )
-			| _ -> (-1,"",0,0) ) k |> SI.of_list in
+					(ios i),typ,(ios cnt),-1.0
+				| _ -> (-1,"",0,-1.0) )
+			| _ -> (-1,"",0,-1.0) ) k |> SI.of_list in
 	gs.num_uniq <- 0; 
 	gs.num_equiv <- 0; 
 	List.iter (function 
@@ -584,6 +601,26 @@ let load gs fname =
 		| `Uniq -> ()
 		| _ -> () (* null entry *)
 		) gs.g; 
+	(* need to go back and fix the edit costs *)
+	(* probably should save the costs to file! *)
+	Array.iteri (fun i d ->
+		match d.progt with
+		| `Equiv
+		| `Uniq -> (
+				let domap st =
+					SI.map (fun (i,_,_,_) ->
+					let e = gs.g.(i) in
+					let cnt,edits = get_edits d.ed.progenc e.ed.progenc in
+					let _,typ,cost = edit_criteria edits in
+					(i,typ,cnt,cost)
+					) st
+				in
+				let outgoing = domap d.outgoing in
+				let equivalents = domap d.equivalents in
+				gs.g.(i) <- {d with outgoing; equivalents}
+			)
+		| _ -> () (* null entry *)
+		) gs.g;
 	gs
 	;;
 
@@ -591,22 +628,23 @@ let load gs fname =
 (* use a priority-search-queue to hold the list of nodes *)
 module QI = struct type t = int let compare (a: int) b = compare a b end
 module QF = struct type t = float let compare (a: float) b = compare a b end
-module Q = Psq.Make (QI) (QI) ;; (* make (key) (priority) *)
+module Q = Psq.Make (QI) (QF) ;; (* make (key) (priority) *)
 
 let dijkstra gs start dbg = 
 	(* starting from node gs.g.(start), 
-		find the distances to all other nodes *)
+		find the distances to all other nodes
+		bias to postfix as opposed to prefix editing *)
 	let d = gs.g.(start) in
 	let n = Array.length gs.g in
-	let dist = Array.make n (-1) in
+	let dist = Array.make n (-1.0) in
 	let prev = Array.make n (-1) in
 	let visited = Array.make n false in 
-	dist.(start) <- 0; 
+	dist.(start) <- 0.0;
 	visited.(start) <- true; 
-	let q = SI.fold (fun (i,_,cnt,_) a -> 
-		dist.(i) <- cnt; 
+	let q = SI.fold (fun (i,_,_cnt,cost) a ->
+		dist.(i) <- cost;
 		prev.(i) <- start; 
-		Q.add i cnt a
+		Q.add i cost a
 		) d.outgoing Q.empty in
 	if dbg then Logs.debug (fun m->m "psq size %d" (Q.size q));
 	if dbg then Logs.debug (fun m->m "outgoing size %d" (SI.cardinal d.outgoing));
@@ -619,7 +657,7 @@ let dijkstra gs start dbg =
 				let e = gs.g.(i) in
 				(* visited nodes are never added to the queue *)
 				assert(visited.(i) = false);
-				if dbg then Logs.debug (fun m -> m "dijk visit [%d] %d %s"
+				if dbg then Logs.debug (fun m -> m "dijk visit [%d] %f %s"
 					i p (Logo.output_program_pstr e.ed.pro));
 				if dbg then Logs.debug (fun m->m "psq size %d" (Q.size q));
 				if dbg then Logs.debug (fun m->m "outgoing size %d" (SI.cardinal e.outgoing));
@@ -628,19 +666,19 @@ let dijkstra gs start dbg =
 				let de = dist.(i) in
 				assert( p = de ); 
 				let foldadd set sq = 
-					SI.fold (fun (j,typ,cnt,_) a -> 
+					SI.fold (fun (j,typ,_cnt,cost) a ->
 					if not visited.(j) && typ <> "nul" then (
-						let nd = de + cnt in
-						if dist.(j) < 0 then (
+						let nd = de +. cost in
+						if dist.(j) < 0. then (
 							(* new route *)
-							if dbg then Logs.debug (fun m -> m "new route to %d cost %d" j nd); 
+							if dbg then Logs.debug (fun m -> m "new route to %d cost %f" j nd);
 							dist.(j) <- nd; 
 							prev.(j) <- i; 
 							Q.add j nd a
 						) else (
 							if nd < dist.(j) then (
 								(* new route is shorter *)
-								if dbg then Logs.debug (fun m -> m "shorter route to %d cost %d" j nd); 
+								if dbg then Logs.debug (fun m -> m "shorter route to %d cost %f" j nd);
 								dist.(j) <- nd; 
 								prev.(j) <- i; 
 								Q.adjust j (fun _ -> nd) a
@@ -680,20 +718,20 @@ let dijkstra gs start dbg =
 	
 	(dist, prev)
 	
-let edge_use gs l = 
+let edge_use gs l =
 	(* reset the good counts *)
 	Array.iteri (fun i a -> gs.g.(i) <- {a with good=0} ) gs.g;
 	(* increment the counts of the used edges from the list l *)
 	List.iter (fun (pre,post) -> 
 		let a = gs.g.(pre) in
-		let outgoing = SI.map (fun (b,typ,cnt,usd) -> 
-			let used = if b = post then usd+1 else usd in
-			(b,typ,cnt,used) ) a.outgoing in
+		let outgoing = SI.map (fun (b,typ,cnt,cst) ->
+			let cost = if b = post then cst +. 1.0 else cst in
+			(b,typ,cnt,cost) ) a.outgoing in
 		(* note: 'nul' is filtered in dijkstra above *)
 		(* (equivalents can have large edit distance) *)
-		let equivalents = SI.map (fun (b,typ,cnt,usd) -> 
-			let used = if b = post then usd+1 else usd in
-			(b,typ,cnt,used) ) a.equivalents in
+		let equivalents = SI.map (fun (b,typ,cnt,cst) ->
+			let cost = if b = post then cst +. 1.0 else cst in
+			(b,typ,cnt,cost) ) a.equivalents in
 		let good1 = a.good + 1 in
 		gs.g.(pre) <- {a with outgoing; equivalents; good=good1}; 
 		(* update post too *) 
@@ -716,14 +754,14 @@ let dist_to_good gs dist =
 	
 let remove_unused mtx gs = 
 	Array.iteri (fun i a -> 
-		if a.progt <> `Np && a.good <= 0 then remove mtx gs i) gs.g
+		if a.progt <> `Np && a.good < 0 then remove mtx gs i) gs.g
 	;;
 	
 let remove_unreachable mtx gs = 
-	let dist,prev = dijkstra gs 0 false in
+	let dist,prev = dijkstra gs 0 true in
 	
 	let unreachable,_ = Array.fold_left (fun (a,i) b -> 
-		if gs.g.(i).progt <> `Np && b < 0 
+		if gs.g.(i).progt <> `Np && b < 0.0
 			then (a+1,i+1) 
 			else (a,i+1)
 			) (0,0) dist in
@@ -737,26 +775,27 @@ let remove_unreachable mtx gs =
 	Array.iteri (fun i term -> 
 		if term && gs.g.(i).progt = `Equiv then (
 			incr term_equiv; 
-			dist.(i) <- (-1 ) ) ) terminal; 
+			dist.(i) <- (-1.0 ) ) ) terminal;
 			
 	(* remove programs that are too long *)
 	let too_long = ref 0 in
 	Array.iteri (fun i d -> 
 		let p_ctx = 96 in
 		if String.length d.ed.progenc > p_ctx/2-2 then (
-			dist.(i) <- (-1) ; 
+			dist.(i) <- (-1.0) ;
 			incr too_long
 		) ) gs.g; 
 		
-	Logs.debug (fun m->m "dijkstra: \n\t%d of %d unreachable, \n\t%d terminal `Equiv; \n\t%d too long" 
+	Logs.debug (fun m->m "remove_unreachable: \n\t%d of %d unreachable, \n\t%d terminal `Equiv; \n\t%d too long"
 		unreachable (gs.num_uniq + gs.num_equiv) !term_equiv !too_long); 
 		
-	Logs.debug (fun m->m "old graph, %s" (get_stats gs)); 
-	dist_to_good gs (Array.map (fun a -> a+1) dist); 
-	save "db_sorted_good.S" gs.g;
+	Logs.debug (fun m->m "old graph (db_preremove.S), %s" (get_stats gs));
+	dist_to_good gs (Array.map iof dist);
+	save "db_preremove.S" gs.g;
 	remove_unused mtx gs ; 
-	Logs.debug (fun m->m "new graph, %s" (get_stats gs)); 
-	
+	Logs.debug (fun m->m "new graph (db_removed.S), %s" (get_stats gs));
+	save "db_removed.S" gs.g;
+	Logs.debug (fun m->m "remove_unreachable done");
 	(* caller must render the database!! *)
 	(* render_database steak *)
 	;;
@@ -772,7 +811,7 @@ let gexf_out gs =
 	Printf.fprintf fid "</attributes>\n";
 	Printf.fprintf fid "<attributes class=\"edge\">\n"; 
 	Printf.fprintf fid "<attribute id=\"0\" title=\"typ\" type=\"string\"/>\n"; 
-	Printf.fprintf fid "<attribute id=\"1\" title=\"used\" type=\"int\"/>\n";
+	Printf.fprintf fid "<attribute id=\"1\" title=\"cost\" type=\"int\"/>\n";
 	Printf.fprintf fid "</attributes>\n"; 
 	Printf.fprintf fid "<nodes>\n"; 
 	Array.iteri (fun i d -> 
@@ -790,12 +829,12 @@ let gexf_out gs =
 	
 	Printf.fprintf fid "<edges>\n"; 
 	Array.iteri (fun i d -> 
-		SI.iter (fun (j,typ,_cnt,used) -> 
-			if used > 0 then (
-				Printf.fprintf fid "<edge source=\"%d\" target=\"%d\">\n" i j; 
+		SI.iter (fun (j,typ,_cnt,cost) ->
+			if cost <> 0. then (
+				Printf.fprintf fid "<edge source=\"%d\" target=\"%d\">\n" i j;
 				Printf.fprintf fid "<attvalues>\n";
-				Printf.fprintf fid "<attvalue for=\"0\" value=\"%s\"/>\n" typ; 
-				Printf.fprintf fid "<attvalue for=\"1\" value=\"%d\"/>\n" used; 
+				Printf.fprintf fid "<attvalue for=\"0\" value=\"%s\"/>\n" typ;
+				Printf.fprintf fid "<attvalue for=\"1\" value=\"%f\"/>\n" cost;
 				Printf.fprintf fid "</attvalues>\n";
 				Printf.fprintf fid "</edge>\n"
 			)

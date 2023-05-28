@@ -8,7 +8,16 @@ open Graf*)
 (*open Torch*)
 open Program
 
+let usage_msg = "verify.exe <db_file>"
+let input_files = ref []
+let anon_fun filename = (* just incase we need later *)
+  input_files := filename :: !input_files
+
+let speclist =
+  [("-g", Arg.Set gdebug, "Turn on debug");]
+
 let () = 
+	Arg.parse speclist anon_fun usage_msg;
 	Random.self_init (); 
 	Logs_threaded.enable ();
 	let () = Logs.set_reporter (Logs.format_reporter ()) in
@@ -40,7 +49,10 @@ let () =
 		{device; gs; sdb; mnist; mnist_cpu; mutex;
 		superv=true; fid=supfid; fid_verify; batchno=0; pool; de; training} in
 	
-	let supsteak = load_database supstak "db_sorted.S" in
+	let fname = if List.length !input_files > 0 then
+		List.hd !input_files else "db_sorted.s" in
+
+	let supsteak = load_database supstak fname in
 	(* test dijsktra *)
 	ignore( Graf.dijkstra supsteak.gs 0 false); 
 	Dtask.run supsteak.pool 

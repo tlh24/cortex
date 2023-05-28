@@ -99,7 +99,7 @@ let () =
 		save_database stk "db_prog.S"; 
 		(*let stk = sort_database stk in*)
 		let dist,_prev = Graf.dijkstra stk.gs 0 false in
-		Graf.dist_to_good stk.gs dist; 
+		Graf.dist_to_good stk.gs (Array.map int_of_float dist);
 		save_database stk "db_sorted.S";
 		stk
 	) in
@@ -131,7 +131,7 @@ let () =
 		Domains (train and dream) 
 		and pools (parfor, basically) *)
 	
-	let threadmode = 1 in
+	let threadmode = 0 in
 	
 	(match threadmode with
 	| 0 -> ( (* train only *)

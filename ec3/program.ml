@@ -354,7 +354,7 @@ let make_training steak =
 
 	(* only start from terminal nodes, to avoid redundancy *)
 	let terminal = Array.make (Array.length dist) false in
-	Array.iteri (fun i d -> if d > 0 then terminal.(i) <- true) dist;
+	Array.iteri (fun i d -> if d >= 0.0 then terminal.(i) <- true) dist;
 	Array.iter (fun p -> if p >= 0 then terminal.(p) <- false) prev;
 
 	let (_,training) = Array.fold_left (fun (k,lst) term ->
@@ -408,8 +408,8 @@ let make_training steak =
 		loop target (* if there are no routes to root, don't add *)
 		) (SX.elements s); *)
 	
-	List.iteri (fun i (pre,post,context) ->
-		Printf.fprintf fid "[%d] %d %d %d\n" i pre post context) training;
+	(*List.iteri (fun i (pre,post,context) ->
+		Printf.fprintf fid "[%d] %d %d %d\n" i pre post context) training;*)
 	close_out fid; 
 	
 	Graf.gexf_out steak.gs ;
@@ -431,23 +431,6 @@ let make_training steak =
 	(* & add a 'done' edit/indicator *)
 	let edits = ("fin",0,'0') :: edits in
 	dist, (List.rev edits)*)
-	
-(*let edit_criteria edits dosub = 
-	let count_type typ = 
-		List.fold_left 
-		(fun a (t,_p,_c) -> if t = typ then a+1 else a) 0 edits 
-	in
-	let nsub = count_type "sub" in
-	let ndel = count_type "del" in
-	let nins = count_type "ins" in
-	let r = ref false in
-	if dosub then (
-		if nsub = 1 && ndel = 0 && nins = 0 then r := true 
-	) else (
-		if nsub = 0 && ndel <= 6 && nins = 0 then r := true; 
-		if nsub = 0 && ndel = 0 && nins <= 6 then r := true
-	);
-	!r*)
 
 let new_batche_train steak dt = 
 	let n = Array.length steak.training in
@@ -1186,7 +1169,7 @@ let renderpng n s fid =
 	incr n
 	;;
 	
-let make_moves fid n = 
+let make_moves () =
 	let lenopts = [|"1";"2";"3";"2*2";"1/2";"2/3"|] in
 	let angopts = [|"1/5";"2/5";"3/5";"4/5";"1/4";"3/4";"1/3";"2/3";"1/2";
 		"1";"2";"3";"4";"5";"6";"ua/5";"ua/4";"ua/3";"ua/2";"ua"|] in
@@ -1198,7 +1181,7 @@ let make_moves fid n =
 				let s = "move "^ lenopts.(i)^
 						" , "^preopts.(k)^angopts.(j) in
 				r := s :: !r; 
-				renderpng n s fid
+				(* save the rendering for verify.exe *)
 			) done; 
 		) done;
 	) done;
@@ -1239,6 +1222,7 @@ let init_database steak count =
 			incr u;
 		) ;
 		if dist < 256.0 then (
+			Logs.debug (fun m->m "tryadd replacement %d %f" mindex dist);
 			(* see if there's a replacement *)
 			let data2 = db_get stk mindex in
 			let c1 = data.pcost in (* progenc_cost  *)
@@ -1279,16 +1263,16 @@ let init_database steak count =
 		) else (
 			(*Logs.debug (fun m->m "%d: dist %f not good: %s %f" !iters dist s data.scost)*)
 		) ; 
-		(*if !iters mod 40 = 39 then
-			(* needed to clean up torch allocations 
-				-- not anymore w cuda! *)
-			Caml.Gc.major ();*)
 		incr iters
 	in
 
 	let tryadd_fromstr stk str override =
 		(*Logs.debug (fun m->m "tryadd %s" str); *)
-		let data,img = generate_logo_fromstr str in
+		let sc = if String.length str = 0 then "" else ";" in
+		(*let str2 = "(" ^ str ^ sc ^ " )" in*)
+		let str2 = "(" ^ str ^ sc ^ " pen 2/9; move 6,0 )" in
+		let data,img = generate_logo_fromstr str2 in
+		(*Logs.debug (fun m->m "tryadd %s" str2);*)
 		tryadd stk data img override
 	in
 
@@ -1305,23 +1289,20 @@ let init_database steak count =
 	tryadd_fromstr steak "move 1, 0 - 2" false;
 	(*let y = db_get steak 1 in
 	Logs.debug (fun m->m "y %s" y.ed.progenc);*) 
-	let n = ref 3 in
-	let r = make_moves fid n in
-	let rp = List.map (fun s -> "( "^s^")") r in
+	let r = make_moves () in
 	(* now outer-prod them in a sequence + pen *)
 	let penopts = [|"1";"2";"3";"4"|] 
 		|> Array.map (fun s -> "pen "^s^"; ") in
 	let r2 = ref [] in
 	for h = 0 to (Array.length penopts)-1 do (
 		let pen = penopts.(h) in
-		let t = List.map (fun s -> "("^pen^s^")") r in
-		List.iter (fun s -> renderpng n s fid) t; 
+		let t = List.map (fun s -> pen ^ s ) r in
 		r2 := List.rev_append t !r2; 
 	) done; 
 	
 	List.iter (fun s -> 
 		tryadd_fromstr steak s false)
-		(r @ rp @ !r2) ; 
+		(r @ !r2) ;
 	
 	(* for longer sequences, we need to sub-sample *)
 	let sub_sample () = 
@@ -1330,40 +1311,35 @@ let init_database steak count =
 		let r3 = ref [] in
 		let ra = Array.of_list r in
 		let nra = List.length r in
-		n := 0; 
-		while !n < (iof ((foi count) *. 0.2)) do (
+		let n = ref 0 in
+		while !n < (iof ((foi count) *. 0.12)) do (
+			let k = Random.int (Array.length penopts) in
+			let j = Random.int nra in
+			let s = penopts.(k) ^ ";" ^ ra.(j) in
+			r3 := s :: !r3;
+			incr n
+		) done;
+		while !n < (iof ((foi count) *. 0.4)) do (
 			let i = Random.int nra in
 			let j = Random.int nra in
 			let k = Random.int (Array.length penopts) in
 			let y = [| ra.(i); ra.(j); penopts.(k) |] |> permute_array in
 			let s,_ = Array.fold_left (fun (a,m) b -> 
 				(if m<2 then a^b^"; " else a^b),m+1) ("",0) y in
-			let s2 = "("^s^")" in
-			r3 := s2 :: !r3; 
-			renderpng n s2 fid
+			r3 := s :: !r3;
+			incr n
 		) done; 
-		while !n < (iof ((foi count) *. 0.4)) do (
-			let i = Random.int nra in
-			let j = Random.int nra in
-			let k = Random.int (Array.length penopts) in
-			let y = [| ra.(i); penopts.(k); ra.(j) |] in
-			let s,_ = Array.fold_left (fun (a,m) b -> 
-				(if m<2 then a^b^"; " else a^b),m+1) ("",0) y in
-			let s2 = "(pen 0 ;"^s^")" in
-			r3 := s2 :: !r3; 
-			renderpng n s2 fid
-		) done;
 		while !n < (iof ((foi count) *. 0.7)) do (
 			let i = Random.int nra in
 			let j = Random.int nra in
 			let k = Random.int nra in
 			let l = Random.int (Array.length penopts) in
-			let y = [| ra.(i); penopts.(l); ra.(j); ra.(k); |] in
+			let y = [| ra.(i); penopts.(l); ra.(j); ra.(k); |] |> permute_array in
 			let s,_ = Array.fold_left (fun (a,m) b -> 
 				(if m<3 then a^b^"; " else a^b),m+1) ("",0) y in
-			let s2 = "(pen 0 ;"^s^")" in
+			let s2 = "pen 0 ;"^s in
 			r3 := s2 :: !r3; 
-			renderpng n s2 fid
+			incr n
 		) done;
 		while !n < (iof ((foi count) *. 1.0)) do (
 			let i = Random.int nra in
@@ -1374,33 +1350,27 @@ let init_database steak count =
 			let y = [| ra.(i); penopts.(l); ra.(j); penopts.(m); ra.(k); |] in
 			let s,_ = Array.fold_left (fun (a,m) b -> 
 				(if m<4 then a^b^"; " else a^b),m+1) ("",0) y in
-			let s2 = "(pen 0 ;"^s^")" in
+			let s2 = "pen 0 ;"^s in
 			r3 := s2 :: !r3; 
-			renderpng n s2 fid
+			incr n
 		) done;
 		!r3
 	in
 	
 	let rec runbatch stk n = 
-		if n > 6 then stk
+		if n > 7 then stk
 		else (
 			let ra = sub_sample () |> Array.of_list |> permute_array in
 			let ran = Array.length ra in
 			let body i = tryadd_fromstr stk ra.(i) false in
 			
-			(*if !gparallel then
-				Dtask.parallel_for stk.pool 
-					~start:0 ~finish:(ran-1) ~body
-			else*)
-				(* moved parallelism into graf.ml *)
-				for i=0 to (ran-1) do
-					body i done;
+			(* moved parallelism into graf.ml *)
+			for i=0 to (ran-1) do
+				body i done;
+
 			(* remove unreachable nodes *)
 			Graf.remove_unreachable stk.mutex stk.gs;
-			Graf.save "db_remove_unused.S" stk.gs.g; 
 			render_database stk; 
-			let sum = Simdb.checksum steak.sdb in
-			Logs.debug (fun m->m "remove_unused; simdb sum %f" sum);
 			runbatch stk (n+1)
 		)
 	in
@@ -1414,6 +1384,7 @@ let init_database steak count =
 	(*let steak = sort_database steak in*)
 	Logs.info(fun m -> m  "%d done; %d sampled; %d replacements; %d equivalents" !u !iters steak.gs.num_uniq steak.gs.num_equiv); 
 	steak
+	;;
 
 let verify_database steak =
 	(* render everything again for sanity *)
@@ -1458,7 +1429,7 @@ let verify_database steak =
 				let e = steak.gs.g.(j) in
 				verify_equivalent i d j e; 
 				let cnt',edits = get_edits d.ed.progenc e.ed.progenc in
-				let _,typ' = edit_criteria edits in
+				let _,typ',_ = Graf.edit_criteria edits in
 				if typ <> typ' then 
 					Printf.printf 
 						"%d %d equiv edit type wrong is %s should be %s\n" i j typ typ';
@@ -1471,12 +1442,12 @@ let verify_database steak =
 				if j <> i then (
 					let cnt,edits = Graf.get_edits d.ed.progenc e.ed.progenc in
 					let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
-					let b,typ = Graf.edit_criteria edits in
-					(j,b,typ,cnt) 
-				) else (0,false,"",0)
+					let b,typ,cost = Graf.edit_criteria edits in
+					(j,b,typ,cnt,cost)
+				) else (0,false,"",0,-1.0)
 				) gi
-				|> List.filter (fun (_,b,_,_) -> b) 
-				|> List.map (fun (j,_,typ,cnt) -> j,typ,cnt,0) in
+				|> List.filter (fun (_,b,_,_,_) -> b)
+				|> List.map (fun (j,_,typ,cnt,cost) -> j,typ,cnt,cost) in
 			let og = SI.of_list ii in
 			if og <> d.outgoing then (
 				let ogl = SI.cardinal og in
@@ -1528,7 +1499,7 @@ let save_database steak fname =
 let load_database steak fname = 
 	(* returns a new steak, freshly sizzled *)
 	let gs = Graf.load steak.gs fname in
-	Logs.debug (fun m->m "Loaded %s" (Graf.get_stats gs)); 
+	Logs.debug (fun m->m "Loaded %s %s" fname (Graf.get_stats gs));
 	render_database {steak with gs} ; 
 	{steak with gs} (* and butter *)
 	;;

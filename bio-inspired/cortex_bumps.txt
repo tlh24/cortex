@@ -4358,3 +4358,19 @@ Yet yet:
 	I've been burned enough to know that everything needs to be tested ...
 		many many times! 
 	
+May 28 2023
+
+Todo today:
+1 -- Make it so the turtle state is always observable
+	Same as when teaching a human!
+	** Later on, we can change the criteria to encourage:
+	-- Predictability
+		of the edits;
+		don't repeat edits that are not predictable
+	-- Observability
+		The networks / system needs to learn how to
+		*make* the system observable,
+		e.g. by adding in printf statements.
+2 -- Make it so that edits default to post-fix.
+	At the present, edits default to prefix -
+	Which goes against the causal structure of the environment.
