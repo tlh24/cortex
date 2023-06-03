@@ -110,16 +110,17 @@ let count_edit_types edits =
 	let nins = count_type "ins" in
 	nsub,ndel,nins
 
-let edit_cost edits =
+let edit_cost edits maxlen =
 	(* find the first edit *)
 	let firsted = List.fold_left
 			(fun a (_t,p,_c) ->
 				if p < a then p else a) 99999 edits in
 	(* number of edits minus position of first edit *)
-	(* might require tweking!! TODO *)
-	let cost = (foi (List.length edits)) *. 0.8 +.
-					(foi (256-firsted)) in
-	(*Logs.debug (fun m->m "edit cost %f" cost);*)
+	(* might require tweaking!! TODO *)
+	let edlen = foi (List.length edits) *. 0.8 in
+	let edpos = foi (maxlen - firsted) *. 0.5 in
+	let cost = edlen +. edpos *. edpos in
+	(*Logs.debug (fun m->m "edit cost %f (%f %f)" cost edlen edpos);*)
 	cost
 	;;
 	
@@ -134,12 +135,12 @@ let edit_criteria_b edits =
 		true,!typ
 	) else false,"nul"
 	
-let edit_criteria edits = 
+let edit_criteria edits maxlen = 
 	if List.length edits > 0 then (
 		let nsub,ndel,nins = count_edit_types edits in
 		let r = ref false in
 		let typ = ref "nul" in
-		let cost = edit_cost edits in
+		let cost = edit_cost edits maxlen in
 		(* note! these rules must be symmetric for the graph to make sense *)
 		if nsub <= 3 && ndel = 0 && nins = 0 then (
 			r := true; typ := "sub" );
@@ -158,6 +159,7 @@ let get_edits a_progenc b_progenc =
 	if d <= 6 then (
 		let dist,edits = Levenshtein.distance a_progenc b_progenc true in
 		let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
+		let maxlen = max (String.length a_progenc) (String.length b_progenc) in
 		(* verify .. a bit of overhead // NOTE: seems very safe! *)
 		(*let re = Levenshtein.apply_edits a_progenc edits in
 		if re <> b_progenc then (
@@ -168,9 +170,9 @@ let get_edits a_progenc b_progenc =
 		(* edits are applied in reverse order *)
 		(* & add a 'done' edit/indicator *)
 		let edits = ("fin",0,'0') :: edits in
-		dist, (List.rev edits)
+		dist, (List.rev edits), maxlen
 	) else (
-		d, []
+		d, [], 256
 	)
 	
 let connect mtx pool g indx = 
@@ -185,9 +187,10 @@ let connect mtx pool g indx =
 		let ael = String.length ae in
 		let dist = abs (pel - ael) in
 		if a.progt <> `Np && i <> indx && dist <= 6 then (
-			let cnt,edits = get_edits pe a.ed.progenc in
-			let _b,typ,cost = edit_criteria edits in
-			[ (i,typ,cnt,cost) ]
+			let cnt,edits,maxlen = get_edits pe a.ed.progenc in
+			let b,typ,cost = edit_criteria edits maxlen in
+			if b then [ (i,typ,cnt,cost) ]
+			else [ (0,"nul",0,-1.0) ]
 		) else (
 			[ (0,"nul",0,-1.0) ]
 		)
@@ -281,8 +284,8 @@ let replace_equiv mtx pool gs indx ed =
 				let eq2 = SI.add (indx,"",0,-1.0) d1.equivalents in (* fixed below *)
 				let equivalents = SI.map (fun (i,_,_,_) -> 
 					let e = gs.g.(i) in
-					let cnt,edits = get_edits ed.progenc e.ed.progenc in
-					let _,typ,cost = edit_criteria edits in (* not constrained! *)
+					let cnt,edits,maxlen = get_edits ed.progenc e.ed.progenc in
+					let _,typ,cost = edit_criteria edits maxlen in (* not constrained! *)
 					i,typ,cnt,cost) eq2 in
 				let imgi = d1.imgi in
 				assert( imgi >= 0 ); 
@@ -334,8 +337,8 @@ let add_equiv mtx pool gs indx ed =
 				d1.equivalents false in
 			if not has then (
 				let d2 = {nulgdata with ed; progt = `Equiv; equivroot; imgi = d1.imgi} in
-				let cnt,edits = get_edits d1.ed.progenc ed.progenc in
-				let _b,typ,cost = edit_criteria edits in (* NOTE not constrained! *)
+				let cnt,edits,maxlen = get_edits d1.ed.progenc ed.progenc in
+				let _b,typ,cost = edit_criteria edits maxlen in (* NOTE not constrained! *)
 				let d1' = {d1 with equivalents = 
 									SI.add (ni,typ,cnt,cost) d1.equivalents} in
 				 Mutex.lock mtx;
@@ -523,8 +526,10 @@ let save fname g =
 
 let load gs fname = 
 	(* does *not* render the programs *)
+	Printf.printf "Graf.load %s%!" fname; flush stdout; 
 	let open Sexplib in
 	let ic = open_in fname in
+	Printf.printf "Parsing Sexps...\n%!"; flush stdout; 
 	let sexp = Sexp.input_sexps ic |> List.hd in
 	close_in ic;
 	(* extra layer of 'list'; not sure why *)
@@ -573,7 +578,10 @@ let load gs fname =
 										gs.free_img;
 						gs.free_slots <- List.filter (fun a -> a <> ii) 
 										gs.free_slots; 
-						gs.g.(ii) <- d
+						gs.g.(ii) <- d; 
+						Printf.printf "\rloaded %d %!" ii ; 
+						flush stdout; 
+						flush stderr; 
 					)
 				) else (
 					if progt = `Uniq || progt = `Equiv then ( 
@@ -589,7 +597,8 @@ let load gs fname =
 				assert(0 <> 0); 
 				) 
 			) )
-		| _ -> failwith "Invalid S-expression format") sexp' ; 
+		| _ -> failwith "Invalid S-expression format"
+		) sexp' ; 
 	(*Printf.printf "check!!!\n"; 
 	print_graph g; *)
 	(* need to go back and fix the imgi indexes *)
@@ -610,8 +619,8 @@ let load gs fname =
 				let domap st =
 					SI.map (fun (i,_,_,_) ->
 					let e = gs.g.(i) in
-					let cnt,edits = get_edits d.ed.progenc e.ed.progenc in
-					let _,typ,cost = edit_criteria edits in
+					let cnt,edits,maxlen = get_edits d.ed.progenc e.ed.progenc in
+					let _,typ,cost = edit_criteria edits maxlen in
 					(i,typ,cnt,cost)
 					) st
 				in
@@ -758,7 +767,7 @@ let remove_unused mtx gs =
 	;;
 	
 let remove_unreachable mtx gs = 
-	let dist,prev = dijkstra gs 0 true in
+	let dist,prev = dijkstra gs 0 false in
 	
 	let unreachable,_ = Array.fold_left (fun (a,i) b -> 
 		if gs.g.(i).progt <> `Np && b < 0.0

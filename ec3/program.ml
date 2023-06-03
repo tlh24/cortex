@@ -6,8 +6,8 @@ open Graf
 
 let pi = 3.1415926
 (*let image_count = ref 0 *)
-let image_alloc = 24*1024 (*6*2048*2*) (* need to make this a parameter *)
-let all_alloc = 25*1024 (* including equivalents *)
+let image_alloc = 32*1024 (*6*2048*2*) (* need to make this a parameter *)
+let all_alloc = 32*1024 (* including equivalents *)
 let image_res = 30
 let batch_size = ref 512
 let toklen = 30
@@ -20,6 +20,7 @@ let glive = ref true
 let gdebug = ref false 
 let gparallel = ref false
 let gdisptime = ref false
+let gexecmode = ref 0 
 let listen_address = Unix.inet_addr_loopback
 let port = 4340
 let backlog = 10
@@ -215,7 +216,7 @@ let tensor_of_bigarray1 img =
 	
 let bigarray1_of_tensor m = 
 	let l = image_res - 1 in
-	let ba = Simdb.newrow () in
+	let ba = Simdb.new_ba_row () in
 	for i = 0 to l do (
 		for j = 0 to l do (
 			ba.{i*image_res + j} <- int_of_float 
@@ -324,7 +325,7 @@ module SX = Set.Make(Int);;
 let make_training steak = 
 	(* make/remake the training array *)
 	let nuniq = steak.gs.num_uniq in
-	Logs.debug (fun m->m "entering make_training. num_uniq %d" nuniq); 
+	Logs.info (fun m->m "entering make_training. num_uniq %d" nuniq); 
 	let fid = open_out "training.txt" in
 	
 	Graf.remove_unreachable steak.mutex steak.gs; 
@@ -371,11 +372,10 @@ let make_training steak =
 				) else acc
 			in
 
-			let rec select_bc acc ll a =
+			let select_bc acc ll a =
 				if List.length ll > 0 then (
 					let b = List.hd ll in
-					let bacc = select_c acc ll a b in
-					select_bc bacc (List.tl ll) a
+					select_c acc ll a b
 				) else acc
 			in
 
@@ -432,14 +432,19 @@ let make_training steak =
 	let edits = ("fin",0,'0') :: edits in
 	dist, (List.rev edits)*)
 
-let new_batche_train steak dt = 
+let new_batche_train steak dt bi = 
 	let n = Array.length steak.training in
 	let i = Random.int n in
 	let (pre,post,context) = steak.training.(i) in
 	let a = steak.gs.g.(pre) in
 	let b = steak.gs.g.(post) in
 	let c = steak.gs.g.(context) in
-	let _,edits = Graf.get_edits a.ed.progenc b.ed.progenc in
+	let _,edits,_ = Graf.get_edits a.ed.progenc b.ed.progenc in
+	if bi = 0 then (
+		Logs.debug (fun m->m "new_batche_train edit count %d \n\t%d %s \n\t%d %s"
+			(List.length edits)
+			pre (progenc2str a.ed.progenc) post (progenc2str b.ed.progenc))
+	); 
 	let edited = Array.make (p_ctx/2) 0.0 in
 	{ a_pid = pre
 	; b_pid = post
@@ -447,7 +452,7 @@ let new_batche_train steak dt =
 	; b_progenc = b.ed.progenc
 	; c_progenc = a.ed.progenc
 	; a_imgi = a.imgi
-	; b_imgi = c.imgi (* harder! :-) *)
+	; b_imgi = c.imgi (* c = harder! :-) *)
 	; edits
 	; edited
 	; count = 0
@@ -474,7 +479,8 @@ let rec new_batche_mnist_mse steak bi =
 	let short = String.length a.ed.progenc < (p_ctx/2-2) in
 	if dist > 768.0 && short then ( (* three pixels thresh *)
 		if bi = 0 then 
-			Logs.debug (fun m->m "new_batche_mnist dist %f indx %d" dist indx); 
+			Logs.debug (fun m->m "new_batche_mnist dist %f ind %d indx %d" 
+			dist ind indx); 
 		let edited = Array.make (p_ctx/2) 0.0 in
 		let root = Editree.make_root a.ed.progenc in
 		let dt = `Mnist(root, []) in
@@ -493,8 +499,8 @@ let rec new_batche_mnist_mse steak bi =
 	(* note: bd.fresh is set in the calling function (for consistency) *)
 		
 let new_batche_unsup steak bi =
-	if (Random.int 10) < 5 then ( (* FIXME 5 *)
-		new_batche_train steak `Verify
+	if (Random.int 10) < 0 then ( (* FIXME 5 *)
+		new_batche_train steak `Verify bi
 	) else (
 		new_batche_mnist_mse steak bi
 	)
@@ -562,7 +568,7 @@ let decode_edit_enumerate steak ba_edit =
 	let m = tensor_of_bigarray2 ba_edit device in
 	let select start length = 
 		let o = Tensor.narrow m ~dim:1 ~start ~length in
-		Tensor.clamp_ o ~min:(Scalar.float 1e-5) ~max:(Scalar.float 1.0)
+		Tensor.clamp_ o ~min:(Scalar.float 1e-6) ~max:(Scalar.float 1e6)
 		(* clamp above zero prob, so log works *)
 	in
 	let typ = select 0 4 in
@@ -582,7 +588,7 @@ let decode_edit_enumerate steak ba_edit =
 		Tensor.gather w ~dim:1 ~index ~sparse_grad:false
 		|> Tensor.to_bigarray ~kind:Bigarray.float32 
 		|> Bigarray.array2_of_genarray 
-		(* output is batch_size x 10 *)
+		(* output is batch_size x 32 *)
 	in
 	let ba_prob = convert x2 in
 	let ba_typ = convert steak.de.typ in (* float -> int conv later *)
@@ -639,18 +645,18 @@ let apply_edits be ed =
 let better_counter = Atomic.make 0
 	
 let try_add_program steak data img be = 
-	if false then (
+	if true then (
 		let progstr = Logo.output_program_pstr data.pro in
 		Logs.info (fun m -> m "try_add_program [%d]: %s \"%s\""
-			steak.batchno data.progenc progstr) );
+			steak.batchno data.progenc progstr) 
+	);
 	let good2,dist,minde = simdb_dist steak img in
 	(* dist is in uchar units; used to be floats. *)
-	let distnorm = dist /. (foi (image_res * image_res * 255)) in
 	let success = ref false in
 	if good2 then (
 	let mindex = steak.gs.img_inv.(minde) in
 	
-	if distnorm < 0.0002 then (
+	if dist < 256.0 then (
 		let data2 = db_get steak mindex in
 		let c1 = data.pcost in
 		let c2 = data2.ed.pcost in
@@ -660,10 +666,10 @@ let try_add_program steak data img be =
 			let r = db_replace_equiv steak mindex data img in
 			if r >= 0 then (
 				let root = "/tmp/ec3/replace_verify" in
-				Logs.info (fun m -> m "#%d b:%d replacing equivalents [%d] %f %s with %s" !nreplace steak.batchno mindex distnorm progstr2 progstr);
+				Logs.info (fun m -> m "#%d b:%d replacing equivalents [%d] %f %s with %s" !nreplace steak.batchno mindex dist progstr2 progstr);
 				Printf.fprintf steak.fid
 					"(%d) [%d] d:%f %s --> %s | pcost %.2f -> %.2f\n"
-					!nreplace mindex distnorm progstr2 progstr c2 c1 ;
+					!nreplace mindex dist progstr2 progstr c2 c1 ;
 				flush steak.fid;
 				Logo.segs_to_png data2.ed.segs 64
 					(Printf.sprintf "%s/%05d_old.png" root !nreplace);
@@ -680,7 +686,7 @@ let try_add_program steak data img be =
 		)
 	) ;
 	
-	if distnorm > 0.002 then (
+	if dist > 4096.0 then (
 	match be.dt with 
 	| `Mnist(_,_) -> (
 		(*let cpu = Torch.Device.Cpu in*)
@@ -703,7 +709,7 @@ let try_add_program steak data img be =
 			let root = "/tmp/ec3/mnist_improve" in
 			Logs.info (fun m -> m 
 				"Made an improvement! see %d ; mse: %f --> %f; db dist %f" 
-				q ab cb distnorm);
+				q ab cb dist);
 			Logs.info (fun m -> m "closest :%s [%d]" progstr2 mindex );
 			Logs.info (fun m -> m "new     :%s " progstr );
 			Logs.info (fun m -> m "original:%s [%d]" progstr3 be.a_pid);
@@ -715,7 +721,7 @@ let try_add_program steak data img be =
 			Logo.segs_to_png data.segs 64
 				(Printf.sprintf "%s/b%05d_c_new.png" root q);
 			
-			if dist > 0.005 then (
+			if dist > 8192.0 then (
 				let added,l = db_add_uniq steak data img in
 				if added then (
 					Logs.info(fun m -> m
@@ -760,13 +766,25 @@ let update_bea_train steak bd =
 		(* last edit is 'fin', in which case: new batche *)
 		let bnew = 
 		 if List.length be1.edits <= 1 then (
+			if bi = 0 then (
+				Logs.debug (fun m->m "new_batche_train called"); 
+			); 
 			bd.fresh.(bi) <- true; (* update image flag *)
-			new_batche_train steak `Train
+			new_batche_train steak `Train bi
 		) else (
 			bd.fresh.(bi) <- false;
 			let be2 = apply_edits be1 (List.hd be1.edits) in
 			{be2 with edits = (List.tl be2.edits)}
 		) in
+		if bi = 0 then (
+			if List.length bnew.edits > 0 then (
+				let typ,loc,chr = List.hd bnew.edits in
+				Logs.debug (fun m->m "update_bea_train\027[34m %s [%d] %c \027[0m"
+					typ loc chr)
+			) else (
+				Logs.debug (fun m->m "update_bea_train\027[34m -empty- \027[0m")
+			); 
+		); 
 		bd.bea.(bi) <- bnew
 	in
 	update_bea_parallel innerloop_bea_train steak "update_bea_train"
@@ -786,13 +804,6 @@ let update_bea_mnist steak bd =
 	(* deterministic decoding, for `Verify *)
 	let edit_arr = decode_edit ~sample:false bd.bedtd in
 		
-	(*for j = 0 to 9 do (
-		for i = 0 to 9 do (
-			Logs.debug (fun m -> m "[%d,%d] pr%0.3f t%0.3f c%0.3f p%0.3f"
-				i j ba_prob.{i,j} ba_typ.{i,j} ba_chr.{i,j} ba_pos.{i,j})
-		) done
-	) done; *) (* looks ok *)
-		
 	let decode bi j lc = 
 		let prob = ba_prob.{bi,j} in
 		let chr = (iof ba_chr.{bi,j}) + Char.code('0') |> Char.chr in
@@ -808,6 +819,8 @@ let update_bea_mnist steak bd =
 	in
 	
 	(* make a set of the top 10 edits at this branch *)
+	(* need to check that this is non-redundant: XXX
+		you can't edit the same position twice. *)
 	let rec getedits eset lc bi j = 
 		if (j < 32) && (SE.cardinal eset < 10) then (
 			getedits (SE.add ( decode bi j lc ) eset) lc bi (j+1)
@@ -816,7 +829,8 @@ let update_bea_mnist steak bd =
 	(* make the probabilities sum to 1 *)
 	let normedits elist = 
 		let sum = List.fold_left 
-			(fun a (p,_,_,_) -> a +. p) 0.0001 elist in
+			(* also clamp the probabilities .. *)
+			(fun a (p,_,_,_) -> a +. (max p 1.2)) 0.0001 elist in
 		List.map (fun (pr,t,p,c) -> (pr /. sum, t,p,c)) elist
 	in
 	
@@ -847,16 +861,20 @@ let update_bea_mnist steak bd =
 			let rec selec () = 
 				let nadr,edit,k_progenc,k_edited = Editree.model_select root in
 				let typ,pos,chr = edit in
-				if bi = -1 then ( 
-					Logs.debug (fun m -> m "[%d] selec'ted %s %d %c  @%s" 
+				if bi = 0 then ( 
+					Logs.debug (fun m -> m "[%d] selec'ted \027[34m %s [%d] %c  \027[0m @%s" 
 						bi typ pos chr (Editree.adr2str nadr));
 					Logs.debug (fun m -> m 
-						"[%d] editree \n\tc_ %s \n\tk_ %s\n\tr_ %s\n\ta_ %s count %d"
-						bi be.c_progenc k_progenc
-						(Editree.getprogenc root) be.a_progenc be.count); 
+						"[%d] editree \nc_ %s \nk_ %s\nr_ %s\na_ %s count %d"
+						bi 
+						(progenc2str be.c_progenc) 
+						(progenc2str k_progenc)
+						(progenc2str (Editree.getprogenc root)) 
+						(progenc2str be.a_progenc) 
+						be.count); 
 					Editree.print root [] "" 0.0
 				); 
-				let toolong = be.count > 100 in
+				let toolong = be.count > 255 in
 				if toolong then 
 					Logs.debug (fun m -> m "[%d] search limit exceeded." bi); 
 				match toolong,edit with
@@ -876,7 +894,7 @@ let update_bea_mnist steak bd =
 				| false,(typ,pos,chr) -> (
 					(* apply the edit *)
 					assert (typ <> "fin"); 
-					if bi = -1 then (
+					if bi = 0 then (
 						Logs.debug (fun m -> m 
 							"[%d] applied %s %d %c @%s count %d\n\tr_ %s \n\tk_ %s"
 							bi typ pos chr (Editree.adr2str nadr) be.count 
@@ -913,9 +931,17 @@ let update_bea_mnist steak bd =
 							styp sloc schr   steak.batchno bi
 							dtyp dloc dchr
 							etyp eloc echr
-							cnt ea sa eb sb ec sc)
+							cnt ea sa eb sb ec sc); 
+							
+				if dtyp <> etyp || dloc <> eloc || dchr <> echr then (
+					Logs.debug (fun m->m "decode_edit_numerate output"); 
+					for j = 0 to 9 do (
+						Logs.debug (fun m -> m "[%d,%d] pr%0.3f t%0.3f c%0.3f p%0.3f"
+							bi j ba_prob.{bi,j} ba_typ.{bi,j} ba_chr.{bi,j} ba_pos.{bi,j})
+					) done 
+				); 
 			);
-			if dtyp = "fin" || be3.count >= p_ctx/2 then (
+			if dtyp = "fin" || be3.count >= 10 then (
 				(* write result to verify.txt; stats later *)
 				let c = if be3.c_progenc = be3.b_progenc then '+' else '-' in
 				Printf.fprintf steak.fid_verify "[%c] from:%s \n      to:%s \n  decode:%s\n" c
@@ -961,7 +987,7 @@ let bigfill_batchd steak bd =
 	) done; 
 	let innerloop_bigfill_batchd u = 
 		let be = bd.bea.(u) in
-	  (* - bpro - *)
+	(* - bpro - *)
 		let offs = Char.code '0' in
 		let llim = (p_ctx/2)-2 in
 		let l = String.length be.a_progenc in
@@ -1001,7 +1027,7 @@ let bigfill_batchd steak bd =
 				bd.bpro.{u,i+l,toklen+1+j} <- bd.posenc.{i,j}
 			) done
 		) done ;
-	  (* - bimg - *)
+	(* - bimg - *)
 		if bd.fresh.(u) then (
 			let pid_to_ba1 imgi dt = 
 				if imgi < 0 then (
@@ -1036,7 +1062,7 @@ let bigfill_batchd steak bd =
 			) done ; 
 			bd.fresh.(u) <- false
 		); 
-	  (* - bedts - *)
+	(* - bedts - *) (* supervised *)
 		bd.bedts.{u,0} <- 0.0; (* TEST python synchronization *)
 		let (typ,pp,c) = if (List.length be.edits) > 0 
 			then List.hd be.edits
@@ -1079,7 +1105,7 @@ let reset_bea steak dreaming =
 	let bea = Array.init !batch_size
 		(fun i -> 
 			if dreaming then new_batche_unsup steak i
-			else new_batche_train steak dt) in
+			else new_batche_train steak dt i) in
 	let fresh = Array.init !batch_size (fun _i -> true) in
 	(*Printf.printf "\n------- after new_batche:\n"; 
 	Gc.print_stat stdout; 
@@ -1312,14 +1338,23 @@ let init_database steak count =
 		let ra = Array.of_list r in
 		let nra = List.length r in
 		let n = ref 0 in
-		while !n < (iof ((foi count) *. 0.12)) do (
+		(* this is needed for equivalent path making.. *)
+		(* permute_array does work, but this is faster. *)
+		while !n < (iof ((foi count) *. 0.15)) do (
+			let k = Random.int (Array.length penopts) in
+			let j = Random.int nra in
+			let s = ra.(j) ^ ";" ^ penopts.(k) in
+			r3 := s :: !r3;
+			incr n
+		) done;
+		while !n < (iof ((foi count) *. 0.33)) do (
 			let k = Random.int (Array.length penopts) in
 			let j = Random.int nra in
 			let s = penopts.(k) ^ ";" ^ ra.(j) in
 			r3 := s :: !r3;
 			incr n
 		) done;
-		while !n < (iof ((foi count) *. 0.4)) do (
+		while !n < (iof ((foi count) *. 0.66)) do (
 			let i = Random.int nra in
 			let j = Random.int nra in
 			let k = Random.int (Array.length penopts) in
@@ -1329,7 +1364,7 @@ let init_database steak count =
 			r3 := s :: !r3;
 			incr n
 		) done; 
-		while !n < (iof ((foi count) *. 0.7)) do (
+		while !n < (iof ((foi count) *. 0.999)) do (
 			let i = Random.int nra in
 			let j = Random.int nra in
 			let k = Random.int nra in
@@ -1347,7 +1382,8 @@ let init_database steak count =
 			let k = Random.int nra in
 			let l = Random.int (Array.length penopts) in
 			let m = Random.int (Array.length penopts) in
-			let y = [| ra.(i); penopts.(l); ra.(j); penopts.(m); ra.(k); |] in
+			let y = [| ra.(i); penopts.(l); ra.(j); penopts.(m); ra.(k); |] 
+					|> permute_array in
 			let s,_ = Array.fold_left (fun (a,m) b -> 
 				(if m<4 then a^b^"; " else a^b),m+1) ("",0) y in
 			let s2 = "pen 0 ;"^s in
@@ -1358,7 +1394,7 @@ let init_database steak count =
 	in
 	
 	let rec runbatch stk n = 
-		if n > 7 then stk
+		if n > 3 then stk
 		else (
 			let ra = sub_sample () |> Array.of_list |> permute_array in
 			let ran = Array.length ra in
@@ -1428,8 +1464,8 @@ let verify_database steak =
 			SI.iter (fun (j,typ,cnt,_) -> 
 				let e = steak.gs.g.(j) in
 				verify_equivalent i d j e; 
-				let cnt',edits = get_edits d.ed.progenc e.ed.progenc in
-				let _,typ',_ = Graf.edit_criteria edits in
+				let cnt',edits,maxlen = get_edits d.ed.progenc e.ed.progenc in
+				let _,typ',_ = Graf.edit_criteria edits maxlen in
 				if typ <> typ' then 
 					Printf.printf 
 						"%d %d equiv edit type wrong is %s should be %s\n" i j typ typ';
@@ -1440,16 +1476,16 @@ let verify_database steak =
 			(* re-create outgoing to verify *)
 			let ii = List.map (fun (j,e) -> 
 				if j <> i then (
-					let cnt,edits = Graf.get_edits d.ed.progenc e.ed.progenc in
+					let cnt,edits,maxlen = Graf.get_edits d.ed.progenc e.ed.progenc in
 					let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
-					let b,typ,cost = Graf.edit_criteria edits in
+					let b,typ,cost = Graf.edit_criteria edits maxlen in
 					(j,b,typ,cnt,cost)
 				) else (0,false,"",0,-1.0)
 				) gi
 				|> List.filter (fun (_,b,_,_,_) -> b)
 				|> List.map (fun (j,_,typ,cnt,cost) -> j,typ,cnt,cost) in
 			let og = SI.of_list ii in
-			if og <> d.outgoing then (
+			if not (SI.equal og d.outgoing) then (
 				let ogl = SI.cardinal og in
 				let doutl = SI.cardinal d.outgoing in
 				Printf.printf "%d %s outgoing wrong! len %d should be %d\n"
@@ -1460,8 +1496,8 @@ let verify_database steak =
 					Printf.printf "diff %s:\n" sorder; 
 					SI.iter (fun (k,_,_,_) -> 
 						let e = steak.gs.g.(k) in
-						let dist,_edits = Graf.get_edits d.ed.progenc e.ed.progenc in
-						Printf.printf " fwd %d -> %d, dist %d \n |%s -> \n |%s\n" 
+						let dist,_edits,_ = Graf.get_edits d.ed.progenc e.ed.progenc in
+						Printf.printf " fwd %d -> %d, dist %d \n |%s -> \n |%s\n%!" 
 							i k dist
 							(progenc2str d.ed.progenc) 
 							(progenc2str e.ed.progenc) ; 
@@ -1534,7 +1570,7 @@ let handle_message steak bd msg =
 			if !totsup > 0 then (
 				let pctg v = (foi !v) /. (foi !totsup) in
 				Logs.debug (fun m -> m (* TODO: debug mode *)
-					"decode_edit: correct typ %0.3f chr %0.3f pos %0.3f " 
+					"decode_edit: correct typ \027[31m%0.3f\027[0m chr \027[31m%0.3f\027[0m pos \027[31m%0.3f\027[0m " 
 					(pctg typright) (pctg chrright) (pctg posright) )
 			);
 		in

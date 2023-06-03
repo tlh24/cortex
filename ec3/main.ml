@@ -17,7 +17,8 @@ let speclist =
    ("-o", Arg.Set_string output_file, "Set output file name"); 
    ("-g", Arg.Set gdebug, "Turn on debug");
    ("-p", Arg.Set gparallel, "Turn on parallel");
-   ("-t", Arg.Set gdisptime, "Turn on timing instrumentation");]
+   ("-t", Arg.Set gdisptime, "Turn on timing instrumentation");
+   ("-m", Arg.Set_int gexecmode, "Mode: 0 = train only; 1 = dream only; 2 = both");]
 
 let () = 
 	Arg.parse speclist anon_fun usage_msg;
@@ -35,6 +36,12 @@ let () =
 	(* Logs levels: App, Error, Warning, Info, Debug *)
 
 	Logs.info(fun m -> m "batch_size:%d" !batch_size);
+	Logs.info( fun m->m "Mode %s" 
+		(match !gexecmode with
+		| 0 -> "train only."
+		| 1 -> "dream only."
+		| 2 -> "both train and dream."
+		| _ -> "Error: specify 0, 1, or 2.") ); 
 	Logs.info(fun m -> m "cuda available: %b%!" 
 				(Cuda.is_available ()));
 	Logs.info(fun m -> m "cudnn available: %b%!"
@@ -59,6 +66,9 @@ let () =
 		Tensor.narrow mnist_cpu ~dim:1 ~start:1 ~length:28 |> 
 		Tensor.narrow ~dim:2 ~start:1 ~length:28) ~src:mimg ;
 		(* Tensor.narrow returns a pointer/view; copy_ is in-place. *)
+	(* mnist comes in as normalized floats; 
+		everything else is [0..255], so scale up *)
+	let mnist_cpu =  Tensor.( mnist_cpu * (f 255.0)) in
 	let mnist = Tensor.to_device mnist_cpu ~device in
 
 	let gs = Graf.create all_alloc image_alloc in
@@ -81,7 +91,7 @@ let () =
 		(*Dtask.run supsteak.pool (fun () -> load_database supsteak )*)
 		load_database supstak "db_sorted.S"
 	) else ( 
-		let nprogs = 4*2048 (*image_alloc*) in
+		let nprogs = image_alloc in
 		Logs.app(fun m -> m "Generating %d programs" nprogs);
 		let start = Unix.gettimeofday () in
 		let stk = Dtask.run supstak.pool 
@@ -106,7 +116,6 @@ let () =
 	
 	render_simplest supsteak; 
 	
-	Logs.info (fun m->m "generating training dataset.."); 
 	let supsteak = make_training supsteak in
 	Logs.info (fun m->m "training size: %d" (Array.length supsteak.training)); 
 	save_database supsteak "db_sorted_.S";
@@ -131,9 +140,7 @@ let () =
 		Domains (train and dream) 
 		and pools (parfor, basically) *)
 	
-	let threadmode = 1 in
-	
-	(match threadmode with
+	(match !gexecmode with
 	| 0 -> ( (* train only *)
 		servthread supsteak () ; 
 		Dtask.teardown_pool supsteak.pool)

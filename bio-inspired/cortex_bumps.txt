@@ -4371,6 +4371,68 @@ Todo today:
 		The networks / system needs to learn how to
 		*make* the system observable,
 		e.g. by adding in printf statements.
+			Or, better, smart ways of debugging..
 2 -- Make it so that edits default to post-fix.
 	At the present, edits default to prefix -
 	Which goes against the causal structure of the environment.
+
+June 2 2023
+
+OK, need to: 
+* get dreaming working, 
+* make file loading faster (!), 
+* verify editree decoding, which is not 100% --? 
+		Editree decoding now fixed / good.  Clamp() issue with saturating probabilities. 
+	Tends to get caught in loops.. all sub [0] 0
+		You never want to apply the same sub repeatedly.
+	Hm. problem seems to be that it's not been trained on fin (?!)
+then need to think more carefully / clearly about what the problem is & how to go about solving it: 
+	The current approach is clearly not working well. 
+E.g. 
+	(Thoughts on the run last night): 
+1 -- Need longer context: both the next step and the long-term goal. 
+	The current recognizer only 'sees' the next steps. 
+2 -- Current position encoding is crap.  
+	One-hot doesn't scale. 
+	Might be time for graph-aware encoding. 
+		For sure need positive controls! 
+3 -- Recognizer only really works when it's converged (?) 
+4 -- Maybe soumething more like a diffusion model: 
+	Start with random mutations, and have a model that corrects them based on a specification. 
+		This would be easy to train: 
+			From a set of working programs, mutate them to produce non-working programs. 
+			more UDRL. 
+5 -- Thorn: making the network 'decide' what segment it will work on next. 
+	It needs to learn to ignore extraneous details, which is something hard~!
+	Could incorporate into the search the ability to evaluate solutions..?
+	Model def needs to be convergent for this to work: 
+		It doesn't or seldom outputs bad code. 
+
+Ok, bug in the code: 
+bedtd clearly shows 'fin' ... 
+but, only 'sub' is being decoded .. ?? 
+seems there is a delay somewhere; later, it starts to decode 'ins' only. 
+Yeah, as expected - and worried about - the editree is not working. 
+Multiple redundant edits are being applied.. 
+	Likely simply need to check the 'edit' array and discard them! 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

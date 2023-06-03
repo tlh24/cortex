@@ -32,7 +32,8 @@ let simdb_clear = foreign "simdb_clear"
 	is a good reference for Ctypes FFI, 
 	including Bigarray accesses *)
 	
-let newrow () = 
+let new_ba_row () = 
+	(* only allocates a bigarray *)
 	Bigarray.Array1.create Bigarray.int8_unsigned Bigarray.c_layout dbDim
 	;;
 
@@ -46,7 +47,7 @@ let rowset sdb i ba =
 	;;
 	
 let rowget sdb i = 
-	let ba = newrow () in
+	let ba = new_ba_row () in
 	let ps = to_voidp (bigarray_start array1 ba) in
 	simdb_get sdb i ps; 
 	ba
@@ -83,7 +84,7 @@ let init count =
 
 let test () =
 	let sdb = init dbSize in
-	let ba = newrow () in
+	let ba = new_ba_row () in
 	for k = 0 to dbSize-1 do (
 		for j = 0 to dbDim-1 do (
 			ba.{j} <- Random.int 256

@@ -20,10 +20,9 @@ let () =
 	Arg.parse speclist anon_fun usage_msg;
 	Random.self_init (); 
 	Logs_threaded.enable ();
+	gdebug := true; 
 	let () = Logs.set_reporter (Logs.format_reporter ()) in
 	let () = Logs.set_level (Some Logs.Debug) in
-	
-	Logs.info(fun m -> m "verifying the program graph database."); 
 
 	Logs.info(fun m -> m "cuda available: %b%!" 
 				(Torch.Cuda.is_available ()));
@@ -50,7 +49,8 @@ let () =
 		superv=true; fid=supfid; fid_verify; batchno=0; pool; de; training} in
 	
 	let fname = if List.length !input_files > 0 then
-		List.hd !input_files else "db_sorted.s" in
+		List.hd !input_files else "db_sorted.S" in
+	Logs.info(fun m -> m "loading %s." fname); 
 
 	let supsteak = load_database supstak fname in
 	(* test dijsktra *)

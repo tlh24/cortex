@@ -11,6 +11,7 @@ ec3/libtorch/
 ec3/poetry.lock
 ec3/checkpoints/
 ec3/wandb
+ec3/db_sorted.S
 prog-gephi-viz
 *.exe
 perf.*

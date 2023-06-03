@@ -139,8 +139,11 @@ for u in range(mc.train_iters):
 		loss_cel = lossfunc_cel(y[:,0:4], targ[:,0:4]) + \
 					lossfunc_cel(y[:,4:mc.toklen], targ[:,4:mc.toklen]) + \
 					lossfunc_cel(y[:,5+mc.toklen:], targ[:,5+mc.toklen:])
-				
-		lossflat = th.sum(2*loss_mse + loss_cel)
+		if u > 50: 
+			lossflat = th.sum(loss_mse)
+		else: 
+			lossflat = th.sum(loss_cel)
+		# lossflat = th.sum(2*loss_mse + loss_cel)
 		lossflat.backward()
 		th.nn.utils.clip_grad_norm_(model.parameters(), 0.025)
 		optimizer.step() 
