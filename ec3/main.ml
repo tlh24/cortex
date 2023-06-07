@@ -70,6 +70,9 @@ let () =
 		everything else is [0..255], so scale up *)
 	let mnist_cpu =  Tensor.( mnist_cpu * (f 255.0)) in
 	let mnist = Tensor.to_device mnist_cpu ~device in
+	(*let mnist_ba = Tensor.reshape mnist_cpu ~shape:[60000; 900] 
+		|> Tensor.to_bigarray ~kind:Bigarray.int8_unsigned 
+		|> Bigarray.array2_of_genarray in*)
 
 	let gs = Graf.create all_alloc image_alloc in
 	let sdb = Simdb.init image_alloc in
@@ -79,13 +82,16 @@ let () =
 		(* tune this -- 8-12 seems ok *)
 	let de = decode_edit_tensors !batch_size in
 	let training = [| |] in
+	let dist = [| |] in
+	let prev = [| |] in
 	let supfid = open_out "/tmp/ec3/replacements_sup.txt" in
 	let dreamfid = open_out "/tmp/ec3/replacements_dream.txt" in
 	let fid_verify = open_out "/tmp/ec3/verify.txt" in
 	
 	let supstak = 
 		{device; gs; sdb; mnist; mnist_cpu; mutex;
-		superv=true; fid=supfid; fid_verify; batchno=0; pool; de; training} in
+		superv=true; fid=supfid; fid_verify; batchno=0; pool; de; 
+		training; dist; prev} in
 	
 	let supsteak = if Sys.file_exists "db_sorted.S" then ( 
 		(*Dtask.run supsteak.pool (fun () -> load_database supsteak )*)

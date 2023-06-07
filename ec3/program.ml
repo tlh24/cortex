@@ -30,6 +30,7 @@ type dreamt = [
 	| `Verify (* decode edit appl. *)
 	| `Mnist of (Editree.t * int list)
 		(* root node * address being evaled *)
+	| `MnistTrain(* b.imgi indexes the target mnist digit *)
 	| `Nodream
 	]
 	
@@ -104,6 +105,7 @@ type tsteak = (* thread state *)
 	; sdb : Simdb.imgdb
 	; mnist : Tensor.t 
 	; mnist_cpu : Tensor.t 
+	(*; mnist_ba : (float, Bigarray.float32_elt, Bigarray.c_layout)*)
 	(*; vae : Vae.VAE.t (* GPU *)*)
 	; mutex : Mutex.t
 	; superv : bool (* supervised or dreaming *)
@@ -113,7 +115,9 @@ type tsteak = (* thread state *)
 	; mutable batchno : int (* for e.g doing garbage collection *)
 	; mutable pool : Domainslib.Task.pool (* needs to be replaced for dream *)
 	; de : decode_tensors
-	; training : (int*int*int) array
+	; training : (int*int*int) array (* a, b, context *)
+	; dist : float array
+	; prev : int array
 	}
 
 let read_lines name : string list =
@@ -212,6 +216,7 @@ let tensor_of_bigarray1 img =
 	o 
 	
 let bigarray1_of_tensor m = 
+	(* this is not general! assumes length = image_res^2 *)
 	let l = image_res - 1 in
 	let ba = Simdb.new_ba_row () in
 	for i = 0 to l do (
@@ -221,6 +226,7 @@ let bigarray1_of_tensor m =
 		) done ; 
 	) done; 
 	ba
+	
 		
 let db_get steak i = 
 	Mutex.lock steak.mutex ; 
@@ -332,13 +338,12 @@ let make_training steak =
 	let dist,prev = Graf.dijkstra steak.gs 0 false in
 
 	let rec make_devlist l r =
-		(* assemble a list, reverse order, for the chain of programs
-		leading to a terminal r *)
+		(* assemble a list for the chain of programs
+			leading to a terminal r 
+			r is the last element in this list. *)
 		if r >= 0 then (
 			let q = prev.(r) in
-			if q >= 0 then (
-				make_devlist ( r :: l ) q
-			) else l
+			make_devlist ( r :: l ) q
 		) else l
 	in
 
@@ -411,7 +416,7 @@ let make_training steak =
 	
 	Graf.gexf_out steak.gs ;
 	let ta = Array.of_list training in
-	{steak with training = ta}
+	{steak with training = ta; dist; prev}
 	;;
 	
 (*let pdata_to_edits a b = 
@@ -459,7 +464,7 @@ let new_batche_train steak dt bi =
 let rec new_batche_mnist_mse steak bi =
 	(* select a random mnist image *)
 	let mid = 1 + (Random.int 1000) in
-	let b = Tensor.narrow steak.mnist ~dim:0 ~start:mid ~length:1 
+	let b = Tensor.narrow steak.mnist_cpu ~dim:0 ~start:mid ~length:1 
 		|> Tensor.squeeze in
 	(* add a bit of (uniform) noise *)
 	let c = Tensor.(b + (rand_like b) * (f 30.0)) in
@@ -494,12 +499,71 @@ let rec new_batche_mnist_mse steak bi =
 		new_batche_mnist_mse steak bi
 	)
 	(* note: bd.fresh is set in the calling function (for consistency) *)
+	
+let mnist_to_ba steak mid = 
+	Tensor.narrow steak.mnist_cpu ~dim:0 ~start:mid ~length:1 
+		|> Tensor.squeeze 
+		|> Tensor.reshape ~shape:[900]
+		|> Tensor.to_type ~type_:(T Uint8)
+		|> Tensor.to_bigarray ~kind:Bigarray.int8_unsigned 
+		|> Bigarray.array1_of_genarray
+
+let rec new_batche_train_mnist steak bi = 
+	let mid = 1 + (Random.int (60000-1)) in
+	let ct = Tensor.narrow steak.mnist_cpu ~dim:0 ~start:mid ~length:1 
+		|> Tensor.squeeze 
+		|> Tensor.reshape ~shape:[900] in
+	(* add a bit of (uniform) noise *)
+	let cba = Tensor.(ct + (rand_like ct) * (f 32.0)) 
+		|> Tensor.clamp_ ~min:(Scalar.float 0.0) ~max:(Scalar.float 255.0)
+		|> Tensor.to_type ~type_:(T Uint8) 
+		|> Tensor.to_bigarray ~kind:Bigarray.int8_unsigned 
+		|> Bigarray.array1_of_genarray in
+	(* select the closest in the database *)
+	let dist,ind = Simdb.query steak.sdb cba in
+	let bindx = steak.gs.img_inv.(ind) in
+	let b = db_get steak bindx in
+		if ind <> b.imgi then (
+			Logs.err (fun q->q "consistency failure: mindex %d maps back to gs.g.(%d); gs.g.(%d).imgi = %d progenc=%s" ind bindx bindx b.imgi b.ed.progenc); 
+			assert (0 <> 0) 
+		);
+	let aindx = steak.prev.(bindx) in
+	if aindx >= 0 then (
+		let a = db_get steak aindx in
+		let ashort = String.length a.ed.progenc < (p_ctx/2-2) in
+		let bshort = String.length b.ed.progenc < (p_ctx/2-2) in
+		if ashort && bshort then (
+			if bi = 0 then 
+				Logs.debug (fun m->m "batche_mnist_train dist %f a %d -> b %d" 
+				dist aindx bindx);
+			let edited = Array.make (p_ctx/2) 0.0 in
+			let _,edits,_ = Graf.get_edits a.ed.progenc b.ed.progenc in
+			let dt = `MnistTrain in
+			{  a_pid = aindx; b_pid = bindx;
+				a_progenc = a.ed.progenc; 
+				b_progenc = b.ed.progenc;
+				c_progenc = a.ed.progenc; 
+				a_imgi = a.imgi; 
+				b_imgi = mid; 
+				edits; edited; count=0; dt }
+		) else new_batche_train_mnist steak bi
+	) else new_batche_train_mnist steak bi
+
 		
 let new_batche_unsup steak bi =
-	if (Random.int 10) < 10 then ( (* FIXME 5 *)
+	(* need to add a mode for this! *)
+	if (Random.int 10) < 0 then ( (* FIXME 5 *)
 		new_batche_train steak `Verify bi
 	) else (
 		new_batche_mnist_mse steak bi
+	)
+	
+let new_batche_sup steak bi =
+	(* need to add a mode for this! *)
+	if (Random.int 10) < 0 then ( (* FIXME 5 *)
+		new_batche_train steak `Train bi
+	) else (
+		new_batche_train_mnist steak bi
 	)
 
 let sample_dist x = 
@@ -768,7 +832,7 @@ let update_bea_train steak bd =
 				Logs.debug (fun m->m "new_batche_train called"); 
 			); 
 			bd.fresh.(bi) <- true; (* update image flag *)
-			new_batche_train steak `Train bi
+			new_batche_sup steak bi
 		) else (
 			bd.fresh.(bi) <- false;
 			let be2 = apply_edits be1 (List.hd be1.edits) in
@@ -1048,10 +1112,10 @@ let bigfill_batchd steak bd =
 				); 
 				assert (imgi >= 0) ; 
 				match dt with
-				| `Mnist(_,_) -> (
+				| `Mnist(_,_) 
+				| `MnistTrain -> (
 					assert (imgi < 60000) ; 
-					Tensor.narrow steak.mnist_cpu ~dim:0 ~start:imgi ~length:1 
-					|> Tensor.squeeze |> bigarray1_of_tensor ) 
+					mnist_to_ba steak imgi ) 
 				| _ -> (
 					assert (imgi < steak.gs.image_alloc) ; 
 					Simdb.rowget steak.sdb imgi ) 
@@ -1111,13 +1175,12 @@ let bigfill_batchd steak bd =
 		
 let reset_bea steak dreaming =
 	(* dt sets the 'mode' of batchd, which persists thru update_bea*)
-	let dt = `Train in
 	(*Printf.printf "\n------- reset_bea:\n"; 
 	Gc.print_stat stdout; *)
 	let bea = Array.init !batch_size
 		(fun i -> 
 			if dreaming then new_batche_unsup steak i
-			else new_batche_train steak dt i) in
+			else new_batche_sup steak i) in
 	let fresh = Array.init !batch_size (fun _i -> true) in
 	(*Printf.printf "\n------- after new_batche:\n"; 
 	Gc.print_stat stdout; 

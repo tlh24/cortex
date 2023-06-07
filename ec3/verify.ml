@@ -40,13 +40,16 @@ let () =
 		(* tune this -- 8-12 seems ok *)
 	let de = decode_edit_tensors 4 in (* dummy *)
 	let training = [| |] in
+	let dist = [| |] in
+	let prev = [| |] in
 	let supfid = open_out "/tmp/ec3/replacements_sup.txt" in
 	let dreamfid = open_out "/tmp/ec3/replacements_dream.txt" in
 	let fid_verify = open_out "/tmp/ec3/verify.txt" in
 	
 	let supstak = 
 		{device; gs; sdb; mnist; mnist_cpu; mutex;
-		superv=true; fid=supfid; fid_verify; batchno=0; pool; de; training} in
+		superv=true; fid=supfid; fid_verify; batchno=0; pool; de; 
+		training; dist; prev} in
 	
 	let fname = if List.length !input_files > 0 then
 		List.hd !input_files else "db_sorted.S" in

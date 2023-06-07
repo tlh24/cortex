@@ -9,7 +9,7 @@ plt.rcParams['toolbar'] = 'None'
 
 plot_rows = 2
 plot_cols = 4
-figsize = (22, 11)
+figsize = (16, 8)
 plt.ion()
 fig, ax = plt.subplots(plot_rows, plot_cols, figsize=figsize)
 initialized = False

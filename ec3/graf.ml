@@ -493,6 +493,7 @@ let pro_to_edata_opt pro res =
 	let dx = hx-.lx in
 	let dy = hy-.ly in
 	let maxd = max dx dy in
+	XXX (* FIXME !! *)
 	if maxd >= 2. && maxd <= 9. && ed.scost >= 4. && ed.scost <= 64. 
 	&& List.length ed.segs < 8 && String.length ed.progenc < 24 then (
 		Some (ed, img)

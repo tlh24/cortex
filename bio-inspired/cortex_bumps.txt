@@ -4460,9 +4460,34 @@ Many experiments today.
 		That is, add a feedback loop? 
 	{I've also made the model smaller - 6M params from 10M - more in line with our small training dataset}
 
+June 7 2023
 
+Thought from last night:
+	*Include* training with MNIST as a target!
+	1 - Select an MNIST digit, "C"
+		From the whole database
+			Maybe copy this into a bigarray to speed access? 
+	2 - Select, w/noise, a database entry that is close to this.  
+		= "B"
+	3 - Using either Dijkstra's algo, 
+		 Or using incoming / outgoing connections
+			Weighted to 'increased complexity'
+		Select an "A". 
+	4 - Calculate the edits from A to B, 
+		*but hide B* and only give image "C". 
 
+Wait a sec -- devlist is pointing backwards? 
+	No, couldn't be, it's all SUB and INS edits. 
+Ok right, it's fine. Duh.  Covid-brain. 
 
+Issues with this idea: 
+* We still need to learn an AST-aware encoding of position. 
+	It seems given the training dataset, 
+	the recognizer will just insert nodes in specified positions -
+	rather than relative positions.  
+		Might be the appropriate time for 
+		AST address -> address transformer -> edit address
+		But then you need to sample multiple times from the address decoder transformer?? Hmm. 
 
 
 
