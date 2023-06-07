@@ -496,7 +496,7 @@ let rec new_batche_mnist_mse steak bi =
 	(* note: bd.fresh is set in the calling function (for consistency) *)
 		
 let new_batche_unsup steak bi =
-	if (Random.int 10) < 0 then ( (* FIXME 5 *)
+	if (Random.int 10) < 10 then ( (* FIXME 5 *)
 		new_batche_train steak `Verify bi
 	) else (
 		new_batche_mnist_mse steak bi
@@ -886,8 +886,10 @@ let update_bea_mnist steak bd =
 					Editree.print root [] "" 0.0
 				); 
 				let toolong = be.count > 255 in
-				if toolong then 
-					Logs.debug (fun m -> m "[%d] search limit exceeded." bi); 
+				if toolong then (
+					if bi = 0 then (
+						Logs.debug (fun m -> m "[%d] search limit exceeded." bi) 
+				)); 
 				match toolong,edit with
 				| true,_ 
 				| false,("con",_,_) -> (

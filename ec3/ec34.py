@@ -132,7 +132,7 @@ for u in range(mc.train_iters):
 	if mc.training: 
 		model.zero_grad()
 		x = bimg.cuda()
-		x = x + th.poisson(th.ones_like(x)) / 12
+		x = x + th.poisson(th.ones_like(x)) / 12 # perceptually, looks ok.
 		y,q = model(u, bimg.cuda(), bpro.cuda())
 		targ = bedts.cuda()
 		
