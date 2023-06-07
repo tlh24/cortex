@@ -21,9 +21,6 @@ let gdebug = ref false
 let gparallel = ref false
 let gdisptime = ref false
 let gexecmode = ref 0 
-let listen_address = Unix.inet_addr_loopback
-let port = 4340
-let backlog = 10
 
 module Dtask = Domainslib.Task
 
@@ -640,6 +637,7 @@ let apply_edits be ed =
 	let be2 = { be with c_progenc=c; count=cnt+1 } in
 	ignore(Editree.update_edited 
 		~inplace:true be2.edited ed (String.length c)); 
+	(* inplace is OK: only used in training *)
 	be2
 	
 let better_counter = Atomic.make 0
@@ -819,7 +817,7 @@ let update_bea_mnist steak bd =
 	in
 	
 	(* make a set of the top 10 edits at this branch *)
-	(* need to check that this is non-redundant: XXX
+	(* need to check that this is non-redundant: 
 		you can't edit the same position twice. *)
 	let rec getedits eset lc bi j = 
 		if (j < 32) && (SE.cardinal eset < 10) then (
@@ -827,11 +825,19 @@ let update_bea_mnist steak bd =
 		) else ( eset )
 	in
 	(* make the probabilities sum to 1 *)
-	let normedits elist = 
+	let _normedits elist = 
 		let sum = List.fold_left 
 			(* also clamp the probabilities .. *)
 			(fun a (p,_,_,_) -> a +. (max p 1.2)) 0.0001 elist in
 		List.map (fun (pr,t,p,c) -> (pr /. sum, t,p,c)) elist
+	in
+	
+	let clampedits elist = 
+		(* try taking the probabilities at face value; 
+			this should bias more toward DFS *)
+		List.map (fun (pr,t,p,c) -> 
+			let prob = max 1e-6 (min 2.0 pr) in
+			(prob,t,p,c)) elist
 	in
 	
 	let innerloop_bea_mnist bi = 
@@ -843,34 +849,39 @@ let update_bea_mnist steak bd =
 		let lc = String.length be.c_progenc in
 		let eset = getedits SE.empty lc bi 0 
 					|> SE.elements 
-					|> normedits in
+					|> clampedits in
 		let eds = List.map (fun (_,t,p,c) -> (t,p,c)) eset in
 		let pr = List.map (fun (p,_,_,_) -> log p) eset in
 		let bnew = match be.dt with 
 		| `Mnist(root,adr) -> (
 			(* model has just been queried about adr *)
-			(*if bi = 0 then (
+			if bi = -1 then (
 				(* these will be sorted, descending *)
 				Editree.print root [] "" 0.0 ;
-				Logs.debug (fun m -> m "update_bea_mnist batch 0 edits:");
+				Logs.debug (fun m -> m "Editree.model_update @%s\n%s:"
+					(Editree.adr2str adr)
+					(Editree.model_index root adr |> Editree.getprogenc |> progenc2str) );
 				List.iteri (fun i (pr,t,p,c) -> 
 					Logs.debug(fun m -> m "  [%d] p:%0.3f %s %d %c"
 						i pr t p c)) eset; 
-			);*) 
+			); 
 			Editree.model_update root adr eds pr; 
 			let rec selec () = 
 				let nadr,edit,k_progenc,k_edited = Editree.model_select root in
 				let typ,pos,chr = edit in
 				if bi = 0 then ( 
-					Logs.debug (fun m -> m "[%d] selec'ted \027[34m %s [%d] %c  \027[0m @%s" 
-						bi typ pos chr (Editree.adr2str nadr));
+					Logs.debug (fun m -> m "selec'ted \027[34m %s [%d] %c  \027[0m @%s" 
+						typ pos chr (Editree.adr2str nadr));
+				); 
+				if bi = -1 then ( 
 					Logs.debug (fun m -> m 
-						"[%d] editree \nc_ %s \nk_ %s\nr_ %s\na_ %s count %d"
+						"[%d] editree \nc__ %s \nkid %s\nroot%s\nedit %s count %d"
 						bi 
 						(progenc2str be.c_progenc) 
 						(progenc2str k_progenc)
 						(progenc2str (Editree.getprogenc root)) 
-						(progenc2str be.a_progenc) 
+						(* (progenc2str be.a_progenc) same as root *) 
+						(Array.fold_left (fun a b -> a^(soi (iof b))) "" k_edited) 
 						be.count); 
 					Editree.print root [] "" 0.0
 				); 
@@ -887,19 +898,18 @@ let update_bea_mnist steak bd =
 					Editree.model_done root nadr;
 					let good,data,img = progenc_to_edata k_progenc in
 					if good then (
+						if bi = 0 then 
+							Logs.debug (fun m->m "\027[33m k_progec well formed!\027[0m"); 
 						if try_add_program steak data img be then (
 							newdream ()
 						) else selec ()
-					) else selec () )
-				| false,(typ,pos,chr) -> (
-					(* apply the edit *)
-					assert (typ <> "fin"); 
-					if bi = 0 then (
-						Logs.debug (fun m -> m 
-							"[%d] applied %s %d %c @%s count %d\n\tr_ %s \n\tk_ %s"
-							bi typ pos chr (Editree.adr2str nadr) be.count 
-							(Editree.getprogenc root) k_progenc)
-					); 
+					) else (
+						if bi = 0 then
+							Logs.debug (fun m->m "not well formed\n %s"
+								(progenc2str k_progenc));
+						selec () 
+					) )
+				| false,_ -> (
 					let count = be.count+1 in
 					let dt = `Mnist(root,nadr) in (* so we can eval its leaves *)
 					{be with c_progenc=k_progenc; edited=k_edited; count; dt})

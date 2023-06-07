@@ -16,6 +16,7 @@ typedef struct {
 	float* distances;
 	float* outDist;
 	int*   outIndx;
+	unsigned char* h_db; // duplicate to avoid device -> host memcpy
 	float* h_outDist;
 	int*   h_outIndx;
 } imgdb;

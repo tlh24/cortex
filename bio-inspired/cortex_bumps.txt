@@ -4416,9 +4416,49 @@ Yeah, as expected - and worried about - the editree is not working.
 Multiple redundant edits are being applied.. 
 	Likely simply need to check the 'edit' array and discard them! 
 
+June 6 2022
 
+Many experiments today. 
+1 -- The editree does seem to be working properly. 
+	It was likely not broken before (other than allowing redundant edits)
+2 -- Decoding accuracy does not seem to depend much on MSE or cross entropy loss. 
+	Cross entropy loss makes the decoded edits look a lot worse
+	MSE loss introduces spikes into the loss timeseries / seems unstable with ADAM
+3 -- Critical: the model does not seem to require the images to suggest an edit (?!)
+	Huh ... so ... 
+	Checked this by adding poisson noise to the bimg data from ocaml. 
+	When rate = 1, no scaling, still get the following decoding accuracies: 
+		decode_edit: correct typ 0.990 chr 0.912 pos 0.943
+	 (Noticed this phenomena while looking at the plotted outputs: pretty hard for a human to figure it out..)
+	I guess the next step would be to add poisson noise to the supervised edit, make sure it degrades percipitously.  
+		Maybe forcing the network to rely more on vision, not continuation of edits. 
+	Then again: if it was so good at suggesting edits, 
+	how come most all of the dreams are not well-formed??
 
+4 -- I'm still not happy with the one-hot positional encoding. 
+	Seems everyone uses rotary encoding ... will have to implement that? 
+	After reading over: 
+	https://blog.eleuther.ai/rotary-embeddings/
+	I better understand rotary embeddings: 
+	They literally rotate the embedded vectors so that the dot-product calculation is independent of the absolute position 
 
+	That's OK: 
+	the model does not have to output absolute position, like we do. 
+	Autoregressive models simply have to output the next token. 
+	
+	As mentioned to LiAn, also seems that we need to get the model accuracy from about 90% to 99% for edit decoding to work reliably. 
+		In the past, have had positive controls that reliably attained this. 
+		Need to get such a positive control. 
+		(Also need to reduce the size of the model, improve training speed). 
+	
+	Another important metric to look at is the validation accuracy of the model -- maybe it cannot disambiguate similar edits, and so vacillates between the two?? 
+	
+	The other thing we could do is completely change the training regieme to be exclusively last-angle change and add-segment
+	Which is realistically what humans would do anyway. 
+	Likely as much as anything that the network can't reliably generalize from  the training data
+		But, given that: perhaps the solution is to remove training data that is utterly unpredicatble? 
+		That is, add a feedback loop? 
+	{I've also made the model smaller - 6M params from 10M - more in line with our small training dataset}
 
 
 

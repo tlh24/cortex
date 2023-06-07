@@ -129,6 +129,7 @@ imgdb* simdb_allocate(int num)
 
 	sdb->db_activ = (unsigned char*)malloc(DB_SIZE);
 	memset(sdb->db_activ, 0, DB_SIZE);
+	sdb->h_db = (unsigned char*)malloc(DB_SIZE * DIM);
 	sdb->h_outDist = (float*)malloc(NUM_BLOCKS*sizeof(float));
 	sdb->h_outIndx = (int*)malloc(NUM_BLOCKS*sizeof(int));
 
@@ -144,6 +145,7 @@ void simdb_free(imgdb* sdb)
 	cudaFree(sdb->outIndx);
 
 	free(sdb->db_activ);
+	free(sdb->h_db); 
 	free(sdb->h_outDist);
 	free(sdb->h_outIndx);
 	free(sdb);
@@ -154,6 +156,7 @@ void simdb_set(imgdb* sdb, int i, unsigned char* row)
 	if( i>=0 && i < DB_SIZE){
 		cudaMemcpy(sdb->db + i*DIM, row, DIMSHORT,
 				  cudaMemcpyHostToDevice);
+		memcpy(sdb->h_db + i*DIM, row, DIMSHORT); 
 		sdb->db_activ[i] = 1;
 	}
 }
@@ -161,8 +164,7 @@ void simdb_set(imgdb* sdb, int i, unsigned char* row)
 void simdb_get(imgdb* sdb, int i, unsigned char* row)
 {
 	if( i>=0 && i < DB_SIZE)
-		cudaMemcpy(row, sdb->db + i*DIM, DIMSHORT,
-				  cudaMemcpyDeviceToHost);
+		memcpy(row, sdb->h_db + i*DIM, DIMSHORT); 
 }
 
 void simdb_query(imgdb* sdb, unsigned char* query,
@@ -206,7 +208,7 @@ void simdb_query(imgdb* sdb, unsigned char* query,
 			}
 		}
 
-		// there could be spurrious matches with 'faint'
+		// there could be spurious matches with 'faint'
 		// signals -- check this against active.
 		if(sdb->db_activ[n] == 0){
 			d = -1.0;
@@ -258,4 +260,5 @@ void simdb_clear(imgdb* sdb)
 	cudaMemset(sdb->db, 0, DB_SIZE * DIM);
 	cudaMemset(sdb->query, 0, DIM);
 	memset(sdb->db_activ, 0, DB_SIZE);
+	memset(sdb->h_db, 0, DB_SIZE * DIM);
 }
