@@ -18,7 +18,7 @@ let () =
 	
 	let adr,_,kid = select r in
 	print kid adr "2-" 0.0; 
-	let edits3 = [("fin",1,'w');("fin",0,'a');("fin",2,'v')] in
+	let edits3 = [("fin",1,'w');("fin",0,'a');("fin",0,'v')] in
 	let probs3 = [0.1; 0.15; 0.05] |> List.map log in
 	model_update r adr edits3 probs3; 
 	print r [] "" 0.0; Printf.printf "\n"; 
@@ -31,15 +31,22 @@ let () =
 	print r [] "" 0.0; Printf.printf "\n"; 
 	
 	let adr,_,kid = select r in
-	print kid adr "3-" 0.0; 
+	print kid adr "4-" 0.0; 
 	let edits3 = [("fin",1,'b');("fin",0,'n')] in
 	let probs3 = [0.1; 0.15] |> List.map log in
 	model_update r adr edits3 probs3; 
 	print r [] "" 0.0; Printf.printf "\n"; 
 	
 	let adr,_,kid = select r in
-	print kid adr "4-" 0.0; 
+	print kid adr "5-" 0.0; 
 	let edits3 = [("fin",1,'g');("fin",0,'h')] in
 	let probs3 = [0.1; 0.15] |> List.map log in
+	model_update r adr edits3 probs3; 
+	print r [] "" 0.0; Printf.printf "\n";
+	
+	let adr,_,kid = select r in
+	print kid adr "6-" 0.0; 
+	let edits3 = [("don",0,'0')] in
+	let probs3 = [0.1] |> List.map log in
 	model_update r adr edits3 probs3; 
 	print r [] "" 0.0; Printf.printf "\n";

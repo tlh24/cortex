@@ -100,9 +100,11 @@ while True:
 	editdiff = read_mmap(fd_editdiff, [batch_size, e_indim])
 
 	plot_tensor(0, 0, bpro[0,:,:], "bpro[0,:,:]", -2.0, 2.0)
-	plot_tensor(0, 1, bimg[0,0,:,:], "bimg[0,0,:,:]", -1.0, 1.0)
-	plot_tensor(0, 2, bimg[0,1,:,:], "bimg[0,1,:,:]", -1.0, 1.0)
-	plot_tensor(1, 0, bedts[:bs,:], "bedts[:,:]", -2.0, 2.0)
+	img0 = bimg[0,0,:,:] # + np.random.poisson(1, [image_res, image_res]) / 8
+	img1 = bimg[0,1,:,:] # + np.random.poisson(1, [image_res, image_res]) / 8
+	plot_tensor(0, 1, img0, "bimg[0,0,:,:]", -1.0, 1.0)
+	plot_tensor(0, 2, img1, "bimg[0,1,:,:]", -1.0, 1.0)
+	plot_tensor(1, 0, bedts[:bs,:], "{sub,del,ins,fin}|{Char[30]}|{Posenc}|bedts[:,:]", -2.0, 2.0)
 	plot_tensor(1, 1, bedtd[:bs,:], "bedtd[:,:]", -2.0, 2.0)
 	plot_tensor(1, 2, editdiff[:bs,:], "editdiff", -2.0, 2.0) # brighter colors
 	

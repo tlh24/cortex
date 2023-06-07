@@ -16,7 +16,9 @@ let nuledtree =
 	; kids = Array.make 1 None
 	}
 	
-let p_ctx = 64
+let nuled = ("con",0,'0')
+	
+let p_ctx = 96
 let soi = string_of_int
 let iof = int_of_float
 let adr2str adr = 
@@ -110,13 +112,71 @@ let select node =
 		let edit,kid = !out in
 		adr,edit,kid
 	) else ([], ("con",0,'0'), nuledtree)
+
+(* 
+doing it in the functional-ocaml style proved to be more complicated than an imperative style.. 
+this still is not working perfectly!! WARNING *)
+let rec index_ node targadr curadr = 
+	(* given an address, out := kid,edit *)
+	(* usually: generate a new node *)
+	List.combine (Array.to_list node.kids) node.edits
+	|> List.fold_left (fun (i,ik,ied) (d,ed) -> 
+		let adr = i :: curadr in
+		Printf.printf "index targ:%s curr:%s\n" (adr2str targadr) (adr2str adr);
+		match d with 
+		| Some kid -> (
+			if adr = targadr then i+1,kid,ed
+			else (
+				let _,skid,sed = index_ kid targadr adr in (* recurse *)
+				if skid <> nuledtree then i+1,skid,sed
+				else i+1,kid,ed
+			) )
+		| None -> (
+			if adr = targadr then (
+				let progenc = Levenshtein.apply_edits node.progenc [ed] in
+				let edited = update_edited node.edited ed (String.length progenc) in
+				let edits = [] in (* from model! *)
+				let probs = [] in (* must be evaled! *)
+				let kids = [| |] in
+				let kid = { progenc; edited; edits; probs; kids } in
+				node.kids.(i) <- Some kid; 
+				Printf.printf "index: new kid %d %s\n" i progenc;
+				i+1,kid,ed
+			) else (
+				i+1,ik,ied
+			) )
+		) (0,nuledtree, ("con",0,'0') )
 	
-let rec update node targadr curadr eds pr = 
+let select_ node = 
+	(* select the leaf node on the parse data tree 
+		with the highest log probability *)
+	let _,flat = flatten node [] 0.0 in
+	if (List.length flat) > 0 then (
+		let adr,prob = 
+			List.sort (fun (_,a) (_,b) -> compare b a) flat 
+			|> List.hd in
+		Printf.printf "selected %s %f\n" (adr2str adr) prob;
+		let _,kid,edit = index_ node adr [] in
+		adr,edit,kid
+	) else ([], ("con",0,'0'), nuledtree)
+
+	
+let rec update node targadr curadr (eds: (string*int*char) list) (pr:float list) = 
 	(* given an targe address, update the probs and edits *)
 	if targadr = curadr then (
-		node.edits <- eds ; 
-		node.probs <- pr ; 
-		node.kids <- Array.make (List.length eds) None ; 
+		(* filter redundant edits: you can't edit the same position twice *)
+		let edits,probs = List.fold_left (fun (i,acc) ((typ,pos,chr),pr) -> 
+			if pos >= 0 && pos < p_ctx/2 then (
+				if node.edited.(pos) = 0.0 || typ = "fin" 
+				then i+1,((typ,pos,chr),pr)::acc
+				else i+1,acc
+			) else i+1,acc )
+			(0, [])
+			(List.combine eds pr)
+			|> snd |> List.split in
+		node.edits <- List.rev edits ; 
+		node.probs <- List.rev probs ; 
+		node.kids <- Array.make (List.length edits) None ; 
 	) else (
 		Array.iteri (fun i d -> 
 			match d with
@@ -145,6 +205,15 @@ let model_select root =
 	let adr,edit,kid = select root in
 	adr,edit,kid.progenc,kid.edited
 	
+let model_index root adr = 
+	match adr with
+	| [] -> root
+	| _ -> (
+		let out = ref (("con",0,'0'),nuledtree) in
+		index root adr [] out ;
+		let _ed,kid = !out in
+		kid )
+	
 	 
 (* -- testing -- *)
 	 
@@ -164,4 +233,5 @@ let rec print node adr prefix prob =
 		| _ -> () ); 
 	flush stdout
 
-let getprogenc root = root.progenc
+let getprogenc node = node.progenc
+let getedited node = node.edited

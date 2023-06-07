@@ -14,6 +14,7 @@ let speclist =
 let () = 
 	Arg.parse speclist anon_fun usage_msg;
 	Random.self_init (); 
+	gdebug := true; (*can't imagine when you'd not want error msgs*)
 	Logs_threaded.enable ();
 	let () = Logs.set_reporter (Logs.format_reporter ()) in
 	let () = Logs.set_level 

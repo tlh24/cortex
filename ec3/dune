@@ -101,7 +101,7 @@
 (library	
 	(name program)
 	(modules program)
-	(libraries vg vg.cairo vector torch torch.vision pcre logs logs.threaded domainslib sexplib graf lexer parser logo vgwrapper colors levenshtein ast vae editree logoext)
+	(libraries simdb vg vg.cairo vector torch torch.vision pcre logs logs.threaded domainslib sexplib graf lexer parser logo vgwrapper colors levenshtein ast vae editree logoext)
 	)
 
 (executable
@@ -141,6 +141,3 @@
 ; opam install core core_unix vg cairo2 pbrt vector
 ; opam switch create myswitch ocaml-variants.4.14.0+options ocaml-option-flambda
 ; export OCAMLPARAM='_,rounds=4,O3=1,inline=100,inline-max-unroll=5'
-
-; python 3.10 (pytorch doesn't work with 3.11): 
-; source ~/venv/py310/bin/activate

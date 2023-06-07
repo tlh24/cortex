@@ -849,3 +849,63 @@ let update_bea steak bd =
 		Mutex.unlock steak.db_mutex
 	);
 	steak.batchno <- steak.batchno + 1
+
+
+let make_batche_train steak pre post context dt =
+	let a = steak.gs.g.(pre) in
+	let b = steak.gs.g.(post) in
+	let c = steak.gs.g.(context) in
+	let _,edits = Graf.get_edits a.ed.progenc b.ed.progenc in
+	let edited = Array.make (p_ctx/2) 0.0 in
+	{ a_pid = ai
+	; b_pid = bi
+	; a_progenc = a.ed.progenc
+	; b_progenc = b.ed.progenc
+	; c_progenc = a.ed.progenc
+	; a_imgi = a.imgi
+	; b_imgi = b.imgi
+	; edits
+	; edited
+	; count = 0
+	; dt (* dreamt *)
+	}
+
+let new_batche_train_b steak dt =
+	(* not used anymore !! *)
+	(* supervised mode, any 'A' -- including eqiv *)
+	let rec selector () =
+		let di = Random.int (Array.length steak.gs.g) in
+		let d = steak.gs.g.(di) in
+		match d.progt with
+		| `Uniq -> (
+			if String.length d.ed.progenc < (p_ctx/2-2) then (
+				let typ = match (Random.int 8) with
+					| 0 -> "sub"
+					| 1 -> "del"
+					| _ -> "ins" in (* biased!! *)
+				let o = SI.elements d.outgoing
+					|> List.filter (fun (_,t,_,_) -> t = typ) in
+				let ol = List.length o in
+				if ol > 0 then (
+					let k = Random.int ol in
+					let ei,_,_,_ = List.nth o k in
+					let e = steak.gs.g.(ei) in
+					if e.progt = `Uniq then (
+						make_batche_train d di e ei dt
+					) else selector ()
+				) else selector ()
+			) else selector () )
+		| `Equiv -> (
+			if (Random.int 5) = 0 then (
+				(* always simplify to the minimum desc *)
+				if String.length d.ed.progenc < (p_ctx/2-2) && false then (
+					let ei = d.equivroot in
+					let e = steak.gs.g.(ei) in
+					if e.progt = `Uniq then (
+						make_batche_train d di e ei dt
+					) else ( assert (0 <> 0); nulbatche )
+				) else selector ()
+			) else selector () )
+		| _ -> assert (0 <> 0); nulbatche
+	in
+	selector ()

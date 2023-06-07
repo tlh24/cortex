@@ -19,13 +19,23 @@ let simdb_free = foreign "simdb_free"
 			(imgdb @-> returning void) ~from:libss;;
 let simdb_set = foreign "simdb_set" 
 			(imgdb @-> int @-> ptr void @-> returning void) ~from:libss;;
+let simdb_get = foreign "simdb_get" 
+			(imgdb @-> int @-> ptr void @-> returning void) ~from:libss;;
 let simdb_query = foreign "simdb_query" 
 			(imgdb @-> ptr void @-> ptr void @-> ptr void @-> returning void) ~from:libss;;
-			
+let simdb_checksum = foreign "simdb_checksum"
+			(imgdb @-> returning double) ~from:libss;;
+let simdb_clear = foreign "simdb_clear"
+			(imgdb @-> returning void) ~from:libss;;
 (* Note: 
 	https://github.com/dbuenzli/tsdl/blob/master/src/tsdl.ml
 	is a good reference for Ctypes FFI, 
 	including Bigarray accesses *)
+	
+let new_ba_row () = 
+	(* only allocates a bigarray *)
+	Bigarray.Array1.create Bigarray.int8_unsigned Bigarray.c_layout dbDim
+	;;
 
 let rowset sdb i ba = 
 	let len = Bigarray.Array1.dim ba in
@@ -34,6 +44,13 @@ let rowset sdb i ba =
 	else 
 		let ps = to_voidp (bigarray_start array1 ba) in
 		simdb_set sdb i ps
+	;;
+	
+let rowget sdb i = 
+	let ba = new_ba_row () in
+	let ps = to_voidp (bigarray_start array1 ba) in
+	simdb_get sdb i ps; 
+	ba
 	;;
 		
 let query sdb ba = 
@@ -46,16 +63,28 @@ let query sdb ba =
 		let indx = allocate int (-1) in
 		simdb_query sdb ps (to_voidp dist) (to_voidp indx); 
 		!@dist, !@indx
-	)
-	
-let init () = 
-	let sdb = simdb_allocate dbSize in
-	sdb 
+	);;
+
+let checksum sdb = 
+	simdb_checksum sdb
 	;;
+	
+let clear sdb = 
+	simdb_clear sdb; 
+	()
+	;;
+	
+let init count = 
+	if count > dbSize then (
+		invalid_arg (Printf.sprintf "count %d > %d" count dbDim)
+	) else (
+		let sdb = simdb_allocate dbSize in
+		sdb 
+	);;
 
 let test () =
-	let sdb = init () in
-	let ba = Bigarray.Array1.create Bigarray.int8_unsigned Bigarray.c_layout dbDim in
+	let sdb = init dbSize in
+	let ba = new_ba_row () in
 	for k = 0 to dbSize-1 do (
 		for j = 0 to dbDim-1 do (
 			ba.{j} <- Random.int 256

@@ -4343,3 +4343,136 @@ Idea:  Need to make single character "synthetic errors" to a program,
 		If the model makes a mistake, 
 		Store it and add it to the training data. 
 		But, don't store it if the program parses! 
+
+May 25 2023
+
+Alrighty, on branch simdb, perormance has been improved
+and the network seems to be training to convergence
+	quite quickly, too! 
+Yet yet:
+1 -- I don't think the one-hot position encoding is correct.  
+	Maybe rotary encoding, or the more complicated AST encoding is correct. 
+		Have the code in there already.. 
+2 -- Dreaming does not seem to introduce new programs. 
+	Need to check that 'verify' is working OK before proceeding. 
+	I've been burned enough to know that everything needs to be tested ...
+		many many times! 
+	
+May 28 2023
+
+Todo today:
+1 -- Make it so the turtle state is always observable
+	Same as when teaching a human!
+	** Later on, we can change the criteria to encourage:
+	-- Predictability
+		of the edits;
+		don't repeat edits that are not predictable
+	-- Observability
+		The networks / system needs to learn how to
+		*make* the system observable,
+		e.g. by adding in printf statements.
+			Or, better, smart ways of debugging..
+2 -- Make it so that edits default to post-fix.
+	At the present, edits default to prefix -
+	Which goes against the causal structure of the environment.
+
+June 2 2023
+
+OK, need to: 
+* get dreaming working, 
+* make file loading faster (!), 
+* verify editree decoding, which is not 100% --? 
+		Editree decoding now fixed / good.  Clamp() issue with saturating probabilities. 
+	Tends to get caught in loops.. all sub [0] 0
+		You never want to apply the same sub repeatedly.
+	Hm. problem seems to be that it's not been trained on fin (?!)
+then need to think more carefully / clearly about what the problem is & how to go about solving it: 
+	The current approach is clearly not working well. 
+E.g. 
+	(Thoughts on the run last night): 
+1 -- Need longer context: both the next step and the long-term goal. 
+	The current recognizer only 'sees' the next steps. 
+2 -- Current position encoding is crap.  
+	One-hot doesn't scale. 
+	Might be time for graph-aware encoding. 
+		For sure need positive controls! 
+3 -- Recognizer only really works when it's converged (?) 
+4 -- Maybe soumething more like a diffusion model: 
+	Start with random mutations, and have a model that corrects them based on a specification. 
+		This would be easy to train: 
+			From a set of working programs, mutate them to produce non-working programs. 
+			more UDRL. 
+5 -- Thorn: making the network 'decide' what segment it will work on next. 
+	It needs to learn to ignore extraneous details, which is something hard~!
+	Could incorporate into the search the ability to evaluate solutions..?
+	Model def needs to be convergent for this to work: 
+		It doesn't or seldom outputs bad code. 
+
+Ok, bug in the code: 
+bedtd clearly shows 'fin' ... 
+but, only 'sub' is being decoded .. ?? 
+seems there is a delay somewhere; later, it starts to decode 'ins' only. 
+Yeah, as expected - and worried about - the editree is not working. 
+Multiple redundant edits are being applied.. 
+	Likely simply need to check the 'edit' array and discard them! 
+
+June 6 2022
+
+Many experiments today. 
+1 -- The editree does seem to be working properly. 
+	It was likely not broken before (other than allowing redundant edits)
+2 -- Decoding accuracy does not seem to depend much on MSE or cross entropy loss. 
+	Cross entropy loss makes the decoded edits look a lot worse
+	MSE loss introduces spikes into the loss timeseries / seems unstable with ADAM
+3 -- Critical: the model does not seem to require the images to suggest an edit (?!)
+	Huh ... so ... 
+	Checked this by adding poisson noise to the bimg data from ocaml. 
+	When rate = 1, no scaling, still get the following decoding accuracies: 
+		decode_edit: correct typ 0.990 chr 0.912 pos 0.943
+	 (Noticed this phenomena while looking at the plotted outputs: pretty hard for a human to figure it out..)
+	I guess the next step would be to add poisson noise to the supervised edit, make sure it degrades percipitously.  
+		Maybe forcing the network to rely more on vision, not continuation of edits. 
+	Then again: if it was so good at suggesting edits, 
+	how come most all of the dreams are not well-formed??
+
+4 -- I'm still not happy with the one-hot positional encoding. 
+	Seems everyone uses rotary encoding ... will have to implement that? 
+	After reading over: 
+	https://blog.eleuther.ai/rotary-embeddings/
+	I better understand rotary embeddings: 
+	They literally rotate the embedded vectors so that the dot-product calculation is independent of the absolute position 
+
+	That's OK: 
+	the model does not have to output absolute position, like we do. 
+	Autoregressive models simply have to output the next token. 
+	
+	As mentioned to LiAn, also seems that we need to get the model accuracy from about 90% to 99% for edit decoding to work reliably. 
+		In the past, have had positive controls that reliably attained this. 
+		Need to get such a positive control. 
+		(Also need to reduce the size of the model, improve training speed). 
+	
+	Another important metric to look at is the validation accuracy of the model -- maybe it cannot disambiguate similar edits, and so vacillates between the two?? 
+	
+	The other thing we could do is completely change the training regieme to be exclusively last-angle change and add-segment
+	Which is realistically what humans would do anyway. 
+	Likely as much as anything that the network can't reliably generalize from  the training data
+		But, given that: perhaps the solution is to remove training data that is utterly unpredicatble? 
+		That is, add a feedback loop? 
+	{I've also made the model smaller - 6M params from 10M - more in line with our small training dataset}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

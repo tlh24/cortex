@@ -4,7 +4,7 @@ open Vgwrapper
 (* names are more interpretable by humans ... but that's a big space *)
 type ptag = int (* future-proof *)
 let nulptag = 0
-let nulimg = Bigarray.Array2.create Bigarray.float32 Bigarray.c_layout 1 1
+let nulimg = Bigarray.Array1.create Bigarray.int8_unsigned Bigarray.c_layout 1
 
 type prog = [
 	| `Var of int * ptag
@@ -580,22 +580,22 @@ let segs_to_png segs resolution filename =
   let canvas,_ = segs_to_canvas segs in
   output_canvas_png canvas resolution filename
 
-let segs_to_array_and_cost segs resolution =
+let segs_to_array_and_cost segs res =
 	(* outputs a *float* image and cost *)
 	(* float so we don't have to convert all the time.  more mem b/w tho*)
 	let canvas,cost = segs_to_canvas segs in
 	(* don't render if the resolution is zero, obvi *)
-	if resolution > 0 then (
-		let img = canvas_to_1Darray canvas resolution in
+	if res > 0 then (
+		let img = canvas_to_1Darray canvas res in
 		(* these sometimes have stride > resolution; pack it *)
-		let stride = (Bigarray.Array1.dim img) / resolution in
+		let stride = (Bigarray.Array1.dim img) / res in
 		let len = Bigarray.Array1.dim img in
-		assert (len >= resolution * resolution);
-		let o = Bigarray.Array2.create Bigarray.float32 Bigarray.c_layout resolution resolution in
-		for i = 0 to resolution-1 do (
-			for j = 0 to resolution-1 do (
-				let c = Bigarray.Array1.get img ((i*stride)+j) |> foi in
-				o.{i,j} <- c /. 255.0; 
+		assert (len >= res * res);
+		let o = Bigarray.Array1.create Bigarray.int8_unsigned Bigarray.c_layout (res*res) in
+		for i = 0 to res-1 do (
+			for j = 0 to res-1 do (
+				let c = Bigarray.Array1.get img ((i*stride)+j) in
+				o.{i*res+j} <- c ; 
 			) done; 
 		) done;
 		(o, cost)

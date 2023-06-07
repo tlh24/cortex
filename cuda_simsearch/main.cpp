@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <iostream>
 #include <random>
+#include <cstring>
 #include "simsearch.h"
 
 using namespace std;
@@ -65,6 +66,39 @@ int main()
 		(DB_SIZE*DIM)/((duration.tv_nsec / 2e10)* 1e9));
 	printf("Best match: %d, should be %d; Minimum distance: %f\n",
 			 minIndx, random_indx, minDist);
+
+	 // full reset, all rows active.
+	simdb_clear(sdb);
+	memset(q, 0, DIMSHORT);
+	for(int j=0; j<DB_SIZE; j++){
+		simdb_set(sdb, j, q);
+	}
+	// check clearing & maximum distance
+	for(int u=1; u < DIMSHORT; u++){
+		int j = 0; 
+		for(; j<u; j++){
+			q[j] = (unsigned char)255;
+		}
+		for(; j<DIMSHORT; j++){
+			q[j] = (unsigned char)0;
+		}
+		simdb_query(sdb, q, &minDist, &minIndx);
+		int y = round(minDist / (255.0 * 255.0)); 
+		if(u != y) { 
+			printf("defined dist: %d, should be %d\n", y, u); 
+		}
+	}
+	
+	//check random distance
+	float sum = 0.0; 
+	for(int j=0; j<DIMSHORT; j++){
+		int u = distribution256(generator);
+		q[j] = (unsigned char)u;
+		sum += u * u; 
+	}
+	simdb_query(sdb, q, &minDist, &minIndx);
+	printf("defined dist: %f, should be %f\n",
+				minDist , sum);
 
 	simdb_free(sdb);
 	return 0;

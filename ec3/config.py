@@ -7,20 +7,21 @@ class ModelConfig(BaseModel):
     # data
     image_res: int = Field(30, description="Image resolution")
     toklen: int = Field(30, description="Token length")
-    p_ctx: int = Field(64, description="Context for program")
-    poslen: int = Field(32, description="Position length")
-    p_indim: int = Field(63, description="Program input dimension")
-    e_indim: int = Field(67, description="Encoder input dimension")
+    p_ctx: int = Field(96, description="Context for program")
+    
+    poslen: int = Field(None, description="Position length")
+    p_indim: int = Field(None, description="Program input dimension")
+    e_indim: int = Field(None, description="Encoder input dimension")
     patch_size: int = Field(5, description="Patch size for vision model")
     # Recognizer model
     v_ctx: int = Field(None, description="Context for vision model")
-    vision_width: int = Field(256, description="Vision width")
-    prog_width: int = Field(256, description="Program width")
-    vision_heads: int = Field(8, description="Number of vision heads")
+    vision_width: int = Field(192, description="Vision width")
+    prog_width: int = Field(192, description="Program width")
+    vision_heads: int = Field(6, description="Number of vision heads")
     vision_layers: int = Field(6, description="Number of vision layers")
-    prog_heads: int = Field(8, description="Number of program heads")
-    prog_layers: int = Field(8, description="Number of program layers")
-    embed_dim: int = Field(256, description="Embedding dimension")
+    prog_heads: int = Field(6, description="Number of program heads")
+    prog_layers: int = Field(6, description="Number of program layers")
+    embed_dim: int = Field(192, description="Embedding dimension")
     # training
     train_iters: int = Field(100000, description="Number of training iterations")
     learning_rate: float = Field(0.00025, description="Learning rate")
@@ -54,3 +55,15 @@ class ModelConfig(BaseModel):
     @property
     def edsiz_allocate_command(self):
         return f"fallocate -l {self.edsiz} editdiff_{self.mmapno}.mmap"
+
+    @property
+    def poslen(self):
+        return self.p_ctx // 2
+    
+    @property
+    def p_indim(self):
+        return self.toklen + 1 + self.poslen
+    
+    @property
+    def e_indim(self):
+        return 5 + self.toklen + self.poslen

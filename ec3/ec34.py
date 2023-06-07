@@ -10,7 +10,7 @@ from recognizer.model import Recognizer
 import wandb
 import torch._dynamo as dynamo
 dynamo.config.verbose=True
-# note: I can't seem to get this to work. tlh April 7 2023
+# note: I can't seem to get dynamo to work. tlh April 7 2023
 
 
 parser = argparse.ArgumentParser(description='Transformer-based program synthesizer')
@@ -23,7 +23,7 @@ dreaming = args.dreaming
 
 mc = ModelConfig(dreaming=args.dreaming, batch_size=args.batch_size)
 
-run = wandb.init(entity='cortex-ec3', project="cortex", config=mc.dict())
+run = wandb.init(entity='cortex-ec3', project="cortex", config=mc.dict(), mode="disabled")
 
 print(f"batch_size:{mc.batch_size}")
 print(f"dreaming:{mc.dreaming}")
@@ -131,29 +131,43 @@ for u in range(mc.train_iters):
 	
 	if mc.training: 
 		model.zero_grad()
+		x = bimg.cuda()
+		x = x + th.poisson(th.ones_like(x)) / 12
 		y,q = model(u, bimg.cuda(), bpro.cuda())
 		targ = bedts.cuda()
-		# loss = lossfunc_mse(y, targ)
-		loss = lossfunc_cel(y[:,0:4], targ[:,0:4]) + \
-				 lossfunc_cel(y[:,4:mc.toklen], targ[:,4:mc.toklen]) + \
-				 lossfunc_cel(y[:,5+mc.toklen:], targ[:,5+mc.toklen:])
-		lossflat = th.sum(loss)
+		
+		# alternate between MSE and cross-entropy losses
+		if True: # (u // 500) % 2 == 0: 
+			loss_mse = lossfunc_mse(y, targ)
+			lossflat = th.sum(loss_mse)
+		else: 
+			loss_cel = lossfunc_cel(y[:,0:4], targ[:,0:4]) + \
+					lossfunc_cel(y[:,4:mc.toklen], targ[:,4:mc.toklen]) + \
+					lossfunc_cel(y[:,5+mc.toklen:], targ[:,5+mc.toklen:])
+			lossflat = th.sum(loss_cel)
+		# lossflat = th.sum(2*loss_mse + loss_cel)
+		
 		lossflat.backward()
 		th.nn.utils.clip_grad_norm_(model.parameters(), 0.025)
 		optimizer.step() 
 		lossflat.detach()
+	# else: 
+	# 	bimg = bimg.cuda()
+	# 	bpro = bpro.cuda()
+	# 	# introduce noise to the target image and average model output 
+	# 	# so ocaml has a better estimate of edit probabilities
+	# 	bimg1 = bimg + th.randn(batch_size, 3, mc.image_res, mc.image_res) * 0.1
+	# 	y1,q = model(u, bimg1, bpro)
+	# 	bimg2 = bimg + th.randn(batch_size, 3, mc.image_res, mc.image_res) * 0.1
+	# 	y2,q = model(u, bimg2, bpro)
+	# 	bimg3 = bimg + th.randn(batch_size, 3, mc.image_res, mc.image_res) * 0.1
+	# 	y3,q = model(u, bimg3, bpro)
+	# 	y = (y1 + y2 + y3)/3.0
+	# 	lossflat = 0.0
 	else: 
 		bimg = bimg.cuda()
 		bpro = bpro.cuda()
-		# introduce noise to the target image and average model output 
-		# so ocaml has a better estimate of edit probabilities
-		bimg1 = bimg + th.randn(batch_size, 3, mc.image_res, mc.image_res) * 0.1
-		y1,q = model(u, bimg1, bpro)
-		bimg2 = bimg + th.randn(batch_size, 3, mc.image_res, mc.image_res) * 0.1
-		y2,q = model(u, bimg2, bpro)
-		bimg3 = bimg + th.randn(batch_size, 3, mc.image_res, mc.image_res) * 0.1
-		y3,q = model(u, bimg3, bpro)
-		y = (y1 + y2 + y3)/3.0
+		y,q = model(u, bimg, bpro)
 		lossflat = 0.0
   
 	slowloss = 0.99*slowloss + 0.01 * lossflat
