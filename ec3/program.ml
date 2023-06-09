@@ -693,6 +693,77 @@ let apply_edits be ed =
 	be2
 	
 let better_counter = Atomic.make 0
+
+let tryadd_program (?dolog=false) (?fid=`None) stk data img override u =
+	let good,dist,minde = if override then true,10000.0,0
+		else simdb_dist stk img in
+	let mindex = stk.gs.img_inv.(minde) in
+	if mindex < 0 then (
+		simdb_to_png stk minde "tryadd_error.png"; 
+		Logs.error (fun m->m "tryadd imgi:%d i:%d" minde mindex); 
+		assert ( 0 <> 0 )
+	); 
+	if good then (
+		let s = Logo.output_program_pstr data.pro in
+		(* bug: white image sets distance to 1.0 to [0] *)
+		if dist > 4096.0 then (
+			let added,y = db_add_uniq stk data img in
+			if not added then Logs.err (fun m->m "did not add %s to db" s);
+			if added && dolog then (
+				Logo.segs_to_png data.segs 64
+					(Printf.sprintf "%s/db%05d_.png" root y);
+				simdb_to_png stk stk.gs.g.(y).imgi
+					(Printf.sprintf "%s/db%05d_f.png" root y);
+			); 
+			match fid with
+			| Some fd -> 
+				Printf.fprintf fid "[%d] %s (dist:%f to:%d)\n" y s dist mindex
+			| _ -> () ; 
+			incr u;
+		) ;
+		if dist < 256.0 then (
+			Logs.debug (fun m->m "tryadd replacement %d %f" mindex dist);
+			(* see if there's a replacement *)
+			let data2 = db_get stk mindex in
+			let c1 = data.pcost in (* progenc_cost  *)
+			let c2 = data2.ed.pcost in
+			if c1 < c2 then (
+				let r = db_replace_equiv stk mindex data img in
+				if r >= 0 then (
+					(*Logs.debug (fun m->m "   distance %f" dist);*)
+					(*Logs.debug(fun m -> m
+					"replacing [%d] = %s ( was %s) dist:%f new [%d]"
+					mindex
+					(Logo.output_program_pstr data.pro)
+					(Logo.output_program_pstr data2.ed.pro) dist r);*)
+					incr u;
+				)
+			);
+			if c1 > c2 then (
+				if (SI.cardinal data2.equivalents) < 16 then (
+					let r = db_add_equiv stk mindex data in
+					(*Logs.debug (fun m->m "   distance %f" dist); *)
+					if r >= 0 then (
+						(*Logs.debug(fun m -> m
+						"added equiv [loc %d] = %s [new loc %d] ( simpler= %s) %s %s same:%b dist:%f"
+						mindex
+						(Logo.output_program_pstr data.pro) r
+						(Logo.output_program_pstr data2.ed.pro)
+						data.progenc data2.ed.progenc
+						(data.progenc = data2.ed.progenc) dist);*)
+						incr u;
+					)
+				)
+			);
+		) ; 
+		if dist <= 4096.0 && dist >= 256.0 then (
+			(*Logs.debug (fun m->m "%s reject, dist: %f to: %d" 
+				s dist mindex)*)
+		)
+	) else (
+		(*Logs.debug (fun m->m "%d: dist %f not good: %s %f" !iters dist s data.scost)*)
+	) 
+	;;
 	
 let try_add_program steak data img be = 
 	if true then (
@@ -711,10 +782,10 @@ let try_add_program steak data img be =
 		let c1 = data.pcost in
 		let c2 = data2.ed.pcost in
 		if c1 < c2 then (
-			let progstr = progenc2str data.progenc in
-			let progstr2 = progenc2str data2.ed.progenc in
 			let r = db_replace_equiv steak mindex data img in
 			if r >= 0 then (
+				let progstr = progenc2str data.progenc in
+				let progstr2 = progenc2str data2.ed.progenc in
 				let root = "/tmp/ec3/replace_verify" in
 				Logs.info (fun m -> m "#%d b:%d replacing equivalents [%d] %f %s with %s" !nreplace steak.batchno mindex dist progstr2 progstr);
 				Printf.fprintf steak.fid
@@ -788,8 +859,6 @@ let try_add_program steak data img be =
 	| _ -> ()
 	) ); 
 	!success
-	(* NOTE not sure if we need to call GC here *)
-	(* apparently not? *)
 	
 let update_bea_parallel body steak description =
 	let sta = Unix.gettimeofday () in
@@ -1285,76 +1354,6 @@ let init_database steak count =
 	let u = ref 0 in
 	let iters = ref 0 in
 
-	let tryadd stk data img override =
-		let good,dist,minde = if override then true,10000.0,0
-			else simdb_dist stk img in
-		let mindex = stk.gs.img_inv.(minde) in
-		if mindex < 0 then (
-			simdb_to_png stk minde "tryadd_error.png"; 
-			Logs.debug (fun m->m "tryadd imgi:%d i:%d" minde mindex); 
-		); 
-		let s = Logo.output_program_pstr data.pro in
-		if good then (
-		(* bug: white image sets distance to 1.0 to [0] *)
-		if dist > 4096.0 then (
-			(*Logs.debug(fun m -> m
-				"%d: adding [%d] = %s" !iters !u s);*)
-			let added,y = db_add_uniq stk data img in
-			if not added then Logs.err (fun m->m "did not add %s to db" s);
-			if added then (
-				Logo.segs_to_png data.segs 64
-					(Printf.sprintf "%s/db%05d_.png" root y);
-				simdb_to_png stk stk.gs.g.(y).imgi
-					(Printf.sprintf "%s/db%05d_f.png" root y);
-			); 
-			Printf.fprintf fid "[%d] %s (dist:%f to:%d)\n" y s dist mindex;
-			incr u;
-		) ;
-		if dist < 256.0 then (
-			Logs.debug (fun m->m "tryadd replacement %d %f" mindex dist);
-			(* see if there's a replacement *)
-			let data2 = db_get stk mindex in
-			let c1 = data.pcost in (* progenc_cost  *)
-			let c2 = data2.ed.pcost in
-			if c1 < c2 then (
-				let r = db_replace_equiv stk mindex data img in
-				if r >= 0 then (
-					(*Logs.debug (fun m->m "   distance %f" dist);*)
-					(*Logs.debug(fun m -> m
-					"%d: replacing [%d] = %s ( was %s) dist:%f new [%d]"
-					!iters mindex
-					(Logo.output_program_pstr data.pro)
-					(Logo.output_program_pstr data2.ed.pro) dist r);*)
-					incr u;
-				)
-			);
-			if c1 > c2 then (
-				if (SI.cardinal data2.equivalents) < 16 then (
-					let r = db_add_equiv stk mindex data in
-					(*Logs.debug (fun m->m "   distance %f" dist); *)
-					if r >= 0 then (
-						(*Logs.debug(fun m -> m
-						"iter %d: added equiv [loc %d] = %s [new loc %d] ( simpler= %s) %s %s same:%b dist:%f"
-						!iters mindex
-						(Logo.output_program_pstr data.pro) r
-						(Logo.output_program_pstr data2.ed.pro)
-						data.progenc data2.ed.progenc
-						(data.progenc = data2.ed.progenc) dist);*)
-						incr u;
-					)
-				)
-			);
-		) ; 
-		if dist <= 4096.0 && dist >= 256.0 then (
-			(*Logs.debug (fun m->m "%d: %s reject, dist: %f to: %d" 
-				!iters s dist mindex)*)
-		)
-		) else (
-			(*Logs.debug (fun m->m "%d: dist %f not good: %s %f" !iters dist s data.scost)*)
-		) ; 
-		incr iters
-	in
-
 	let tryadd_fromstr stk str override =
 		(*Logs.debug (fun m->m "tryadd %s" str); *)
 		let sc = if String.length str = 0 then "" else ";" in
@@ -1362,7 +1361,7 @@ let init_database steak count =
 		let str2 = "(" ^ str ^ sc ^ " pen 2/9; move 6,0 )" in
 		let data,img = generate_logo_fromstr str2 in
 		(*Logs.debug (fun m->m "tryadd %s" str2);*)
-		tryadd stk data img override
+		tryadd_program ~dolog;true ~fid stk data img override u
 	in
 
 	tryadd_fromstr steak "" true;
@@ -1410,14 +1409,14 @@ let init_database steak count =
 			r3 := s :: !r3;
 			incr n
 		) done;
-		while !n < (iof ((foi count) *. 0.33)) do (
+		while !n < (iof ((foi count) *. 0.25)) do (
 			let k = Random.int (Array.length penopts) in
 			let j = Random.int nra in
 			let s = penopts.(k) ^ ";" ^ ra.(j) in
 			r3 := s :: !r3;
 			incr n
 		) done;
-		while !n < (iof ((foi count) *. 0.66)) do (
+		while !n < (iof ((foi count) *. 0.50)) do (
 			let i = Random.int nra in
 			let j = Random.int nra in
 			let k = Random.int (Array.length penopts) in
@@ -1427,7 +1426,7 @@ let init_database steak count =
 			r3 := s :: !r3;
 			incr n
 		) done; 
-		while !n < (iof ((foi count) *. 0.999)) do (
+		while !n < (iof ((foi count) *. 0.75)) do (
 			let i = Random.int nra in
 			let j = Random.int nra in
 			let k = Random.int nra in
@@ -1481,7 +1480,7 @@ let init_database steak count =
 	) done; *)
 	close_out fid; 
 	(*let steak = sort_database steak in*)
-	Logs.info(fun m -> m  "%d done; %d sampled; %d replacements; %d equivalents" !u !iters steak.gs.num_uniq steak.gs.num_equiv); 
+	Logs.info(fun m -> m  "%d done; %d replacements; %d equivalents" !u steak.gs.num_uniq steak.gs.num_equiv); 
 	steak
 	;;
 

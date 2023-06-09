@@ -19,8 +19,6 @@ let nuledtree =
 	
 let nuled = ("con",0,'0')
 	
-let soi = string_of_int
-let iof = int_of_float
 let adr2str adr = 
 	List.fold_left (fun a b -> a^(soi b)^",") "" adr 
 	

@@ -83,7 +83,7 @@ type gstat =
 	{ g : gdata array
 	; image_alloc : int (* number of uniq allocated in torch mem*)
 	; all_alloc : int	  (* number of uniq + equiv = Array.len g *)
-	; img_inv : int array (* points back to g, g[img_inv.(i)].imgi = i *)
+	; img_inv : int array (* if g[j].imgi = i then img_inv[i] = j *)
 	; mutable free_slots : int list (* in g *)
 	; mutable free_img : int list (* in g *)
 	; mutable num_uniq : int
@@ -254,12 +254,10 @@ let add_uniq mtx pool gs ed =
 	 Mutex.unlock mtx; 
 	
 	if imgi >= 0 && ni >= 0 then (
-		(*if imgi = 709 then 
-			Logs.debug (fun m -> m "add_uniq ni:%d imgi:%d" ni imgi);*)
 		let d = {nulgdata with ed; progt = `Uniq; imgi} in
 		 Mutex.lock mtx;
 		gs.g.(ni) <- d; 
-		gs.img_inv.(d.imgi) <- ni ; (* back pointer *)
+		gs.img_inv.(imgi) <- ni ; (* back pointer *)
 		gs.num_uniq <- gs.num_uniq + 1; 
 		 Mutex.unlock mtx;
 		connect mtx pool gs.g ni; 
@@ -524,7 +522,7 @@ let save fname g =
 
 let load gs fname = 
 	(* does *not* render the programs *)
-	Printf.printf "Graf.load %s%!" fname; flush stdout; 
+	Printf.printf "Graf.load %s\n%!" fname; flush stdout; 
 	let open Sexplib in
 	let ic = open_in fname in
 	Printf.printf "Parsing Sexps...\n%!"; flush stdout; 

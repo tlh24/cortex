@@ -4489,10 +4489,26 @@ Issues with this idea:
 		AST address -> address transformer -> edit address
 		But then you need to sample multiple times from the address decoder transformer?? Hmm. 
 
+June 8 2023
+	Seems like try_add_program is messing up the database... 
+	Need to check this more! 
+	Lots of not equiv, 
+	and graph edges are wrong -> training barfs b/c it visits nul edges. 
+	Also, ought to make backups of known-good databases. 
 
+Why is try_add_program adding non equivalent nodes? 
+Idk, but can confirm that /tmp/ec3/replace_verify/ has image triples that are not all the same: 
+Odd image is 'old', entry in simdb looks legit. (modulo weird aliasing at 30pix res). 
+Old is from data2.ed.segs
+which is from let data2 = db_get steak mindex in
+mindex is from  steak.gs.img_inv.(minde)
+simdb outputs from minde too, so one would assume that (somehow) 
+steak.gs.img_inv.(minde) is getting thrashed. 
 
+(It is not being affected in init_database.
+render_database just inverts steak.gs.g.(n).imgi
 
-
+Something else is going on .. save that for tomorrow. 
 
 
 
