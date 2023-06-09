@@ -1,20 +1,11 @@
+open Constants
 open Printf
 open Logo
 open Ast
 open Torch
 open Graf
 
-let pi = 3.1415926
-(*let image_count = ref 0 *)
-let image_alloc = 32*1024 (*6*2048*2*) (* need to make this a parameter *)
-let all_alloc = 32*1024 (* including equivalents *)
-let image_res = 30
-let batch_size = ref 512
-let toklen = 30
-let p_ctx = 96
-let poslen = p_ctx / 2 (* onehot; two programs need to fit into the context *)
-let p_indim = toklen + 1 + poslen (* 31 + 12 = 43 *)
-let e_indim = 5 + toklen + poslen
+
 let nreplace = ref 0 (* number of replacements during hallucinations *)
 let glive = ref true 
 let gdebug = ref false 
@@ -146,10 +137,8 @@ let progenc_to_edata progenc =
 	let g = parse_logo_string progstr in
 	match g with
 	| Some g2 -> (
-		let pd = Graf.pro_to_edata_opt g2 image_res in
-		match pd with
-		| Some(data,img) -> (true,data,img)
-		| _ -> (false,nuledata,Logo.nulimg) )
+		let data,img = Graf.pro_to_edata g2 image_res in
+		(true,data,img))
 	| _ -> (false,nuledata,Logo.nulimg)
 
 let render_simplest steak =
@@ -551,7 +540,7 @@ let rec new_batche_train_mnist steak bi =
 
 		
 let new_batche_unsup steak bi =
-	(* need to add a mode for this! *)
+	(* need to add a mode for verify! *)
 	if (Random.int 10) < 0 then ( (* FIXME 5 *)
 		new_batche_train steak `Verify bi
 	) else (
@@ -559,8 +548,7 @@ let new_batche_unsup steak bi =
 	)
 	
 let new_batche_sup steak bi =
-	(* need to add a mode for this! *)
-	if (Random.int 10) < 0 then ( (* FIXME 5 *)
+	if (Random.int 10) < 5 then ( (* FIXME 5 *)
 		new_batche_train steak `Train bi
 	) else (
 		new_batche_train_mnist steak bi

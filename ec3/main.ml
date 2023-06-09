@@ -5,6 +5,7 @@ open Logo
 open Ast
 open Graf*)
 open Torch
+open Constants
 open Program
 
 let usage_msg = "program.exe -b <batch_size>"

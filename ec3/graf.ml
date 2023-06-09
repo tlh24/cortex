@@ -1,6 +1,7 @@
 open Lexer
 open Lexing
 open Domainslib
+open Constants
 
 (* the Array stores the actual data,
 while the edges are stored as integers (pointers)
@@ -13,10 +14,6 @@ This makes access fast and simple, but requires care to maintain the mapping
 Changing the representation of equivalents: they are still members of the same graph, which allows them to be nodes in a path (e.g. on the transition graph for refactors and such), only they don't possess image data.  
 The original implementation kept these separate. 
 *)
-let soi = string_of_int
-let ios = int_of_string
-let foi = float_of_int
-let iof = int_of_float
 
 module SI = Set.Make( 
 	(* set for outgoing connections *)
@@ -488,14 +485,14 @@ let pro_to_edata pro res =
 	
 let pro_to_edata_opt pro res = 
 	(* returns `None if the prorgam doesn't meet segment criteria *)
+	(* depreciated -- don't use this anymore! *)
 	let ed,img = pro_to_edata pro res in
 	let lx,hx,ly,hy = Ast.segs_bbx ed.segs in
 	let dx = hx-.lx in
 	let dy = hy-.ly in
 	let maxd = max dx dy in
-	XXX (* FIXME !! *)
-	if maxd >= 2. && maxd <= 9. && ed.scost >= 4. && ed.scost <= 64. 
-	&& List.length ed.segs < 8 && String.length ed.progenc < 24 then (
+	if maxd >= 1. && maxd <= 19. && ed.scost >= 4. && ed.scost <= 64. 
+	&& List.length ed.segs < 8 && String.length ed.progenc < p_ctx/2 then (
 		Some (ed, img)
 	) else None 
 	
@@ -790,7 +787,6 @@ let remove_unreachable mtx gs =
 	(* remove programs that are too long *)
 	let too_long = ref 0 in
 	Array.iteri (fun i d -> 
-		let p_ctx = 96 in
 		if String.length d.ed.progenc > p_ctx/2-2 then (
 			dist.(i) <- (-1.0) ;
 			incr too_long

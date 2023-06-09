@@ -6,6 +6,7 @@ open Ast
 open Torch
 open Graf*)
 (*open Torch*)
+open Constants
 open Program
 
 let usage_msg = "verify.exe <db_file>"
@@ -30,7 +31,7 @@ let () =
 				(Torch.Cuda.cudnn_is_available ()));
 	
 	let device = Torch.Device.cuda_if_available () in
-	let gs = Graf.create Program.all_alloc Program.image_alloc in
+	let gs = Graf.create all_alloc image_alloc in
 	let sdb = Simdb.init image_alloc in
 	let mnist = Torch.Tensor.zeros [2;2] in
 	let mnist_cpu = Torch.Tensor.zeros [2;2] in
