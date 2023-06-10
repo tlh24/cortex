@@ -98,7 +98,8 @@ optimizer = optim.Adam(model.parameters(), lr=mc.learning_rate)
 	
 scaler = torch.cuda.amp.GradScaler()
 slowloss = 1.0
-losslog = open("loss_log.txt", "w")
+if mc.training: 
+	losslog = open("loss_log.txt", "w")
 tic = time.time()
 if mc.training:
 	print("training...")

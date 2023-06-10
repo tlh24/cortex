@@ -36,20 +36,35 @@ let new_ba_row () =
 	(* only allocates a bigarray *)
 	Bigarray.Array1.create Bigarray.int8_unsigned Bigarray.c_layout dbDim
 	;;
+	
+let mutex = Mutex.create () 
+(* I don't fully unserstand why, 
+	But it's clear that multiple 'query' calls from simultaneous threads
+	leads to invalid results. 
+	This may be a function of how Ctypes interfaces with .so -
+	should be through system threads, but maybe not? 
+	maybe it expects everything to be from the main thread? 
+	Irregardless, this works and doesn't seem to slow things down appreciably. 
+	If we need to speed things further, can batch the queries. 
+	*)
 
 let rowset sdb i ba = 
 	let len = Bigarray.Array1.dim ba in
 	if len <> dbDim then 
 		invalid_arg (Printf.sprintf "array length %d not %d" len dbDim)
-	else 
+	else (
 		let ps = to_voidp (bigarray_start array1 ba) in
-		simdb_set sdb i ps
-	;;
+		Mutex.lock mutex; 
+		simdb_set sdb i ps; 
+		Mutex.unlock mutex
+	);;
 	
 let rowget sdb i = 
 	let ba = new_ba_row () in
 	let ps = to_voidp (bigarray_start array1 ba) in
+	Mutex.lock mutex; 
 	simdb_get sdb i ps; 
+	Mutex.unlock mutex; 
 	ba
 	;;
 		
@@ -61,16 +76,23 @@ let query sdb ba =
 		let ps = to_voidp (bigarray_start array1 ba) in
 		let dist = allocate float (-1.0) in
 		let indx = allocate int (-1) in
+		Mutex.lock mutex; 
 		simdb_query sdb ps (to_voidp dist) (to_voidp indx); 
+		Mutex.unlock mutex; 
 		!@dist, !@indx
 	);;
 
 let checksum sdb = 
-	simdb_checksum sdb
+	Mutex.lock mutex; 
+	let res = simdb_checksum sdb in
+	Mutex.unlock mutex;
+	res
 	;;
 	
 let clear sdb = 
+	Mutex.lock mutex; 
 	simdb_clear sdb; 
+	Mutex.unlock mutex; 
 	()
 	;;
 	
@@ -78,7 +100,9 @@ let init count =
 	if count > dbSize then (
 		invalid_arg (Printf.sprintf "count %d > %d" count dbDim)
 	) else (
+		Mutex.lock mutex; 
 		let sdb = simdb_allocate dbSize in
+		Mutex.unlock mutex; 
 		sdb 
 	);;
 

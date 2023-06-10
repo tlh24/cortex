@@ -4508,12 +4508,69 @@ steak.gs.img_inv.(minde) is getting thrashed.
 (It is not being affected in init_database.
 render_database just inverts steak.gs.g.(n).imgi
 
+Could be the "made an improvement" code? 
+in db_improved.S, there are 6 new equivalents. 
+Two of them are not actually equivalent.
+not equiv (986633.000000) 10038 21101:
+        ( move 2 * 2 , 0 - ua / 4 ; move ul , 0 - ua / 3 ; pen 3 ; pen 2 / 9 ; move 6 , 0 )  
+        ( move 5 / 2 , ua ; move 3 , 0 - ua / 3 ; pen ul ; pen 2 / 9 ; move 6 , 0 )  
+not equiv (986633.000000) 21101 10038:
+        ( move 5 / 2 , ua ; move 3 , 0 - ua / 3 ; pen ul ; pen 2 / 9 ; move 6 , 0 )  
+        ( move 2 * 2 , 0 - ua / 4 ; move ul , 0 - ua / 3 ; pen 3 ; pen 2 / 9 ; move 6 , 0 )  
+
 Something else is going on .. save that for tomorrow. 
 
+June 9 2023
 
+The two programs above area indeed not equivalent, obviously.  
+Completely diferent shapes! 
+OK, this means that the simdb_dist function is somehow crashing or giving wrong results when parallel is enabled? 
+Let's try turning off, see if it fixes it. 
+Seems ok.  I guess we need to protect simdb multi-threaded access. 
+Perhaps ocaml-> C FFI is not safely multi-threaded? 
+Is it a query issue (overlapping queries - should work)
+or is it a data management issue (results are invalid while rows in the DB are being written)? 
+Let's see.. if all writes are disabled, only equivalents, parallel enabled, is graph still valid? 
+Nope.  Not valid. 
+Importantly: the number of uniq has increased by 2.
 
+main.exe: [DEBUG] Loaded db_sorted.S uniq:20116 equiv:1334
+main.exe: [INFO] saved 32768 (20116 uniq, 1393 equiv) to db_improved.S
+<restart>
+verify.exe: [DEBUG] Loaded db_improved.S uniq:20128 equiv:1381
 
+Why are the read and write counts for the same file different?
+Try again: 
+<same db_sorted.S>
+main.exe: [INFO] saved 32768 (20116 uniq, 1329 equiv) to db_improved.S
+verify.exe: [DEBUG] Loaded db_improved.S uniq:20116 equiv:1329
 
+ok, that's better. 
+But why did the number of equivalents go down by 5?
+Seems that we've replaced exactly 5 equivalents ... so it should increase no?
+AH, it's because remove_unreachable removed 10 termial equivs. 
+Again, with parallel on, 3 of those equivalents are false. 
 
+Turned parallel off again. 8 equivalent replacements. 
+1334 - 10 = 1324 +8 = 1332 OK
+with parallel off, all good. 
 
+Since I'm paranoid, will try again with both Equiv and Uniq writes disabled in try_add_prorgam.
+Numbers look legit. 
+	(Need to start with something smaller so that verify goes quicker!)
+	
+I guess the interim solution is to Mutex reads and writes to the database - 
+even though simultaneous reads should be OK. 
+	Really ought to batch the reads, improve the CUA bandwidth too
+(Reads cannot overlap with writes, there could be a data corruption issue..)
+Meh, something weird going on here. 
 
+OK, with parallel off, only writes of `Equiv, equiv count looks ok. 
+
+With parallel on, speed is understandably higher - otherwise same main.exe as above, uniq and equiv counts look OK. 
+
+Doesn't seem any slower with mutex protections on simdb.ml
+Now need to check that db_improved.S is valid!! 
+Yes. 
+Works. 
+Whew.

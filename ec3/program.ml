@@ -694,13 +694,13 @@ let apply_edits be ed =
 	
 let better_counter = Atomic.make 0
 
-let tryadd_program (?dolog=false) (?fid=`None) stk data img override u =
+let tryadd_program ?(dolog=false) ?(fid=None) stk data img override u =
 	let good,dist,minde = if override then true,10000.0,0
 		else simdb_dist stk img in
 	let mindex = stk.gs.img_inv.(minde) in
 	if mindex < 0 then (
 		simdb_to_png stk minde "tryadd_error.png"; 
-		Logs.error (fun m->m "tryadd imgi:%d i:%d" minde mindex); 
+		Logs.err (fun m->m "tryadd imgi:%d i:%d" minde mindex); 
 		assert ( 0 <> 0 )
 	); 
 	if good then (
@@ -710,6 +710,7 @@ let tryadd_program (?dolog=false) (?fid=`None) stk data img override u =
 			let added,y = db_add_uniq stk data img in
 			if not added then Logs.err (fun m->m "did not add %s to db" s);
 			if added && dolog then (
+				let root = "/tmp/ec3/init_database" in
 				Logo.segs_to_png data.segs 64
 					(Printf.sprintf "%s/db%05d_.png" root y);
 				simdb_to_png stk stk.gs.g.(y).imgi
@@ -717,7 +718,7 @@ let tryadd_program (?dolog=false) (?fid=`None) stk data img override u =
 			); 
 			match fid with
 			| Some fd -> 
-				Printf.fprintf fid "[%d] %s (dist:%f to:%d)\n" y s dist mindex
+				Printf.fprintf fd "[%d] %s (dist:%f to:%d)\n" y s dist mindex
 			| _ -> () ; 
 			incr u;
 		) ;
@@ -768,7 +769,7 @@ let tryadd_program (?dolog=false) (?fid=`None) stk data img override u =
 let try_add_program steak data img be = 
 	if true then (
 		let progstr = Logo.output_program_pstr data.pro in
-		Logs.info (fun m -> m "try_add_program [%d]: %s \"%s\""
+		Logs.info (fun m -> m "try_add_program [%d]: %s \n%s"
 			steak.batchno data.progenc progstr) 
 	);
 	let good2,dist,minde = simdb_dist steak img in
@@ -787,7 +788,7 @@ let try_add_program steak data img be =
 				let progstr = progenc2str data.progenc in
 				let progstr2 = progenc2str data2.ed.progenc in
 				let root = "/tmp/ec3/replace_verify" in
-				Logs.info (fun m -> m "#%d b:%d replacing equivalents [%d] %f %s with %s" !nreplace steak.batchno mindex dist progstr2 progstr);
+				Logs.info (fun m -> m "#%d b:%d replacing equivalents [%d] %f \n%s -> \n%s" !nreplace steak.batchno mindex dist progstr2 progstr);
 				Printf.fprintf steak.fid
 					"(%d) [%d] d:%f %s --> %s | pcost %.2f -> %.2f\n"
 					!nreplace mindex dist progstr2 progstr c2 c1 ;
@@ -803,7 +804,6 @@ let try_add_program steak data img be =
 				incr nreplace; 
 				success := true
 			)
-			(* those two operations are in-place, so subsequent batches should contain the new program :-) *)
 		)
 	) ;
 	
@@ -829,11 +829,9 @@ let try_add_program steak data img be =
 			let q = Atomic.fetch_and_add better_counter 1 in
 			let root = "/tmp/ec3/mnist_improve" in
 			Logs.info (fun m -> m 
-				"Made an improvement! see %d ; mse: %f --> %f; db dist %f" 
-				q ab cb dist);
-			Logs.info (fun m -> m "closest :%s [%d]" progstr2 mindex );
-			Logs.info (fun m -> m "new     :%s " progstr );
-			Logs.info (fun m -> m "original:%s [%d]" progstr3 be.a_pid);
+				"\027[33mMade an improvement!\027[0m see %d ; mse: %f --> %f; db dist %f closest [%d] orig [%d]\nclosest :%s \nnew     :%s\noriginal:%s " 
+				q ab cb dist mindex be.a_pid
+				progstr2 progstr progstr3 );
 			assert (be.a_progenc = a.ed.progenc); 
 			let filename = Printf.sprintf "%s/b%05d_a_target.png" root q in
 			simdb_to_png steak mid filename;
@@ -1352,7 +1350,6 @@ let init_database steak count =
 	let root = "/tmp/ec3/init_database" in
 	let fid = open_out (Printf.sprintf "%s/enumerate.txt" root) in
 	let u = ref 0 in
-	let iters = ref 0 in
 
 	let tryadd_fromstr stk str override =
 		(*Logs.debug (fun m->m "tryadd %s" str); *)
@@ -1361,7 +1358,7 @@ let init_database steak count =
 		let str2 = "(" ^ str ^ sc ^ " pen 2/9; move 6,0 )" in
 		let data,img = generate_logo_fromstr str2 in
 		(*Logs.debug (fun m->m "tryadd %s" str2);*)
-		tryadd_program ~dolog;true ~fid stk data img override u
+		tryadd_program ~dolog:true ~fid:(Some fid) stk data img override u
 	in
 
 	tryadd_fromstr steak "" true;

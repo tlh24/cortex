@@ -298,7 +298,7 @@ let replace_equiv mtx pool gs indx ed =
 					let e' = {e with progt = `Equiv; equivroot = ni; equivalents = SI.empty} in
 					gs.g.(i) <- e' ) d2.equivalents; 
 				 Mutex.unlock mtx;
-				Logs.debug (fun m -> m "replace_equiv newi:%d imgi:%d old:%d" 
+				Logs.debug (fun m -> m "Graf.replace_equiv newi:%d imgi:%d old:%d" 
 					ni d2.imgi indx);
 				(* finally, update d2's edit connections *)
 				connect mtx pool gs.g ni ; 
