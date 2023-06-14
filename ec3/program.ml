@@ -1326,9 +1326,11 @@ let renderpng n s fid =
 	;;
 	
 let make_moves () =
-	let lenopts = [|"1";"2";"3";"2*2";"1/2";"2/3"|] in
-	let angopts = [|"1/5";"2/5";"3/5";"4/5";"1/4";"3/4";"1/3";"2/3";"1/2";
-		"1";"2";"3";"4";"5";"6";"ua/5";"ua/4";"ua/3";"ua/2";"ua"|] in
+	(*let lenopts = [|"1";"2";"3";"2*2";"1/2";"2/3"|] in*)
+	(*let angopts = [|"1/5";"2/5";"3/5";"4/5";"1/4";"3/4";"1/3";"2/3";"1/2";
+		"1";"2";"3";"4";"5";"6";"ua/5";"ua/4";"ua/3";"ua/2";"ua"|] in*)
+	let angopts = [| "1/6"; "2/6"; "0"; "1"|] in
+	let lenopts = [|"1";"2"|] in
 	let preopts = [| ""; "0 - "|] in
 	let r = ref [] in
 	for i = 0 to (Array.length lenopts)-1 do (
@@ -1376,7 +1378,7 @@ let init_database steak count =
 	Logs.debug (fun m->m "y %s" y.ed.progenc);*) 
 	let r = make_moves () in
 	(* now outer-prod them in a sequence + pen *)
-	let penopts = [|"1";"2";"3";"4"|] 
+	let penopts = [|"1";"2";"3"|] 
 		|> Array.map (fun s -> "pen "^s^"; ") in
 	let r2 = ref [] in
 	for h = 0 to (Array.length penopts)-1 do (
@@ -1391,7 +1393,7 @@ let init_database steak count =
 	
 	(* for longer sequences, we need to sub-sample *)
 	let sub_sample () = 
-		let penopts = [|"0";"1";"2";"3";"4"|] 
+		let penopts = [|"0";"1";"2";"3"|] 
 			|> Array.map (fun s -> "pen "^s) in
 		let r3 = ref [] in
 		let ra = Array.of_list r in
@@ -1435,7 +1437,7 @@ let init_database steak count =
 			r3 := s2 :: !r3; 
 			incr n
 		) done;
-		while !n < (iof ((foi count) *. 1.0)) do (
+		while !n < (iof ((foi count) *. 0.85)) do (
 			let i = Random.int nra in
 			let j = Random.int nra in
 			let k = Random.int nra in
@@ -1445,6 +1447,21 @@ let init_database steak count =
 					|> permute_array in
 			let s,_ = Array.fold_left (fun (a,m) b -> 
 				(if m<4 then a^b^"; " else a^b),m+1) ("",0) y in
+			let s2 = "pen 0 ;"^s in
+			r3 := s2 :: !r3; 
+			incr n
+		) done;
+		while !n < (iof ((foi count) *. 1.0)) do (
+			let i = Random.int nra in
+			let j = Random.int nra in
+			let k = Random.int nra in
+			let p = Random.int nra in
+			let l = Random.int (Array.length penopts) in
+			let m = Random.int (Array.length penopts) in
+			let y = [| ra.(i); penopts.(l); ra.(j); penopts.(m); ra.(k); ra.(p);|] 
+					|> permute_array in
+			let s,_ = Array.fold_left (fun (a,m) b -> 
+				(if m<5 then a^b^"; " else a^b),m+1) ("",0) y in
 			let s2 = "pen 0 ;"^s in
 			r3 := s2 :: !r3; 
 			incr n

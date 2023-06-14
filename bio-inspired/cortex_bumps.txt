@@ -4574,3 +4574,106 @@ Now need to check that db_improved.S is valid!!
 Yes. 
 Works. 
 Whew.
+
+June 12 2023
+
+1 -- Still not sure that it understands the position very well...
+	Or, can insert edits constructively into the list.  
+	Need to think more about this.  
+	Desired properties: 
+		The position of the edit depends on the length of program. 
+		You can't insert new commands e.g. within an existing command. 
+		(You can insert artithmetic, however..)
+		Ideally, you add segments to the end of a program list
+			This is clearly not happening now
+			Which is probably why it's grossly inefficient at 'solving' the inverse graphics. 
+		I think the recognizer has just absorbed an absolute position encoding... 
+		What we want is to make the encoding relative-position
+		+ "add X after.."
+		+ "add pen 3 before.."
+		+ "change angle (position 2 of command 2).."
+	Rotary position encoding here makes sense. 
+	The thing is, each level of the hierarchy has a different "dimension" and hence should be treated differently than with say linear position encoding within a string/list of tokens. (paragraph, etc.). 
+	+ Would be nice to let the transformer *learn* the encoding. 
+	Learn the encoding = go from series 0,1,2,end -> <vector>
+	then <vector> -> edit @ 2,1,1,end
+	Autoregressive transformers will need to take multiple steps to produce this output. 
+	They can slurp in the whole address sequence at once, though, due to global attention. 
+	Could encode the position not with one-hot but rather scalars??
+	Nah, go from one-hot to a high-D vector space, which sgd / adam can organize. 
+		
+2 -- Seems like it's worth trying to restrict the "total domain of programs"
+	(as in, fewer length options..)
+	To see if this improves progress? 
+
+3 -- Still seems possible to corrupt the database through insertions.  
+	I think the interim solution is to correct this as you go along.. 
+
+	
+June 13 2022
+
+I think the solution to positional encoding is to make things entirely relational and local -- relations like
+	"parent-of" (up to a n)
+	"left sibling of"
+	"right sibling of"
+	"first child"
+	"nth child"
+	"last child"
+Since the AST is exclusively a tree / DAG (it does allow for function calls..). 
+This allows for totally arbritrarily large ASTs.  Everything is relational and local.  
+It is to address the *critical problem* that the current 'racoonizer' does not generalize to longer programs: it will never output a positional code which it has not seen.  
+Seems like all modern models use RoPE encoding, so we should do the same. 
+
+Absolute positional encoding: 
+x(j,2*i) = sin(j / 10000^(2*i/d) )
+x(j,2*i+1) = cos(j / 10000^(2*i/d) )
+
+	# in python: 
+import torch
+dim = 256 # dimensions of the position encoding
+base = 10000 # might want smaller for smaller sequences?
+freq = base ** (torch.arange(0, dim, 2) / dim)
+plt.plot(1/freq.numpy())
+plt.show()
+x = torch.zeros(250, dim)
+y = torch.arange(0, 250) # sequence position
+x[:, ::2] = torch.sin(torch.outer(y, 1/freq))
+x[:, 1::2] = torch.cos(torch.outer(y, 1/freq))
+x = torch.flip(x, [0]) # flip the y-axis
+plt.imshow(x)
+plt.xlabel('pos enc dim')
+plt.ylabel('sequence dim')
+plt.show()
+
+The issue here is that to move to the next or nearest neighbor requires a variable vector.  
+Similarity is always highest for neighbors, but the vector between them varies based on absolute position! 
+
+Why not encode the position with .. a vector.  
+The dot product will always be just the product of their lengths 
+(which becomes a problem given the normalization), 
+but distance calculation is just subtraction, super easy.  
+Rotation deals with normalization (batch or layer) much better.
+Standard Vishwani-style position encoding is also normalized. 
+
+Criteria: 
+	-- Dot-product preserves relative distances
+	-- Absolute position is accessible for producing edits
+	-- Normalization preserves distances
+	-- Encodes parent-child and sibling relations 
+		& these relations are relative. 
+	-- Naturally extends to sequences longer than those seen in training. 
+Diseriata: 
+	-- Maybe multiple parallel position / relation encodings? 
+		Some absolute, some relative. 
+	-- Can be rapidly derived from the AST address
+		But might need to be applied to each layer of the transformer. 
+		RoPE is like this, though I'm not 100% clear why. 
+			Where is the reference? The residual connections? 
+			If a vector is locally rotated, I guess the reference is simply all the other vectors in QKV attention. 
+			Might as well inject information into the attention matrix then! 
+			See: arXiv:2201.12787
+			GRPE: Relative Positional Encoding for Graph Transformer
+			(Maybe in addition to absolute position encoding?)
+			
+If we had a per-distance and per-relation injection into the attention matrix, though it might be rather computationally expensive, 
+it *would* support algorithms on the queries and keys. 
