@@ -1754,6 +1754,10 @@ let test_logo () =
 		Logo.print_encoded_ast ss qq; 
 		(* check the decoding *)
 		let g3 = Logo.decode_ast_struct ss qq in
-		Printf.printf "recon:\n%s\n" (Logo.output_program_pstr g3) )
+		Printf.printf "recon:\n%s\n" (Logo.output_program_pstr g3) ; 
+		Printf.printf "--- tag_pos ---\n"; 
+		Logo.print_tag_pos g2; 
+		Printf.printf "--- tag_pos ---\n%!"; 
+		)
 	| _ -> ()
 

@@ -24,6 +24,7 @@ let speclist =
 let () = 
 	Arg.parse speclist anon_fun usage_msg;
 	Random.self_init (); 
+	
 	Logs_threaded.enable ();
 	let () = Logs.set_reporter (Logs.format_reporter ()) in
 	let () = Logs.set_level 
@@ -53,7 +54,6 @@ let () =
 	(*for _i = 0 to 4 do 
 		measure_torch_copy_speed device
 	done; *)
-	test_logo (); 
 	
 	(*let device = Torch.Device.Cpu in*) (* slower *)
 	let device = Torch.Device.cuda_if_available () in

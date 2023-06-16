@@ -2,22 +2,21 @@ open Vgwrapper
 
 (* variables will be referenced to the stack, de Brujin indexes *)
 (* names are more interpretable by humans ... but that's a big space *)
-type ptag = int (* future-proof *)
 let nulptag = 0
 let nulimg = Bigarray.Array1.create Bigarray.int8_unsigned Bigarray.c_layout 1
 
 type prog = [
-	| `Var of int * ptag
-	| `Save of int * prog * ptag
-	| `Move of prog * prog * ptag(* angle & distance *)
-	| `Binop of prog * string * (float -> float -> float) * prog * ptag
-	| `Const of float * ptag
-	| `Seq of prog list * ptag
-	| `Loop of int * prog * prog * ptag(* iterations & body *)
-	| `Call of int * prog list * ptag (* list of arguments *)
-	| `Def of int * prog * ptag(* same sig as `Save *)
+	| `Var of int * int
+	| `Save of int * prog * int
+	| `Move of prog * prog * int(* angle & distance *)
+	| `Binop of prog * string * (float -> float -> float) * prog * int
+	| `Const of float * int
+	| `Seq of prog list * int
+	| `Loop of int * prog * prog * int(* iterations & body *)
+	| `Call of int * prog list * int (* list of arguments *)
+	| `Def of int * prog * int(* same sig as `Save *)
 (* 	| Cmp of prog * (float -> float -> bool) * prog *)
-	| `Pen of prog * ptag (* pen weight *)
+	| `Pen of prog * int (* pen weight *)
 	| `Nop
 ]
 
@@ -82,7 +81,8 @@ let dec_item i =
 		dec_item1 i
 	
 let rec enc_prog g s = 
-	(* convert a program to integers.  For the transformer. *)
+	(* convert a program to a list of integers, s *)
+	(* and a list of positions, pl *)
 	(* output list is in REVERSE order *)
 	let enc_char c s = 
 		s := (enc_char1 c) :: !s in
@@ -153,7 +153,7 @@ let encode_program g =
 let rec enc_ast g s q r = 
 	(* convert a program to int list + int list list addresses. *)
 	(* output list is in REVERSE order *)
-	(* "q" is the list int list of addresses *)
+	(* "q" is the list (int list) of addresses *)
 	(* "r" is the address of the parent *)
 	
 	let enc_char c = 
@@ -213,6 +213,107 @@ let rec enc_ast g s q r =
 		enc_char "pen";
 		enc_ast a s q (1::r) )
 	| `Nop -> ()
+	
+type ienc = [
+	| `Leaf of int * int
+	| `Node of ienc * ienc list
+	| `Nenc
+]
+
+let rec tag_pos g h = 
+	(* convert the program g into an equivalent 
+		ienc tree, where in each `Leaf(a, b)
+		a = integer encoding, per enc_prog above
+		b = position in encoded string, including separators *)
+		
+	let enc_char c = 
+		let i = !h in incr h; 
+		`Leaf(enc_char1 c, i)
+	in
+		
+	let enc_int i = 
+		let j = if i > 9 then 9 
+		  else (if i < 0 then 0 else i) in
+		let k = j-10 in
+		let i = !h in incr h; 
+		`Leaf(k, i)
+	in
+	
+	(* note: the ocaml runtime evaluates arguments to constructors in reverse order. Which makes sense for currying and tail-recursion reasons ... 
+	it just makes imperative execution a bit complicated. *)
+	match g with 
+	| `Var(i,_) -> ( (* v$i *)
+		let j = enc_char "var"  in
+		let k = enc_int i in
+		`Node(j, [k] ) )
+	| `Save(i,a,_) -> ( (* = v$i $a *)
+		let j = enc_char "=" in
+		let k = enc_char "var" in
+		let l = enc_int i in
+		let m = tag_pos a h in
+		`Node(j, [k; l; m] ) )
+	| `Move(a,b,_) -> ( (* move $a,$b *)
+		let j = enc_char "move" in
+		let aa = tag_pos a h in
+		let c = enc_char "," in
+		let bb = tag_pos b h in
+		`Node( j, [aa; c; bb]) )
+	| `Binop(a,sop,_,b,_) -> ( (* binop $a $b *)
+		let j = enc_char sop in
+		let aa = tag_pos a h in
+		let bb = tag_pos b h in
+		`Node(j, [aa; bb]) )
+	| `Const(i,_) -> (
+		match i with
+		| x when x > 0.99 && x < 1.01 -> enc_char "ul"
+		| x when x > 6.28 && x < 6.29 -> enc_char "ua"
+		| x -> enc_int (iof x) )
+	| `Seq(a,_) -> (
+		let j = enc_char "(" in
+		let l = ref [] in
+		List.iter (fun a -> 
+			l := (tag_pos a h) :: !l; 
+			l := (enc_char ";") :: !l) a; 
+		(* has one extra semicolon *)
+		h := !h - 1; 
+		let ll = (enc_char ")") :: (List.tl !l) |> List.rev in
+		`Node(j,ll) )
+	| `Loop(i,a,b,_) -> (
+		let j = enc_char "loop" in
+		let k = enc_int i in
+		let aa = tag_pos a h in
+		let bb = tag_pos b h in
+		`Node( j, [k; aa; bb]) )
+	| `Call(i,l,_) -> ( (* call, list of arguments (no sep) *)
+		let j = enc_char "call" in
+		let k = enc_int i in
+		`Node(j, k :: (List.map (fun a -> tag_pos a h) l) ) )
+	| `Def(i,a,_) -> (
+		let j = enc_char "def" in
+		let k = enc_int i in
+		let aa = tag_pos a h in
+		`Node(j, [k; aa]) )
+	| `Pen(a,_) -> (
+		let j = enc_char "pen" in
+		let aa = tag_pos a h in
+		`Node(j, [aa]) )
+	| `Nop -> `Nenc
+	
+let print_tag_pos g = 
+	(* simple test to see if the tagging makes sense .. *)
+	let rec print_ienc e indent = 
+		match e with
+		| `Leaf(a,b) -> Printf.printf "%s%s:%d\n" indent (dec_item a) b
+		| `Node(a,b) -> 
+			print_ienc a indent; 
+			List.iter (fun c -> print_ienc c (indent^"  ")) b
+		| _ -> ()
+	in
+
+	let h = ref 0 in
+	let e = tag_pos g h in
+	print_ienc e ""
+	;;
 	
 let encode_ast g = 
 	let s = ref [] in
