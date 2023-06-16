@@ -1756,8 +1756,8 @@ let test_logo () =
 		let g3 = Logo.decode_ast_struct ss qq in
 		Printf.printf "recon:\n%s\n" (Logo.output_program_pstr g3) ; 
 		Printf.printf "--- tag_pos ---\n"; 
-		Logo.print_tag_pos g2; 
-		Printf.printf "--- tag_pos ---\n%!"; 
+		Logo.test_tag_pos g2; 
+		Printf.printf "--- end tag_pos ---\n%!"; 
 		)
 	| _ -> ()
 

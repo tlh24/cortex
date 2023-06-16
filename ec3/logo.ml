@@ -213,106 +213,6 @@ let rec enc_ast g s q r =
 		enc_char "pen";
 		enc_ast a s q (1::r) )
 	| `Nop -> ()
-	
-type ienc = [
-	| `Leaf of int * int
-	| `Node of ienc * ienc list
-	| `Nenc
-]
-
-let rec tag_pos g h = 
-	(* convert the program g into an equivalent 
-		ienc tree, where in each `Leaf(a, b)
-		a = integer encoding, per enc_prog above
-		b = position in encoded string, including separators *)
-		
-	let enc_char c = 
-		let i = !h in incr h; 
-		`Leaf(enc_char1 c, i)
-	in
-		
-	let enc_int i = 
-		let j = if i > 9 then 9 
-		  else (if i < 0 then 0 else i) in
-		let k = j-10 in
-		let i = !h in incr h; 
-		`Leaf(k, i)
-	in
-	
-	(* note: the ocaml runtime evaluates arguments to constructors in reverse order. Which makes sense for currying and tail-recursion reasons ... 
-	it just makes imperative execution a bit complicated. *)
-	match g with 
-	| `Var(i,_) -> ( (* v$i *)
-		let j = enc_char "var"  in
-		let k = enc_int i in
-		`Node(j, [k] ) )
-	| `Save(i,a,_) -> ( (* = v$i $a *)
-		let j = enc_char "=" in
-		let k = enc_char "var" in
-		let l = enc_int i in
-		let m = tag_pos a h in
-		`Node(j, [k; l; m] ) )
-	| `Move(a,b,_) -> ( (* move $a,$b *)
-		let j = enc_char "move" in
-		let aa = tag_pos a h in
-		let c = enc_char "," in
-		let bb = tag_pos b h in
-		`Node( j, [aa; c; bb]) )
-	| `Binop(a,sop,_,b,_) -> ( (* binop $a $b *)
-		let j = enc_char sop in
-		let aa = tag_pos a h in
-		let bb = tag_pos b h in
-		`Node(j, [aa; bb]) )
-	| `Const(i,_) -> (
-		match i with
-		| x when x > 0.99 && x < 1.01 -> enc_char "ul"
-		| x when x > 6.28 && x < 6.29 -> enc_char "ua"
-		| x -> enc_int (iof x) )
-	| `Seq(a,_) -> (
-		let j = enc_char "(" in
-		let l = ref [] in
-		List.iter (fun a -> 
-			l := (tag_pos a h) :: !l; 
-			l := (enc_char ";") :: !l) a; 
-		(* has one extra semicolon *)
-		h := !h - 1; 
-		let ll = (enc_char ")") :: (List.tl !l) |> List.rev in
-		`Node(j,ll) )
-	| `Loop(i,a,b,_) -> (
-		let j = enc_char "loop" in
-		let k = enc_int i in
-		let aa = tag_pos a h in
-		let bb = tag_pos b h in
-		`Node( j, [k; aa; bb]) )
-	| `Call(i,l,_) -> ( (* call, list of arguments (no sep) *)
-		let j = enc_char "call" in
-		let k = enc_int i in
-		`Node(j, k :: (List.map (fun a -> tag_pos a h) l) ) )
-	| `Def(i,a,_) -> (
-		let j = enc_char "def" in
-		let k = enc_int i in
-		let aa = tag_pos a h in
-		`Node(j, [k; aa]) )
-	| `Pen(a,_) -> (
-		let j = enc_char "pen" in
-		let aa = tag_pos a h in
-		`Node(j, [aa]) )
-	| `Nop -> `Nenc
-	
-let print_tag_pos g = 
-	(* simple test to see if the tagging makes sense .. *)
-	let rec print_ienc e indent = 
-		match e with
-		| `Leaf(a,b) -> Printf.printf "%s%s:%d\n" indent (dec_item a) b
-		| `Node(a,b) -> 
-			print_ienc a indent; 
-			List.iter (fun c -> print_ienc c (indent^"  ")) b
-		| _ -> ()
-	in
-
-	let h = ref 0 in
-	let e = tag_pos g h in
-	print_ienc e ""
 	;;
 	
 let encode_ast g = 
@@ -434,14 +334,6 @@ let output_program_plg lg g =
 let encode_program_str g = 
 	encode_program g |> intlist_to_string
 	
-let progenc_cost s = 
-	(* to break ties, add a slight bias for lower codes first *)
-	let cost,_ = String.fold_left (fun (a,f) b -> 
-		a +. ((foi (Char.code b)) *. f), 
-		f *. 1.00058768275
-		) (0.0,1.0) s in
-	cost
-
 let rec output_program_h g lg =
 	match g with
 	| `Var(i,w) -> Printf.fprintf lg "Var %d " i; pmark lg w
@@ -477,6 +369,189 @@ and output_list_h lg l sep =
 		if i > 0 then Printf.fprintf lg "%s" sep ;
 		output_program_h v lg) l ; 
 	Printf.fprintf lg ")"
+	
+type ienc = [
+	| `Leaf of int * int
+	| `Node of ienc * ienc list
+	| `Nenc
+]
+
+let rec tag_pos g h = 
+	(* convert the program g into an equivalent 
+		ienc tree, where in each `Leaf(a, b)
+		a = integer encoding, per enc_prog above
+		b = position in encoded string, including separators *)
+		
+	let enc_char c = 
+		let i = !h in incr h; 
+		`Leaf(enc_char1 c, i)
+	in
+		
+	let enc_int i = 
+		let j = if i > 9 then 9 
+		  else (if i < 0 then 0 else i) in
+		let k = j-10 in
+		let i = !h in incr h; 
+		`Leaf(k, i)
+	in
+	
+	(* note: the ocaml runtime evaluates arguments to constructors in reverse order. Which makes sense for currying and tail-recursion reasons ... 
+	it just makes imperative execution a bit complicated. *)
+	match g with 
+	| `Var(i,_) -> ( (* v$i *)
+		let j = enc_char "var"  in
+		let k = enc_int i in
+		`Node(j, [k] ) )
+	| `Save(i,a,_) -> ( (* = v$i $a *)
+		let j = enc_char "=" in
+		let k = enc_char "var" in
+		let l = enc_int i in
+		let m = tag_pos a h in
+		`Node(j, [k; l; m] ) )
+	| `Move(a,b,_) -> ( (* move $a,$b *)
+		let j = enc_char "move" in
+		let aa = tag_pos a h in
+		let c = enc_char "," in
+		let bb = tag_pos b h in
+		`Node( j, [aa; c; bb]) )
+	| `Binop(a,sop,_,b,_) -> ( (* binop $a $b *)
+		let j = enc_char sop in
+		let aa = tag_pos a h in
+		let bb = tag_pos b h in
+		`Node(j, [aa; bb]) )
+	| `Const(i,_) -> (
+		match i with
+		| x when x > 0.99 && x < 1.01 -> enc_char "ul"
+		| x when x > 6.28 && x < 6.29 -> enc_char "ua"
+		| x -> enc_int (iof x) )
+	| `Seq(a,_) -> (
+		let j = enc_char "(" in
+		let l = ref [] in
+		List.iter (fun a -> 
+			l := (tag_pos a h) :: !l; 
+			l := (enc_char ";") :: !l) a; 
+		(* has one extra semicolon *)
+		h := !h - 1; 
+		let ll = (enc_char ")") :: (List.tl !l) |> List.rev in
+		`Node(j,ll) )
+	| `Loop(i,a,b,_) -> (
+		let j = enc_char "loop" in
+		let k = enc_int i in
+		let aa = tag_pos a h in
+		let bb = tag_pos b h in
+		`Node( j, [k; aa; bb]) )
+	| `Call(i,l,_) -> ( (* call, list of arguments (no sep) *)
+		let j = enc_char "call" in
+		let k = enc_int i in
+		`Node(j, k :: (List.map (fun a -> tag_pos a h) l) ) )
+	| `Def(i,a,_) -> (
+		let j = enc_char "def" in
+		let k = enc_int i in
+		let aa = tag_pos a h in
+		`Node(j, [k; aa]) )
+	| `Pen(a,_) -> (
+		let j = enc_char "pen" in
+		let aa = tag_pos a h in
+		`Node(j, [aa]) )
+	| `Nop -> `Nenc
+	
+let rec untag_pos e = 
+	match e with 
+	| `Node(`Leaf(t,_), l) -> (
+		let ut = dec_item t in
+		Printf.printf "dec node %d %s\n%!" t ut; 
+		match ut with 
+		| "v" -> (
+			let a = List.hd l in
+			match a with
+			| `Leaf(i,_) -> `Var(i+10, 0)
+			| _ -> `Nop )
+		| "= " -> (
+			let a,b = List.nth l 1, List.nth l 2 in
+			match a,b with 
+			| `Leaf(i,_),_ -> `Save(i+10, untag_pos b, 0)
+			| _ -> `Nop )
+		| "move " -> (
+			let a,b = List.hd l, List.nth l 2 in
+			`Move(untag_pos a, untag_pos b, 0) )
+		| "+ " -> (
+			let a,b = List.hd l, List.nth l 1 in
+			`Binop(untag_pos a, "+", ( +. ), untag_pos b, 0) )
+		| "- " -> (
+			let a,b = List.hd l, List.nth l 1 in
+			`Binop(untag_pos a, "-", ( -. ), untag_pos b, 0) )
+		| "* " -> (
+			let a,b = List.hd l, List.nth l 1 in
+			`Binop(untag_pos a, "*", ( *. ), untag_pos b, 0) )
+		| "/ " -> (
+			let a,b = List.hd l, List.nth l 1 in
+			`Binop(untag_pos a, "/", ( /. ), untag_pos b, 0) )
+		| "( " -> (
+			let ar = Array.of_list l in
+			let ll = List.init ((Array.length ar)/2) (fun i -> ar.(i*2)) 
+				|> List.map untag_pos in
+			`Seq(ll, 0) )
+		| "loop " -> (
+			let i,a,b = List.hd l, List.nth l 1, List.nth l 2 in
+			match i with
+			| `Leaf(ii,_) -> `Loop(ii+10, untag_pos a, untag_pos b, 0)
+			| _ -> `Nop )
+		| "c" -> (
+			let i = List.hd l in
+			match i with 
+			| `Leaf(ii,_)-> `Call(ii+10, List.tl l |> List.map untag_pos, 0)
+			| _ -> `Nop )
+		| "d" -> (
+			let i,a = List.hd l, List.nth l 1 in
+			match i with 
+			| `Leaf(ii,_) -> `Def(ii+10, untag_pos a, 0)
+			| _ -> `Nop )
+		| "pen " -> (
+			let a = List.hd l in
+			`Pen(untag_pos a, 0) )
+		| "ua "-> `Const(6.283185307179586, 0)
+		| "ul "-> `Const(1.0, 0)
+		| _ -> ( (* int / const *)
+			`Const((foi t) +. 10.0, 0) )
+		)
+	| `Leaf(t,_) -> ( 
+		let ut = dec_item t in
+		Printf.printf "dec leaf %d %s\n%!" t ut; 
+		match ut with 
+		| "ua "-> `Const(6.283185307179586, 0)
+		| "ul "-> `Const(1.0, 0)
+		| _ -> ( (* int / const *)
+			`Const((foi t) +. 10.0, 0) ) )
+	| _ -> `Nop
+	;;
+	
+let test_tag_pos g = 
+	(* simple test to see if the tagging makes sense .. *)
+	let rec print_ienc e indent = 
+		match e with
+		| `Leaf(a,b) -> Printf.printf "%s%s:%d\n" indent (dec_item a) b
+		| `Node(a,b) -> 
+			print_ienc a indent; 
+			List.iter (fun c -> print_ienc c (indent^"  ")) b
+		| _ -> ()
+	in
+
+	let h = ref 0 in
+	let e = tag_pos g h in
+	print_ienc e "" ; 
+	Printf.printf "recon:\n%!"; 
+	let gg = untag_pos e in
+	Printf.printf "%s\n%!" (output_program_pstr gg)
+	;;
+	
+let progenc_cost s = 
+	(* to break ties, add a slight bias for lower codes first *)
+	let cost,_ = String.fold_left (fun (a,f) b -> 
+		a +. ((foi (Char.code b)) *. f), 
+		f *. 1.00058768275
+		) (0.0,1.0) s in
+	cost
+
 	
 and output_list_p bf l sep =
 	Printf.bprintf bf "("; 

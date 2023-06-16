@@ -19,6 +19,7 @@ let speclist =
 
 let () = 
 	test_logo (); 
+	
 	Arg.parse speclist anon_fun usage_msg;
 	Random.self_init (); 
 	Logs_threaded.enable ();
