@@ -327,6 +327,8 @@ let output_program_pstr g =
 	let bf = Buffer.create 64 in
 	output_program_p bf g; 
 	(Buffer.contents bf)
+	
+let prog2str g = output_program_pstr g
 
 let output_program_plg lg g = 
 	Printf.fprintf lg "%s" (output_program_pstr g;)
@@ -415,8 +417,8 @@ let rec tag_pos g h =
 		let bb = tag_pos b h in
 		`Node( j, [aa; c; bb]) )
 	| `Binop(a,sop,_,b,_) -> ( (* binop $a $b *)
+		let aa = tag_pos a h in (* TODO: compound operations *)
 		let j = enc_char sop in
-		let aa = tag_pos a h in
 		let bb = tag_pos b h in
 		`Node(j, [aa; bb]) )
 	| `Const(i,_) -> (
@@ -456,6 +458,10 @@ let rec tag_pos g h =
 	| `Nop -> `Nenc
 	
 let rec untag_pos e = 
+	(* this is mostly for testing : flow is
+		string -> (parser) -> AST -> tag tree -> tag array -> string -> 
+		then string -> (parser) -> AST
+		you never normally need to go tag tree -> AST *)
 	match e with 
 	| `Node(`Leaf(t,_), l) -> (
 		let ut = dec_item t in
@@ -548,14 +554,14 @@ let test_tag_pos g =
 type jenc = 
 	(* flat array for sending to python *)
 	{ enc : int (* int encoding of the prog symbol *)
-	; pos : int
-	; parent : int (* these could also be type int ref aka pointers *)
-	; gparent : int
-	; kid0 : int
-	; kid1 : int
+	; pos : int (* 0 *)
+	; parent : int (* 1 *)
+	; gparent : int (* 2 *)
+	; kid0 : int (* 3 *)
+	; kid1 : int (* 4 *)
 	; kidn : int (* last kid *)
-	; l_sibling : int
-	; r_sibling : int
+	; l_sibling : int (* 6 *)
+	; r_sibling : int (* 7 *)
 }
 
 let nuljenc = {
@@ -647,6 +653,13 @@ let print_jenc e =
 	e.pos (dec_item e.enc) e.parent e.gparent e.kid0 e.kid1 e.kidn e.l_sibling e.r_sibling 
 	;;
 	
+let tag_tostring ar = 
+	(* this is a little complicated: 
+		convert prefix binops to infix *)
+	Array.fold_left (fun a b -> 
+		a ^ (dec_item b.enc)) "" ar
+	;;
+	
 let test_tag_flatten g = 
 	(* simple test to see if the tagging makes sense .. *)
 	let ar = tag_flatten g in
@@ -697,7 +710,7 @@ let tag_delete ar pos =
 	
 let tag_substitute ar pos chr = 
 	let a = ar.(pos) in
-	ar.(pos) <- {a with enc = chr }; (* doesn't change links *)
+	ar.(pos) <- {a with enc = chr }; (* don't change links *)
 	ar
 	;;
 	
@@ -737,6 +750,8 @@ let test_tag_edit g =
 	Printf.printf "---\nsubstituting pos 18 \"3\"\n"; 
 	let ar = tag_substitute ar 14 (3-10)in
 	print_sorted ar;
+	
+	Printf.printf "result: %s\n" (tag_tostring ar); 
 	;;
 	
 let progenc_cost s = 

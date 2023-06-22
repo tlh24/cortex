@@ -28,13 +28,13 @@ type dreamt = [
 type batche = (* batch edit structure, aka 'be' variable*)
 	{ a_pid : int (* index to graf *)
 	; b_pid : int (* index to graf or MNIST *)
-	; a_progenc : string (* from *)
-	; b_progenc : string (* to; for checking when superv; blank if dream *)
-	; c_progenc : string (* program being edited *)
+	; a_progtag : Logo.jenc array(* from *)
+	; b_progtag : Logo.jenc array(* to; for checking w/ superv; dream=blank*)
+	; c_progtag : Logo.jenc array(* program being edited *)
 	; a_imgi : int
 	; b_imgi : int
 	; edits : (string*int*char) list (* supervised *)
-	; edited : float array (* tell python which chars have been changed*)
+	(*; edited : float array*) (* tell python which chars have been changed*)
 	; count : int (* count & cap total # of edits *)
 	; dt : dreamt
 	}
@@ -42,9 +42,9 @@ type batche = (* batch edit structure, aka 'be' variable*)
 let nulbatche = 
 	{ a_pid = 0 (* indexes steak.gs.g *)
 	; b_pid = 0
-	; a_progenc = ""
-	; b_progenc = ""
-	; c_progenc = ""
+	; a_progtag = [| Logo.nuljenc |]
+	; b_progtag = [| Logo.nuljenc |]
+	; c_progtag = [| Logo.nuljenc |]
 	; a_imgi = 0
 	; b_imgi = 0
 	; edits = []
@@ -126,14 +126,11 @@ let bigarray_to_bytes arr =
 	let len = Bigarray.Array1.dim arr in
 	Bytes.init len 
 		(fun i -> Bigarray.Array1.get arr i |> Char.chr)
+	
+let progtag2str progtag = Logo.tag_tostring progtag
 
-let progenc2str progenc =
-	progenc |>
-	Logo.string_to_intlist |>
-	Logo.decode_program
-
-let progenc_to_edata progenc =
-	let progstr = progenc2str progenc in
+let progtag2edata progtag = 
+	let progstr = progtag2str progtag in
 	let g = parse_logo_string progstr in
 	match g with
 	| Some g2 -> (
@@ -157,6 +154,7 @@ let render_simplest steak =
 	close_out lg
 	
 (* because we include position encodings, need to be float32 *)
+(* might need to revisit this !! position is binary *)
 let mmap_bigarray2 fname rows cols = 
 	(let open Bigarray in
 	let fd = Unix.openfile fname
@@ -339,7 +337,7 @@ let make_training steak =
 	let print_devlist k l =
 		List.iteri (fun i j ->
 			let d = db_get steak j in
-			let s = progenc2str d.ed.progenc in
+			let s = progtag2str d.ed.progtag in
 			Printf.fprintf fid "terminal [%d] step %d node [%d] %s\n" k i j s;
 		) l
 	in
@@ -407,21 +405,6 @@ let make_training steak =
 	let ta = Array.of_list training in
 	{steak with training = ta; dist; prev}
 	;;
-	
-(*let pdata_to_edits a b = 
-	let dist, edits = Levenshtein.distance a.progenc b.progenc true in
-	let edits = List.filter (fun (s,_p,_c) -> s <> "con") edits in
-	(* verify .. a bit of overhead *)
-	(*let re = Levenshtein.apply_edits a.progenc edits in
-	if re <> b.progenc then (
-		Logs.err(fun m -> m  
-			"error! %s edits should be %s was %s"
-			a.progenc b.progenc re)
-	);*)
-	(* edits are applied in reverse *)
-	(* & add a 'done' edit/indicator *)
-	let edits = ("fin",0,'0') :: edits in
-	dist, (List.rev edits)*)
 
 let new_batche_train steak dt bi = 
 	let n = Array.length steak.training in
@@ -434,18 +417,16 @@ let new_batche_train steak dt bi =
 	if bi = 0 then (
 		Logs.debug (fun m->m "new_batche_train edit count %d \n\t%d %s \n\t%d %s"
 			(List.length edits)
-			pre (progenc2str a.ed.progenc) post (progenc2str b.ed.progenc))
+			pre (Logo.prog2str a.ed.pro) post (Logo.prog2str a.ed.pro))
 	); 
-	let edited = Array.make (p_ctx/2) 0.0 in
 	{ a_pid = pre
 	; b_pid = post
-	; a_progenc = a.ed.progenc
-	; b_progenc = b.ed.progenc
-	; c_progenc = a.ed.progenc
+	; a_progtag = Logo.tag_flatten a.ed.pro
+	; b_progtag = Logo.tag_flatten b.ed.pro
+	; c_progtag = Logo.tag_flatten c.ed.pro
 	; a_imgi = a.imgi
-	; b_imgi = c.imgi (* c = harder! :-) *)
+	; b_imgi = b.imgi (* c = harder! :-) *)
 	; edits
-	; edited
 	; count = 0
 	; dt (* dreamt *)
 	}
@@ -472,16 +453,15 @@ let rec new_batche_mnist_mse steak bi =
 		if bi = 0 then 
 			Logs.debug (fun m->m "new_batche_mnist dist %f ind %d indx %d" 
 			dist ind indx); 
-		let edited = Array.make (p_ctx/2) 0.0 in
 		let root = Editree.make_root a.ed.progenc in
 		let dt = `Mnist(root, []) in
 		{  a_pid = indx; b_pid = mid;
-			a_progenc = a.ed.progenc; 
-			b_progenc = ""; (* only used for checking *)
-			c_progenc = a.ed.progenc; 
+			a_progtag = Logo.tag_flatten a.ed.pro; 
+			b_progtag = [| |]; (* only used for checking *)
+			c_progtag = Logo.tag_flatten a.ed.pro; 
 			a_imgi = a.imgi; 
 			b_imgi = mid; 
-			edits = []; edited; count=0; dt }
+			edits = []; count=0; dt }
 	) else (
 		if bi = 0 then 
 			Logs.debug (fun m->m "new_batche_mnist h %f" dist); 
@@ -525,16 +505,15 @@ let rec new_batche_train_mnist steak bi =
 			if bi = 0 then 
 				Logs.debug (fun m->m "batche_mnist_train dist %f a %d -> b %d" 
 				dist aindx bindx);
-			let edited = Array.make (p_ctx/2) 0.0 in
 			let _,edits,_ = Graf.get_edits a.ed.progenc b.ed.progenc in
 			let dt = `MnistTrain in
 			{  a_pid = aindx; b_pid = bindx;
-				a_progenc = a.ed.progenc; 
-				b_progenc = b.ed.progenc;
-				c_progenc = a.ed.progenc; 
+				a_progtag = Logo.tag_flatten a.ed.pro; 
+				b_progtag = Logo.tag_flatten b.ed.pro;
+				c_progtag = Logo.tag_flatten a.ed.pro; 
 				a_imgi = a.imgi; 
 				b_imgi = mid; 
-				edits; edited; count=0; dt }
+				edits; count=0; dt }
 		) else new_batche_train_mnist steak bi
 	) else new_batche_train_mnist steak bi
 
@@ -572,6 +551,11 @@ let sample_dist x =
 
 let sample_dist_dum x = 
 	Tensor.argmax x ~dim:1 ~keepdim:false
+	
+let int2graycode7 i = 
+	
+	
+(* TODO: position decoding needs to be changed! graycode now *)
 	
 (* fixed tensors for enumeration decoding *)
 let decode_edit_tensors batchsiz = 
