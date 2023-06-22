@@ -4752,4 +4752,55 @@ Also, after discussions last night, think I had better copy the MCTS algorithmic
 		though there have been open-source replications, e.g. 
 		https://github.com/suragnair/alpha-zero-general
 
+June 21 2023
 
+Ok, the tagging / flattening code seems to be working just fine -- 
+However, how do we interface that with the editing / levenshtein distance calculation? 
+tag_flatten produces an array as output, with the encoding. 
+Levenshtein outputs edits to a string, with absolute positioning. 
+Then also we need to decode the edit position -- which is redundant! 
+The transformer can specify parent, sibling, etc; needs to be consistent in the supervised signal. 
+Things like "add sibling" or "add child" or even "add parent, then add children.."
+Which would suggest taking a diff of the AST, not of the string encoding. 
+This diff will necessarily require a dynamic programming algorithm, too. 
+	But, might be simpler, since it's already a tree! 
+There is ambiguity in the redundant position signals, alas;
+-- I think the solution to this is to force absolute position encoding when specifying and decoding the edits. 
+	 * This can be had by induction-head moving around provided absolute positioning, which should be easy with the residual connections?
+	
+Thinking through how to take the levenshtein edits, and apply them to progenc_c: 
+	Now we have extra data with pointers, effectively. 
+	If you add a character, everything moves! 
+	But wait, this doesn't make sense: transformers are position-invariant in the attention mechanism! 
+	We *dont* need to change the encoding of position .. just need to add new children / siblings..
+		But that does move things.  hmm. 
+		
+Examples: common edit would be to change the pen size.  
+Logic like: see if the first top-level child is a pen command. 
+if it is, then change it's child. 
+if it's not, then add it to the string, position top-level +1
+then add a child to that with the pen size. 
+
+**!! absolutely critical !!** that the agent gets extended context here, ala MuZero / EfficientZero -- otherwise, it forgets what it was doing, and hence needs to build extra algorithms for storing / decoding state from the edit string (which can be complicated..)
+
+Aside: given that the sample efficiency of EfficientZero is close to that of human, this all is at least worth a shot. 
+	(As good on *some* Atari games.. why not all?? 
+	You need physical intuitions?)
+	
+Regarding data representation: transformers are tensor-position-independent, 
+so we can just add an element to the beginning (fast) or end (slower) of a list & then keep track of appropriate indexing. 
+Or, allocate an array w/ extra elements, insert to the end / keep around last-index variable.
+When printing, you sort the output based on tagged position. 
+Adding is easy: Levenshtein works via an insert-before operation, so simply increment the position indexes of everything greater. 
+Likewise, deletion: just subtract one from indexes of everything greater. 
+Substitution involves no index changes. 
+	
+Humpfff.  I feel like I'm re-implementing a text editor widget!
+Probably will have to add in undo, cut copy and paste too. 
+	Since those functions proved to be useful for humans... 
+	
+	
+	
+	
+	
+	

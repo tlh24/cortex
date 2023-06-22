@@ -1758,6 +1758,10 @@ let test_logo () =
 		Printf.printf "--- tag_pos ---\n"; 
 		Logo.test_tag_pos g2; 
 		Printf.printf "--- end tag_pos ---\n%!"; 
+		Logo.test_tag_flatten g2; 
+		Printf.printf "--- end test_tag_flatten ---\n%!"; 
+		Logo.test_tag_edit g2; 
+		Printf.printf "--- end test_tag_edit ---\n%!"; 
 		)
 	| _ -> ()
 

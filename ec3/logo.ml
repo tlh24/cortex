@@ -371,7 +371,7 @@ and output_list_h lg l sep =
 	Printf.fprintf lg ")"
 	
 type ienc = [
-	| `Leaf of int * int
+	| `Leaf of int * int (* enc, pos *)
 	| `Node of ienc * ienc list
 	| `Nenc
 ]
@@ -529,7 +529,7 @@ let test_tag_pos g =
 	(* simple test to see if the tagging makes sense .. *)
 	let rec print_ienc e indent = 
 		match e with
-		| `Leaf(a,b) -> Printf.printf "%s%s:%d\n" indent (dec_item a) b
+		| `Leaf(a,b) -> Printf.printf "%s[%d] %s\n" indent b (dec_item a)
 		| `Node(a,b) -> 
 			print_ienc a indent; 
 			List.iter (fun c -> print_ienc c (indent^"  ")) b
@@ -538,10 +538,205 @@ let test_tag_pos g =
 
 	let h = ref 0 in
 	let e = tag_pos g h in
+	Printf.printf "total nodes: %d\n%!" !h; (* need this *)
 	print_ienc e "" ; 
 	Printf.printf "recon:\n%!"; 
 	let gg = untag_pos e in
 	Printf.printf "%s\n%!" (output_program_pstr gg)
+	;;
+	
+type jenc = 
+	(* flat array for sending to python *)
+	{ enc : int (* int encoding of the prog symbol *)
+	; pos : int
+	; parent : int (* these could also be type int ref aka pointers *)
+	; gparent : int
+	; kid0 : int
+	; kid1 : int
+	; kidn : int (* last kid *)
+	; l_sibling : int
+	; r_sibling : int
+}
+
+let nuljenc = {
+	enc = 0; 
+	pos = -1; (* redundant, but w/e *)
+	parent = -1; 
+	gparent = -1; 
+	kid0 = -1; 
+	kid1 = -1; 
+	kidn = -1; 
+	l_sibling = -1; 
+	r_sibling = -1; 
+}
+	
+let tag_flatten_e e1 h = 
+	let ar = Array.make h nuljenc in
+	
+	let unleaf k = 
+		(* get the position of `ienc k *)
+		match k with 
+		| `Node(`Leaf(_,b),_) -> b
+		| `Leaf(_,b) -> b
+		| _ -> -1 in
+		
+	let is_delimiter a = 
+		match a with 
+		| `Leaf(b,_) -> (
+			match b with 
+			| 2 -> true (* ) *)
+			| 3 -> true (* , *)
+			| 4 -> true (* ; *)
+			| _ -> false )
+		| _ -> false in
+		
+	let remove_delimiters l = 
+		List.filter (fun a -> not (is_delimiter a)) l in
+
+	let rec flatten e ej left right = 
+		match e with
+		| `Node(`Leaf(a,b), l) -> (
+				let al = remove_delimiters l |> Array.of_list in
+				let n = Array.length al in
+				Printf.printf "[%d] flatten, list len %d\n%!" b n ; 
+				let kid0 = if n > 0 then unleaf al.(0) else -1 in
+				let kid1 = if n > 1 then unleaf al.(1) else -1 in
+				let kidn = if n > 0 then unleaf al.(n-1) else -1 in
+				let f = { enc = a; pos = b; 
+					parent = ej.pos; 
+					gparent = ej.parent; 
+					kid0; kid1; kidn; 
+					l_sibling = left; 
+					r_sibling = right; } in
+				ar.(b) <- f; 
+				(* iterate over the non-delimeters so they have "correct" *)
+				(* redefine: iterate over whole list *)
+				let al = Array.of_list l in
+				let n = Array.length al in
+				Array.iteri (fun i c -> 
+					let ll = if i > 0 then al.(i-1) else `Nenc in
+					let rr = if i < n-1 then al.(i+1) else `Nenc in
+					let l2 = if is_delimiter ll && i > 1 
+						then unleaf al.(i-2) else unleaf ll in
+					let r2 = if is_delimiter rr && i < n-2 
+						then unleaf al.(i+2) else unleaf rr in
+						flatten c f l2 r2) al )
+		| `Leaf(a,b) -> (
+				let f = { enc = a; pos = b; 
+					parent = ej.pos; 
+					gparent = ej.parent; 
+					kid0 = -1; kid1 = -1; kidn = -1; 
+					l_sibling = left; 
+					r_sibling = right; } in
+				ar.(b) <- f; )
+		| _ -> ()
+	in
+		
+	flatten e1 nuljenc (-1) (-1); 
+	ar
+	;;
+	
+let tag_flatten g = 
+	let h = ref 0 in
+	let e = tag_pos g h in
+	tag_flatten_e e !h 
+	;;
+	
+let print_jenc e = 
+	Printf.printf "[%d] \027[34m%s\027[0m \n   parent:%d gparent:%d kid0:%d kid1:%d kidn:%d l_sibling:%d r_sibling:%d\n%!"
+	e.pos (dec_item e.enc) e.parent e.gparent e.kid0 e.kid1 e.kidn e.l_sibling e.r_sibling 
+	;;
+	
+let test_tag_flatten g = 
+	(* simple test to see if the tagging makes sense .. *)
+	let ar = tag_flatten g in
+	Array.iter print_jenc ar 
+	;;
+	
+let move_jenc move c = {
+		enc = c.enc; 
+		pos = move c.pos; 
+		parent = move c.parent; 
+		gparent = move c.gparent; 
+		kid0 = move c.kid0; 
+		kid1 = move c.kid1; 
+		kidn = move c.kidn; 
+		l_sibling = move c.l_sibling; 
+		r_sibling = move c.r_sibling }
+	;;
+	
+let tag_insert ar pos chr = 
+	let n = Array.length ar in
+	assert (pos >= 0); 
+	assert (pos <= n); 
+	let move a = if a >= pos then a+1 else a in
+	
+	Array.init (n + 1)
+		(fun i -> 
+			if i < pos then move_jenc move ar.(i) 
+			else (
+				if i = pos then {nuljenc with enc = chr; pos}
+				else ( (* i > pos *)
+					move_jenc move ar.(i-1)
+				) 
+			)
+		) 
+	;;
+	
+let tag_delete ar pos = 
+	let n = Array.length ar in
+	assert (pos >= 0); 
+	assert (pos < n);
+	let move a = if a >= pos then a-1 else a in
+	Array.init (n-1)
+		(fun i -> 
+			if i < pos then move_jenc move ar.(i)
+			else move_jenc move ar.(i+1)
+		)
+	;;
+	
+let tag_substitute ar pos chr = 
+	let a = ar.(pos) in
+	ar.(pos) <- {a with enc = chr }; (* doesn't change links *)
+	ar
+	;;
+	
+let test_tag_edit g = 
+	let print_sorted ar = Array.iter print_jenc ar in
+		
+	let ar = tag_flatten g in
+	
+	Printf.printf "---\ninserting to position 11 \"pen\"\n"; 
+	let ar = tag_insert ar 11 (enc_char1 "pen") in
+	print_sorted ar; 
+	
+	Printf.printf "---\ninserting to position 12 \"5\"\n"; 
+	let ar = tag_insert ar 12 (5-10) in
+	print_sorted ar;
+	
+	Printf.printf "---\ninserting to position 13 \";\"\n"; 
+	let ar = tag_insert ar 13 (enc_char1 ";") in
+	print_sorted ar;
+	
+	Printf.printf "---\ndeleting position 1 \n"; 
+	let ar = tag_delete ar 1 in
+	print_sorted ar;
+	
+	Printf.printf "---\ndeleting position 1 \n"; 
+	let ar = tag_delete ar 1 in
+	print_sorted ar;
+	
+	Printf.printf "---\ndeleting position 1 \n"; 
+	let ar = tag_delete ar 1 in
+	print_sorted ar;
+	
+	Printf.printf "---\nsubstituting pos 14 \"ua\"\n"; 
+	let ar = tag_substitute ar 14 (enc_char1 "ua")in
+	print_sorted ar;
+	
+	Printf.printf "---\nsubstituting pos 18 \"3\"\n"; 
+	let ar = tag_substitute ar 14 (3-10)in
+	print_sorted ar;
 	;;
 	
 let progenc_cost s = 
