@@ -184,7 +184,8 @@ class ResidualAttentionBlock(nn.Module):
         self.attn_mask = attn_mask
 
     def attention(self, x: torch.Tensor):
-        self.attn_mask = self.attn_mask.to(dtype=x.dtype, device=x.device) if self.attn_mask is not None else None
+        self.attn_mask = self.attn_mask.to(dtype=x.dtype, device=x.device) 
+            if self.attn_mask is not None else None
         return self.attn(x, x, x, need_weights=False, attn_mask=self.attn_mask)[0]
 
     def forward(self, x: torch.Tensor):
@@ -331,8 +332,9 @@ class CLIP(nn.Module):
         # lazily create causal attention mask, with full attention between the vision tokens
         # pytorch uses additive attention mask; fill with -inf
         mask = torch.empty(self.context_length, self.context_length)
-        mask.fill_(float("-inf"))
-        mask.triu_(1)  # zero out the lower diagonal
+        # mask.fill_(float("-inf"))
+        # mask.triu_(1)  # zero out the lower diagonal
+        mask.fill_(1) # can attend to everything, obviously! 
         return mask
 
     @property
