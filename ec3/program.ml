@@ -1,20 +1,10 @@
+open Constants
 open Printf
 open Logo
 open Ast
 open Torch
 open Graf
 
-let pi = 3.1415926
-(*let image_count = ref 0 *)
-let image_alloc = 32*1024 (*6*2048*2*) (* need to make this a parameter *)
-let all_alloc = 32*1024 (* including equivalents *)
-let image_res = 30
-let batch_size = ref 512
-let toklen = 30
-let p_ctx = 96
-let poslen = p_ctx / 2 (* onehot; two programs need to fit into the context *)
-let p_indim = toklen + 1 + poslen (* 31 + 12 = 43 *)
-let e_indim = 5 + toklen + poslen
 let nreplace = ref 0 (* number of replacements during hallucinations *)
 let glive = ref true 
 let gdebug = ref false 
@@ -501,25 +491,6 @@ let new_batche_unsup steak bi =
 	) else (
 		new_batche_mnist_mse steak bi
 	)
-
-let sample_dist x = 
-	(* sample a discrete decoding from the weightings along dim 1 *)
-	(* assumes batch is dim 0 *)
-	let bs,n = Tensor.shape2_exn x in
-	let y = Tensor.clamp x ~min:(Scalar.float 0.0) ~max:(Scalar.float 1e6) in
-	let mx = Tensor.amax y ~dim:[1] ~keepdim:true in
-	let z = Tensor.( exp(y / mx) - (f 1.0) ) (*could be another nonlinearity*)
-			|> Tensor.cumsum  ~dim:1 ~dtype:(T Float) in
-	(* this will de facto be sorted, so lo and hi are easy *)
-	let hi = Tensor.narrow z ~dim:1 ~start:(n-1) ~length:1 in
-	let r = Tensor.( (rand_like hi) * hi ) 
-			|> Tensor.expand ~implicit:true ~size:[bs;n] in
-	let msk = Tensor.( (gt_tensor z r) + (f 0.001) ) in (* cast to float *)
-	Tensor.argmax msk ~dim:1 ~keepdim:false
-	(* argmax returns the first index if all are equal (as here) *)
-
-let sample_dist_dum x = 
-	Tensor.argmax x ~dim:1 ~keepdim:false
 	
 (* fixed tensors for enumeration decoding *)
 let decode_edit_tensors batchsiz = 
@@ -599,7 +570,26 @@ let decode_edit_enumerate steak ba_edit =
 	(* now we need to iterate over these tensors
 		-- for each batch element
 		& decide what to do with them. *)
-	
+
+let sample_dist x = 
+	(* sample a discrete decoding from the weightings along dim 1 *)
+	(* assumes batch is dim 0 *)
+	let bs,n = Tensor.shape2_exn x in
+	let y = Tensor.clamp x ~min:(Scalar.float 0.0) ~max:(Scalar.float 1e6) in
+	let mx = Tensor.amax y ~dim:[1] ~keepdim:true in
+	let z = Tensor.( exp(y / mx) - (f 1.0) ) (*could be another nonlinearity*)
+			|> Tensor.cumsum  ~dim:1 ~dtype:(T Float) in
+	(* this will de facto be sorted, so lo and hi are easy *)
+	let hi = Tensor.narrow z ~dim:1 ~start:(n-1) ~length:1 in
+	let r = Tensor.( (rand_like hi) * hi ) 
+			|> Tensor.expand ~implicit:true ~size:[bs;n] in
+	let msk = Tensor.( (gt_tensor z r) + (f 0.001) ) in (* cast to float *)
+	Tensor.argmax msk ~dim:1 ~keepdim:false
+	(* argmax returns the first index if all are equal (as here) *)
+
+let sample_dist_dum x = 
+	Tensor.argmax x ~dim:1 ~keepdim:false
+		
 let decode_edit ?(sample=true) ba_edit = 
 	(* decode model output (from python) *)
 	(* default is to sample the distribution; 
@@ -612,8 +602,7 @@ let decode_edit ?(sample=true) ba_edit =
 	let sfun = if sample then sample_dist else sample_dist_dum in
 	let typ = sfun (Tensor.narrow m ~dim:1 ~start:0 ~length:4) in 
 	let chr = sfun (Tensor.narrow m ~dim:1 ~start:4 ~length:toklen) in
-	let pos = sfun 
-		(Tensor.narrow m ~dim:1 ~start:(5+toklen) ~length:poslen) in
+	let pos = Tensor.narrow m ~dim:1 ~start:(5+toklen) ~length:1 in
 	let edit_arr = Array.init !batch_size (fun i -> 
 		let etyp = match Tensor.get_int1 typ i with
 			| 0 -> "sub"
@@ -621,7 +610,7 @@ let decode_edit ?(sample=true) ba_edit =
 			| 2 -> "ins"
 			| _ -> "fin" in
 		let echr = (Tensor.get_int1 chr i) + Char.code('0') |> Char.chr in
-		let eloc = Tensor.get_int1 pos i in
+		let eloc = Tensor.get_float1 pos i |> Float.round |> int_of_float in
 		(etyp,eloc,echr) ) in
 	let fin = Unix.gettimeofday () in
 	if !gdisptime then Logs.debug (fun m -> m "decode_edit time %f" (fin-.sta)); 
@@ -1030,14 +1019,22 @@ let bigfill_batchd steak bd =
 		let l = if l > llim then llim else l in 
 		let lc = if lc > llim then llim else lc in
 		for i = 0 to l-1 do (
-			for j = 0 to poslen-1 do (
+			bd.bpro.{u,i,toklen+1} <- (foi i);
+			bd.bpro.{u,i,toklen+2} <- (foi i) /. 3.0;
+			bd.bpro.{u,i,toklen+3} <- (foi i) /. 9.0;
+			bd.bpro.{u,i,toklen+4} <- (foi i) /. 27.0
+			(*for j = 0 to poslen-1 do (
 				bd.bpro.{u,i,toklen+1+j} <- bd.posenc.{i,j}
-			) done
+			) done*)
 		) done;
 		for i = 0 to lc-1 do (
-			for j = 0 to poslen-1 do (
+			bd.bpro.{u,i+l,toklen+1} <- (foi i);
+			bd.bpro.{u,i+l,toklen+2} <- (foi i) /. 3.0;
+			bd.bpro.{u,i+l,toklen+3} <- (foi i) /. 9.0;
+			bd.bpro.{u,i+l,toklen+4} <- (foi i) /. 27.0
+			(*for j = 0 to poslen-1 do (
 				bd.bpro.{u,i+l,toklen+1+j} <- bd.posenc.{i,j}
-			) done
+			) done*)
 		) done ;
 	(* - bimg - *)
 		if bd.fresh.(u) then (
@@ -1094,9 +1091,13 @@ let bigfill_batchd steak bd =
 			bd.bedts.{u,4+ci} <- 1.0 ; 
 		(* position encoding *)
 		if pp >= 0 && pp < p_ctx then (
-			for i = 0 to poslen-1 do (
+			bd.bedts.{u,5+toklen+0} <- (foi pp);
+			bd.bedts.{u,5+toklen+1} <- (foi pp) /. 3.0;
+			bd.bedts.{u,5+toklen+2} <- (foi pp) /. 9.0;
+			bd.bedts.{u,5+toklen+3} <- (foi pp) /. 27.0
+			(*for i = 0 to poslen-1 do (
 				bd.bedts.{u,5+toklen+i} <- bd.posenc.{pp,i}
-			) done
+			) done*)
 		) in (* /innerloop_bigfill_batchd *)
 	if !gparallel then
 		Dtask.parallel_for steak.pool ~start:0 ~finish:(!batch_size-1)
@@ -1144,16 +1145,16 @@ let init_batchd steak superv =
 	(* hallucinated batch of edits: python to ocaml *)
 	let fd_bedtd,bedtd = mmap_bigarray2 (mkfnam "bedtd") 
 			!batch_size e_indim in
-	let fd_posenc,posenc = mmap_bigarray2 (mkfnam "posenc")
-			p_ctx poslen in
+	(*let fd_posenc,posenc = mmap_bigarray2 (mkfnam "posenc")
+			p_ctx poslen in*)
 	let bea,fresh = reset_bea steak dreaming in
 	(* fill out the posenc matrix *)
 	(* just a diagonal matrix w one-hot! *)
-	for i = 0 to (poslen-1) do (
+	(*for i = 0 to (poslen-1) do (
 		for j = 0 to (poslen-1) do (
 			posenc.{i,j} <- if i = j then 1.0 else 0.0; 
 		) done
-	) done ;
+	) done ;*)
 	(*let device = Torch.Device.Cpu in
 	let posencn = tensor_of_bigarray2 posenc device |> normalize_tensor in*)
 	Bigarray.Array3.fill bpro 0.0 ;

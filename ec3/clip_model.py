@@ -205,7 +205,7 @@ class ResidualAttentionBlock(nn.Module):
         qkv = self.c_qkv(x)
         bs, n_ctx, width = x.shape
         attn_ch = width // self.n_heads 
-        scale = 1 / math.sqrt(math.sqrt(attn_ch))
+        scale = 1 / math.sqrt(attn_ch) # does not seem to have much effect
         qkv = qkv.view(bs, n_ctx, self.n_heads, -1).half() # bs,ctx,n_heads,attn_ch*3
         q, k, v = torch.split(qkv, attn_ch, dim=-1)
         qq = q.permute(0, 2, 3, 1).unsqueeze(-1).expand([-1,-1,-1,-1,n_ctx])
@@ -223,7 +223,7 @@ class ResidualAttentionBlock(nn.Module):
         return self.attn(x, x, x, need_weights=False, attn_mask=self.attn_mask)[0]
 
     def forward(self, x: torch.Tensor):
-        x = x + self.attention_mse(x) #self.ln_1(x)
+        x = x + self.attention_q(x) #self.ln_1(x)
         x = x + self.mlp(x) #self.ln_2(x)
         return x
 

@@ -4460,7 +4460,26 @@ Many experiments today.
 		That is, add a feedback loop? 
 	{I've also made the model smaller - 6M params from 10M - more in line with our small training dataset}
 
+June 22 2023
 
+Ok, many changes to the recognizer today -- made it a good bit faster, among many other things! 
+Tried out MSD (mean-squared-difference) attention, and it works just about the same as dotproduct attention, which seems surprising to me.  
+They are similar, but different, beasts ..
+I think there must be some other normalization going on, somewhere. 
+	Note: removed two layer norms in the clip ResidualAttentionBlock
+	Does not seem to change convergence -- I think 
+	& slows the model down slightly (since there are 2 per layer)
+	Note 2: The self-made attention works "about the same" as Torch's built-in MultiHeadAttention, only it's faster (!). 
+	Cool. 
+
+Overall error seems to be limited by the size of the dataset. 
+This suggests that the recognizer is simply memorizing the dataset, 
+	not pulling out underlying structure. 
+	This is consistent with *me* just looking at the datastream; 
+	it's hard to reason about it! 
+	--> Important and limiting observation here!! 
+	
+	With a small dataset (4k slots in the graf), can eventually get to slowloss 0.0028, DP attention.
 
 
 

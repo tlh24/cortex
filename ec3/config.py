@@ -58,7 +58,8 @@ class ModelConfig(BaseModel):
 
     @property
     def poslen(self):
-        return self.p_ctx // 2
+        return 7
+        # return self.p_ctx // 2
     
     @property
     def p_indim(self):

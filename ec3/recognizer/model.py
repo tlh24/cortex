@@ -63,7 +63,7 @@ class Recognizer(nn.Module):
 		q[0] = th.std(vx)
 		vx = self.vit_to_prt(vx)
 		q[1] = th.std(vx)
-		# vx = gelu(vx) # ? needed ? 
+		vx = self.gelu(vx) # ? needed ? 
 
 		px = self.encoder(batch_p)
 		q[2] = th.std(px)

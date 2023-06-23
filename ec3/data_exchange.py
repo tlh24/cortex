@@ -73,7 +73,7 @@ class MemmapOrchestrator(object):
         self.fd_bedtd = make_mmf(f"bedtd_{mmapno}.mmap")
         self.fd_editdiff = make_mmf(f"editdiff_{mmapno}.mmap")
         self.fd_posenc = make_mmf(f"posenc_{mmapno}.mmap")
-        self.posenc = self.read_mmap(self.fd_posenc, [p_ctx, poslen])
+        # self.posenc = self.read_mmap(self.fd_posenc, [p_ctx, poslen])
         
         # Create partial functions for reading data with the specified dimensions
         self.read_bpro = partial(self.read_mmap, self.fd_bpro, 
@@ -108,4 +108,4 @@ class MemmapOrchestrator(object):
         self.fd_bedts.close()
         self.fd_bedtd.close()
         self.fd_editdiff.close()
-        self.fd_posenc.close()
+        # self.fd_posenc.close()
