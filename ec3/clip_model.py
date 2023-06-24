@@ -186,7 +186,7 @@ class ResidualAttentionBlock(nn.Module):
         self.ln_2 = LayerNorm(d_model)
         self.attn_mask = attn_mask
         
-    def attention_q(self, x : torch.Tensor): 
+    def attention_dp(self, x : torch.Tensor): 
         # this is faster than pytorch built-in MultiheadAttention! 
         qkv = self.c_qkv(x)
         bs, n_ctx, width = x.shape
@@ -201,19 +201,40 @@ class ResidualAttentionBlock(nn.Module):
         weight = torch.softmax(weight.float(), dim=-1).type(wdtype)
         return torch.einsum("bhts,bshc->bthc", weight, v).reshape(bs, n_ctx, -1)
     
-    def attention_mse(self, x : torch.Tensor): 
+    def attention_l2(self, x : torch.Tensor): 
         qkv = self.c_qkv(x)
         bs, n_ctx, width = x.shape
         attn_ch = width // self.n_heads 
         scale = 1 / math.sqrt(attn_ch) # does not seem to have much effect
-        qkv = qkv.view(bs, n_ctx, self.n_heads, -1).half() # bs,ctx,n_heads,attn_ch*3
+        qkv = qkv.view(bs, n_ctx, self.n_heads, -1) # bs,ctx,n_heads,attn_ch*3
         q, k, v = torch.split(qkv, attn_ch, dim=-1)
         qq = q.permute(0, 2, 3, 1).unsqueeze(-1).expand([-1,-1,-1,-1,n_ctx])
         kk = k.permute(0, 2, 3, 1).unsqueeze(-2).expand([-1,-1,-1,n_ctx,-1])
         # those are implicitly expanded, so don't occupy more memory.
         ww = (qq - kk)*scale # we need to not allocate this!! n_ctx too big! 
         weight = torch.einsum("bhcts,bhcts->bhts", ww, ww)
-        weight = 1.0 / (0.1+weight)
+        weight = 1.0 / (0.01+weight)
+        k = torch.arange(0,n_ctx)
+        weight[:,:,k,k] = 0.0; # zero the diagonal
+        wdtype = weight.dtype
+        weight = torch.softmax(weight.float(), dim=-1).type(wdtype)
+        return torch.einsum("bhts,bshc->bthc", weight, v).reshape(bs, n_ctx, -1)
+    
+    def attention_l1(self, x : torch.Tensor): 
+        qkv = self.c_qkv(x)
+        bs, n_ctx, width = x.shape
+        attn_ch = width // self.n_heads 
+        scale = 1 / math.sqrt(attn_ch) # does not seem to have much effect
+        qkv = qkv.view(bs, n_ctx, self.n_heads, -1) # bs,ctx,n_heads,attn_ch*3
+        q, k, v = torch.split(qkv, attn_ch, dim=-1)
+        qq = q.permute(0, 2, 3, 1).unsqueeze(-1).expand([-1,-1,-1,-1,n_ctx])
+        kk = k.permute(0, 2, 3, 1).unsqueeze(-2).expand([-1,-1,-1,n_ctx,-1])
+        # those are implicitly expanded, so don't occupy more memory.
+        ww = torch.abs(qq - kk)*scale # we need to not allocate this!! n_ctx!
+        weight = torch.sum(ww, 2)
+        weight = 1.0 / (0.001+weight)
+        k = torch.arange(0,n_ctx)
+        weight[:,:,k,k] = 0.0; # zero the diagonal
         wdtype = weight.dtype
         weight = torch.softmax(weight.float(), dim=-1).type(wdtype)
         return torch.einsum("bhts,bshc->bthc", weight, v).reshape(bs, n_ctx, -1)
@@ -223,7 +244,7 @@ class ResidualAttentionBlock(nn.Module):
         return self.attn(x, x, x, need_weights=False, attn_mask=self.attn_mask)[0]
 
     def forward(self, x: torch.Tensor):
-        x = x + self.attention_q(x) #self.ln_1(x)
+        x = x + self.attention_l1(x) #self.ln_1(x)
         x = x + self.mlp(x) #self.ln_2(x)
         return x
 
