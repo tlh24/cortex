@@ -198,6 +198,8 @@ class ResidualAttentionBlock(nn.Module):
             "bthc,bshc->bhts", q * scale, k * scale
         )  # More stable with f16 than dividing afterwards
         wdtype = weight.dtype
+        k = torch.arange(0,n_ctx)
+        weight[:,:,k,k] = -10.0; # zero the diagonal, to make it fair! 
         weight = torch.softmax(weight.float(), dim=-1).type(wdtype)
         return torch.einsum("bhts,bshc->bthc", weight, v).reshape(bs, n_ctx, -1)
     
@@ -213,7 +215,7 @@ class ResidualAttentionBlock(nn.Module):
         # those are implicitly expanded, so don't occupy more memory.
         ww = (qq - kk)*scale # we need to not allocate this!! n_ctx too big! 
         weight = torch.einsum("bhcts,bhcts->bhts", ww, ww)
-        weight = 1.0 / (0.01+weight)
+        weight = 1.0 / (0.001+weight)
         k = torch.arange(0,n_ctx)
         weight[:,:,k,k] = 0.0; # zero the diagonal
         wdtype = weight.dtype
@@ -244,7 +246,7 @@ class ResidualAttentionBlock(nn.Module):
         return self.attn(x, x, x, need_weights=False, attn_mask=self.attn_mask)[0]
 
     def forward(self, x: torch.Tensor):
-        x = x + self.attention_l1(x) #self.ln_1(x)
+        x = x + self.attention_l1(x) #self.ln_1(x) TESTING
         x = x + self.mlp(x) #self.ln_2(x)
         return x
 
