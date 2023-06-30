@@ -4755,6 +4755,10 @@ DP: 0.0590, 0.0077 0.0077, 0.0657
 L1: 0.0076, 0.0255 0.0136, 0.0257
 W/ 2 layers, L1 converges faster.
 
+	slightly more difficult task, lower snr. match-to-sample, random phase
+DP: 0.0809, 0.1166, 0.0470, 0.0443
+L1: 0.0310, 0.0131
+
 June 26 2023
 
 https://transformer-circuits.pub/2022/solu/index.html
@@ -4781,13 +4785,29 @@ with eps = 0.15 and d = 512, get ~11k bases.
 with eps = 0.15 and d = 128, get ~100 bases.
 
 More relevant links: 
+
 https://www.alignmentforum.org/posts/8mizBCm3dyc432nK8/residual-stream-norms-grow-exponentially-over-the-forward
 
 Exponential norm growth might be a way of getting around limits of cosine similarity -> pack more vectors into the space. 
 Their per-layer scaling of 1.045 could well be related to the cosine distance; to test this hypothesis, change the dimensionality of the attention (e.g. by doubling the number of heads) and see if it increases. 
 
 https://transformer-circuits.pub/2023/privileged-basis/index.html
+
 Makes me think that we just need more neurons (as in, many more than 4096), and much sparser or block-aligned linear layers.  
 This is significantly closer to what the brain is, of course.  87B neurons!
 
+Also makes me think that pulling apart axes of variation into 'labeled lines' is quite sensible, and what human engineering does all the time. 
+Great way to generalize beyond the training set. 
+And, most criticaly, form *algorithms* for abstracting and extracting information.
+	Algorithms need vector & metric spaces.
+BAck on task: need to get things working, damnit.
 
+http://arxiv.org/abs/2206.11990
+Equiformer: Equivariant Graph Attention Transformer for 3D Atomistic Graphs
+>  Vision Transformer (Dosovitskiy et al., 2021) 
+	shows that adopting a pure Transformer to image classification cannot generalize well and achieves worse results than CNNs when trained on only ImageNet (Russakovsky et al., 2015) since it lacks inductive biases like translational invariance
+
+How do we get a transformer to both learn and represent invariance and equivariance? 
+This is a problem that I've been thinking about for a long time (see all the text above, esp from Loyal days). 
+The obvious solution is to have vector spaces, where an axis of variation (e.g. translation, color) is accounted for. 
+Equivariance -> things like rotation, where rotating the representation rotates the image.  

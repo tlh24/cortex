@@ -35,8 +35,8 @@ def gen_data():
 	# subtract the difference between their position encodings
 	# symbol encodings -- random [0, 1)
 	x = th.zeros(batch_size, n_ctx, n_symb+5)
-	x[:,:,0:n_symb] = th.randn(batch_size, n_ctx, n_symb)
-	x = th.nn.functional.normalize(x, dim = 2)
+	x[:,:,0:n_symb] = th.randn(batch_size, n_ctx, n_symb) / 2
+	# x = th.nn.functional.normalize(x, dim = 2)
 	# matches
 	i = th.randint(n_ctx, [batch_size])
 	j = th.randint(n_ctx-1, [batch_size]) + 1
@@ -45,10 +45,10 @@ def gen_data():
 	x[k,i,:] = x[k,j,:]
 	ss = th.sin(th.arange(0, n_symb).unsqueeze(0).expand(batch_size,n_symb) + \
 		th.rand(batch_size).unsqueeze(-1).expand(batch_size,n_symb)*6.28)*1
-	cc = th.sin(th.arange(0, n_symb).unsqueeze(0).expand(batch_size,n_symb) + \
+	cc = th.cos(th.arange(0, n_symb).unsqueeze(0).expand(batch_size,n_symb) + \
 		th.rand(batch_size).unsqueeze(-1).expand(batch_size,n_symb)*6.28)*1
 	s2 = ss.clone()
-	s2[:,:n_symb] = s2[:,:n_symb]+ perturb
+	s2[:,:n_symb] = s2[:,:n_symb] + perturb
 	# cc = th.cos(th.arange(0,n_symb)).unsqueeze(0).expand([batch_size,n_symb])*1
 	x[k,i,0:n_symb] = ss[k,:]
 	x[k,j,0:n_symb] = s2[k,:]
@@ -122,7 +122,7 @@ for j in range(n_test):
 		x,targ = gen_data()
 		
 		if(doplot):
-			plt.imshow(x[0,:,:].numpy())
+			plt.imshow(x[0,:,:].cpu().numpy())
 			plt.clim(0,2)
 			plt.colorbar()
 			plt.show()
@@ -143,7 +143,7 @@ for j in range(n_test):
 		if(doplot):
 			# dotproduct between symbols
 			w = th.einsum("btc,bsc->bts", x[:,:,0:n_symb], x[:,:,0:n_symb])
-			plt.imshow(w[0,:,:].numpy())
+			plt.imshow(w[0,:,:].cpu().numpy())
 			plt.colorbar()
 			plt.show()
 		# get the best matches
