@@ -19,7 +19,10 @@ Rather than outputting complete programs, the model edits the working program --
 The system, 'ec3' [^2] implements the perceptual network in Python & pytorch; the remaining functions (program graph, library building, supervised batch generation) are handled by Ocaml.  
 
 Figure 1. 
-![alt text](./figures/overview2.svg)
+![alt text](./figures/overview2.png)
+<!--- regenerate png with: inkscape overview2.svg -w 2048 -o overview2.png --->
+<!--- Github does not render the line end arrows properly --->
+
 
 ### Program graph 
 
