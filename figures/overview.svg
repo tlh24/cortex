@@ -25,13 +25,13 @@
      inkscape:deskcolor="#d1d1d1"
      inkscape:document-units="mm"
      showgrid="false"
-     inkscape:zoom="2.4988482"
-     inkscape:cx="611.28163"
-     inkscape:cy="351.36188"
+     inkscape:zoom="2.3172511"
+     inkscape:cx="572.44551"
+     inkscape:cy="316.32308"
      inkscape:window-width="3840"
-     inkscape:window-height="2104"
+     inkscape:window-height="2106"
      inkscape:window-x="0"
-     inkscape:window-y="37"
+     inkscape:window-y="35"
      inkscape:window-maximized="1"
      inkscape:current-layer="layer1" />
   <defs
@@ -122,38 +122,27 @@
            x="78.139053"
            y="73.537079">transformer</tspan></text>
     </g>
-    <g
-       id="g1183"
-       transform="translate(-8.6248557,-13.348601)">
-      <rect
-         style="fill:none;stroke:#858585;stroke-width:0.740833;stroke-opacity:0.75291705"
-         id="rect1168"
-         width="62.680626"
-         height="41.519981"
-         x="52.951862"
-         y="37.570457" />
-      <text
-         xml:space="preserve"
-         style="font-style:normal;font-weight:normal;font-size:10.5833px;line-height:1.25;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#6b6b6b;fill-opacity:1;stroke:none;stroke-width:0.264583;stroke-opacity:0.75291705"
-         x="61.426945"
-         y="48.826645"
-         id="text1172"><tspan
-           sodipodi:role="line"
-           id="tspan1170"
-           style="stroke-width:0.264583;stroke:none;stroke-opacity:0.75291705;fill:#6b6b6b;fill-opacity:1"
-           x="61.426945"
-           y="48.826645">Program</tspan><tspan
-           sodipodi:role="line"
-           style="stroke-width:0.264583;stroke:none;stroke-opacity:0.75291705;fill:#6b6b6b;fill-opacity:1"
-           x="61.426945"
-           y="62.055771"
-           id="tspan1174">graph</tspan><tspan
-           sodipodi:role="line"
-           style="stroke-width:0.264583;stroke:none;stroke-opacity:0.75291705;fill:#6b6b6b;fill-opacity:1"
-           x="61.426945"
-           y="75.284897"
-           id="tspan1176">database</tspan></text>
-    </g>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:normal;font-size:10.5833px;line-height:1.25;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#6b6b6b;fill-opacity:1;stroke:none;stroke-width:0.264583;stroke-opacity:0.752917"
+       x="52.80209"
+       y="35.478043"
+       id="text1172"><tspan
+         sodipodi:role="line"
+         id="tspan1170"
+         style="fill:#6b6b6b;fill-opacity:1;stroke:none;stroke-width:0.264583;stroke-opacity:0.752917"
+         x="52.80209"
+         y="35.478043">Program</tspan><tspan
+         sodipodi:role="line"
+         style="fill:#6b6b6b;fill-opacity:1;stroke:none;stroke-width:0.264583;stroke-opacity:0.752917"
+         x="52.80209"
+         y="48.707169"
+         id="tspan1174">graph</tspan><tspan
+         sodipodi:role="line"
+         style="fill:#6b6b6b;fill-opacity:1;stroke:none;stroke-width:0.264583;stroke-opacity:0.752917"
+         x="52.80209"
+         y="61.936295"
+         id="tspan1176">database</tspan></text>
     <text
        xml:space="preserve"
        style="font-style:normal;font-weight:normal;font-size:10.5833px;line-height:1.25;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583"
@@ -400,5 +389,18 @@
        d="m 194.1814,47.855422 0.58203,-13.532114"
        id="path10915"
        sodipodi:nodetypes="cc" />
+    <g
+       id="g2688">
+      <path
+         style="fill:none;fill-opacity:1;stroke:#858585;stroke-width:0.669999;stroke-opacity:1"
+         d="m 109.58905,22.912252 c -5.86963,-0.368855 -1.97021,24.883723 -5.68226,24.796726"
+         id="path422"
+         sodipodi:nodetypes="cc" />
+      <path
+         style="fill:none;fill-opacity:1;stroke:#858585;stroke-width:0.669999;stroke-opacity:1"
+         d="m 109.58906,72.621181 c -5.86963,0.368855 -1.97021,-24.883723 -5.68226,-24.796726"
+         id="path2684"
+         sodipodi:nodetypes="cc" />
+    </g>
   </g>
 </svg>
