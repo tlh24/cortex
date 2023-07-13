@@ -59,11 +59,11 @@ class Recognizer(nn.Module):
 	def forward(self, u, batch_a, batch_p): 
 		# encode the image (we should only need to do this once??)
 		q = th.zeros(6) # ! this will be parallelized !
-		vx = self.vit(batch_a) # x is size [bs, v_ctx, 256] 
+		vx = self.vit(batch_a) # vx is size [bs, v_ctx, 256] 
 		q[0] = th.std(vx)
 		vx = self.vit_to_prt(vx)
 		q[1] = th.std(vx)
-		# vx = gelu(vx) # ? needed ? 
+		vx = self.gelu(vx) # ? needed ? 
 
 		px = self.encoder(batch_p)
 		q[2] = th.std(px)
@@ -73,7 +73,7 @@ class Recognizer(nn.Module):
 		x = self.prt(vxpx) # bs, v_ctx + p_ctx, prog_width
 		q[4] = th.std(x)
 		x = th.reshape(x, (-1,(self.v_ctx + self.p_ctx)*self.prog_width))
-		# batch size will vary with dataparallel
+		# batch size will vary 
 		x = self.prt_to_edit(x)
 		q[5] = th.std(x)
 		# x = self.ln_post(x) # scale the inputs to softmax

@@ -30,8 +30,8 @@ let () =
 				(Torch.Cuda.cudnn_is_available ()));
 	
 	let device = Torch.Device.cuda_if_available () in
-	let gs = Graf.create Program.all_alloc Program.image_alloc in
-	let sdb = Simdb.init image_alloc in
+	let gs = Graf.create Constants.all_alloc Constants.image_alloc in
+	let sdb = Simdb.init Constants.image_alloc in
 	let mnist = Torch.Tensor.zeros [2;2] in
 	let mnist_cpu = Torch.Tensor.zeros [2;2] in
 	(*let vae = Vae.dummy_ext () in*)

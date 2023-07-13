@@ -4460,6 +4460,357 @@ Many experiments today.
 		That is, add a feedback loop? 
 	{I've also made the model smaller - 6M params from 10M - more in line with our small training dataset}
 
+June 22 2023
+
+Ok, many changes to the recognizer today -- made it a good bit faster, among many other things! 
+Tried out MSD (mean-squared-difference) attention, and it works just about the same as dotproduct attention, which seems surprising to me.  
+They are similar, but different, beasts ..
+I think there must be some other normalization going on, somewhere. 
+	Note: removed two layer norms in the clip ResidualAttentionBlock
+	Does not seem to change convergence -- I think 
+	& slows the model down slightly (since there are 2 per layer)
+	Note 2: The self-made attention works "about the same" as Torch's built-in MultiHeadAttention, only it's faster (!). 
+	Cool. 
+
+Overall error seems to be limited by the size of the dataset. 
+This suggests that the recognizer is simply memorizing the dataset, 
+	not pulling out underlying structure. 
+	This is consistent with *me* just looking at the datastream; 
+	it's hard to reason about it! 
+	--> Important and limiting observation here!! 
+	
+	With a small dataset (4k slots in the graf), can eventually get to slowloss 0.0028, DP attention, scalar position encoding. 
+
+
+June 23 2023
+
+Testing the L1 - L2 - DP attention system! 
+
+L1 attention: 0.006349076454602586
+DP attention: 0.004616069131047976
+L2 attention: 0.010392723647748386
+
+with identical tags: 
+L1 attention: 0.0055580250081887494
+DP attention: 0.011345858310677023
+L2 attention: 0.010392723647748386
+
+with only 2 layers, identical tags: 
+DP: 0.0140100314011569
+L1: 0.006314247198211827
+L2: 0.004982327174263752
+
+2 layers, different tags: 
+DP: 0.04157061640296062
+L1: 0.00517007683203187
+L2: 0.010488987030299967
+
+Same as above, with layer norm on the output of the attention: 
+DP: 0.1504641341443513
+L1: 0.010171256031158179
+L2: 0.011591575748813115
+
+layer norm off again: 
+DP: 0.23284543332816107, 0.2255629265620164 (bad runs?)
+L1: 0.013429969597281714, 0.009002821975766507
+L2: 0.014677950339294569, 0.011296788155461736
+
+scale the position up by 2, range 0-4: 
+DP: 0.027779351974705276, 0.02962847176602435
+L1: 0.014010731441804819, 0.02046082150626063
+L2: 0.02362679069285184, 0.020302129921538452
+
+They all seem to work ... Ok, actually. 
+L1 norm seems to work very slightly better for this particular task. 
+
+Changing the embedding dim to 32 makes DP not work. 
+
+With embedding dim = 128, position range 0-4: 
+DP: 0.02431350496264924, 0.013504537970070014
+L1: 0.02694920695381737, 0.020747645571554667 (worse!)
+L2: 0.01921817865173789, 0.02092274844451411
+
+With embedding dim = 32, 4 heads, 2 layers, no layernorm, pos = 0..4
+DP: 0.8448256532313727, 0.059817131463943615
+L1: 0.026587333409418448, 0.019647167679408762
+L2: 0.005725799589767621, 0.0049087129805565986 
+
+L2 works really well in this case -- perhaps b/c lower dimensional? 
+Now I can't seem to replicate the result. 
+It's about the same as L1, or worse? 
+Just got lucky? 
+
+Same as above, 2 heads, 2 layers: 
+DP: 0.018835755395397242, 0.027435446561243443
+L1: 0.01969799936006295, 0.024421834503088817
+L2: 0.04438079041028287, 0.014492938549814632
+
+double the learning rate to 0.0002: (2 layers, 4 heads, 32 dimensional)
+DP: 0.04252163634671214, 0.009583215215461948, 0.030298561506973506
+L1: 0.012038916275021742, 0.013570621685610197, 0.014583659135019222
+L2: 0.016474532735698082, 0.012952932436949692, 0.01717546979364417
+Notes: everything seems to bounce around at this learning rate, 
+rather than converging. 
+
+What happens if we double the SNR on the input? 
+Scale th.sin and th.cos by 4 instead of 2. 
+Note: visually, this makes the task super easy! 
+Put the LR back at 1e-4
+DP: 0.0218, 0.0175, 0.0119 -- best
+L1: 0.0230, 0.0342, 0.0263 -- meh.
+L2: 0.0136, 0.0191, 0.0456
+
+64-dimensional again. LR at 1.5e-4.  No other changes.
+DP: 0.0144, 0.0236, 0.0168 -- still the best.
+L1: 0.0241, 0.0425, 0.0223
+L2: 0.0185, 0.0374, 0.0414
+
+Match two columns (sin and sin), 1/4 SNR, visually easy task, postition still scaled by 4, LR 1.5e-4, 64 dim, 2 layers, 4 heads. 
+DP: 0.0243, 0.0168, 0.0245
+L1: 0.0047, 0.0074, 0.0059 -- works well.
+L2: 0.0045, 0.0055, 0.0100 -- similar. 
+The distance-based models have a better time here because they don't need to learn a mapping.. 
+
+3 Layers: 
+DP: 0.0168, 0.0181, 0.0183
+L1: 0.0246, 0.0102, 0.0098
+L2: 0.0052, 0.0099, 0.0030
+
+1 layer, match to sample, variable phase on the sin across the batch dimension, 64 dimensional embedding, 4 heads
+DP: 0.8632, 0.8404, 0.9100 0.8230, 0.7598, 0.7509
+L1: 0.0191, 0.0263, 0.1248 0.0692, 0.0914, 0.0192 -- most consistent.
+L2: 0.1914, 0.0973, 0.1418 0.0054, 0.1941, 0.2665
+
+L1 fails if the dimensionality is reduced to 32. 
+Bump to embed_dim = 128: 
+DP: 0.2503, 0.2375, 0.1240 -- less difference! 
+L1: 0.0905, 0.1329, 0.1273
+
+Turn off grad clipping, embed_dim = 64, 1 layer.
+It blows up!
+DP: 188.0025, 209.8169, 273.5426
+L1: 843.8177, 528.0775, 111.2152
+
+clip_grad_norm @ 0.25: 
+DP: 0.8143, 0.7334, 0.6463
+L1: 0.1538, 0.0638, 0.0506
+
+now 2 layers: 
+DP: 0.8940, 0.8667, 0.9143
+L1: 0.0213, 0.0274, 0.0483
+
+clip_grad_norm OFF, LayerNorm on. 2 layers.
+DP:  < blows up !! even worse than without Layernorm. > 
+L1: also blows up!!
+
+clip_grad_norm @ 0.125 (dang hyperparameters!)
+layernorm on, 2 layers, 64 dim, 
+DP: 0.1523, 0.2384, 0.0835 -- sorta works.
+L1: 0.2401, 1.0332, 0.7497 -- fails.
+--- layernorm off ---
+DP: 0.8780, 0.4249, 0.8903 -- fails.
+L1: 0.0280, 0.0217, 0.0239 -- works, not perfect but meh
+clip_grad_norm @ 0.05
+DP: 0.7599, 0.8543, 0.8689
+L1: 0.0208, 0.0196, 0.0296 -- about the same, maybe slightly better?
+
+Bump dim to 128, layer norm ON. Still 2 layers.
+DP: 0.0489, 0.0561, 0.0535 -- much better than "sorta works". 
+	Not as good as L1 embed_dim @ 64. 
+Bump dim again to 256, everything else unchanged. (layernorm On)
+DP: 0.0815, 0.1023, 0.0834 -- 
+	Still not as good as L1 w embed_dim @ 64
+
+Do we just need to mask off the diagonal w/ this task? 
+OK, layer norm off 
+DP: 0.5635, 0.8700, 0.8289, 0.8378, 0.8984, 0.7570
+L1: 0.0288, 0.0251, 0.0317, 0.0227, 0.0332, 0.0463
+w/o mask: 
+DP: 0.7131, 0.8242, 0.4321
+L1: 0.0231, 0.0180, 0.0884
+mask back on: 
+DP: 0.8913, 0.8881, 0.6830
+L1: 0.0319, 0.0244, 0.0206
+
+Hm. Masking seems to have a marginal effect. Leave it in for now, guess. 
+What if we make the identical tag task harder, by perturbing things on one axis? 
+DP: 0.3120, 0.6375, 0.5620 -- fail.
+L1: 0.0246, 0.0252, 0.0314 -- yep, still works.
+
+What if we perturb on most axes (in a fixed way)? 
+DP: 0.2800, 0.5002, 0.5395 -- seems slighty better, surprisingly? 
+L1: 0.0523, 0.0494, 0.0368 -- obviously, it's a harder task.  But still works.
+Repeat, learning_rate from 1.5e-4 to 2e-4
+DP: 0.5109, 0.0366, 0.0329 -- it *can* do it!! when perturb is on.
+L1: 0.0232, 0.0386, 0.0312 -- slightly better.
+repeat: 
+DP: 0.0610, 0.2466, 0.0418
+L1: 0.0195, 0.0270, 0.0268
+Why is this? 
+Because perturb is a static vector that does not change during training. 
+
+W/off, 
+DP: 0.3395, 0.7609, 0.4476
+L1: 0.0173, 0.0119, 0.0222
+So, yeah, L1 can do both.
+
+What happens if we increase the difficulty of the problem, 
+by making n_ctx larger? 
+Was 24, let's try 64. oops, need to use the GPUs! (doesn't work post-suspend)
+bump up batch size to 64, 
+DP: 0.9589, 0.9500, 0.9342, 0.9455 -- fail.
+L1: 0.0386, 0.0662, 0.0792, 0.0378 -- slow, but works! 
+
+Smaller batch size of 32: 
+L1: 0.0416, 0.1743, 0.2160, 0.1156
+Larger batch size of 128: 
+L1: 0.0602, 0.0501, 0.0369, 0.0549 
+-- loss is summed along the batch dim, so this is better. 
+
+If we run for 10x longer, does it eventually get the perfect solution?
+DP: 0.0015, 0.0008, 0.0009, 0.0013
+L1: 0.0005, 0.0023, 0.0011, 0.0005
+
+n_ctx = 128: 
+DP: 0.0025, 0.0032, 0.0186, 0.0020
+L1: <similar>
+
+AdamW instead of Adam: 
+DP: 1.2112, 1.0246, 1.0296, 1.0954
+L1: 0.5087, 0.5817, 0.3131, 0.1796 -- better, but still.
+
+6k steps instead of 30k: 
+	batch_size = 64
+	n_ctx = 128
+	n_symb = 10
+	n_layers = 2
+	n_heads = 4
+	n_test = 4
+	n_iters = 6000
+	learning_rate = 2e-4
+	clip_grad = 0.08
+DP: 0.9440, 0.9587, 0.6763, 0.9551
+L1: 0.0376, 0.0760, 0.0420, 0.1186
+
+12k steps: 
+DP: 0.0070, 0.0171, 0.0709, 0.0682
+L1: 0.0279, 0.0231, 0.0297, 0.0199
+These two are ~ equivalent. 
+
+Scale down the position by 2: (range 0..2)
+DP: 0.2553, 0.2452, 0.2574, 0.2492 -- doesn't work!
+L1: 0.0057, 0.0028, 0.0032, 0.0091
+
+Scale up the position by 2: (range 0 .. 8), one layer, 10k steps
+DP: 0.4282, 0.1599, 0.3761, 0.4671
+L1: (top terminal)
+
+
+So: it can solve hard relational problems which have no DC-term, 
+eg. they are exclusively defined by relationships and not by absolute values.
+Yet we know transformers work perfectly well in code ... 
+is this a result of them operating on human-named symbols? 
+These human-named symbols make things much much easier to parse: they are 'fixed' vectors with intrinsic meaning, e.g. their meaning is not defined exclusively by their relationship to other entities. 
+Makes things much easier for humans, and easier for the AI as well. 
+--> As I've thought of a while ago, need to add grounded tags for symbols and such.  Could be transformer-generated internal vectors...
+
+Still, I think this is an important and durable improvement?
+
+Ut oh: seems like with longer training, DP can solve the problem too.
+It just takes longer.  
+Not a representational problem, then? 
+
+OK, one layer, 10k steps. 
+	batch_size = 64
+	n_ctx = 128 -- this is a really hard problem! 
+	n_symb = 10
+	n_layers = 1
+	n_heads = 4
+	n_test = 2
+	n_iters = 10000
+	learning_rate = 2e-4
+	clip_grad = 0.1
+The loss tends to bounce around a lot at the beginning! 
+DP: 0.1924, 0.9839, 0.2325, 0.5971
+L1: 1.0639, 0.3424, 0.7689, 0.1378 -- worse!! 
+
+Now with 
+	learning_rate = 1e-4
+	clip_grad = 0.04
+DP: 3.1799, 3.0960 3.7935, 3.5859
+L1: 0.8523, 1.9012 2.6200, 2.2071 
+-- again, worse (and worse than with higher lr / clipping)
+
+	learning_rate = 2e-4
+	clip_grad = 0.09
+DP: 0.1841, 0.1881 0.5526, 0.6738
+L1: 0.0785, 0.3860 0.6526, 0.8429
+
+	n_ctx = 64
+DP: 0.4521, 0.3007 0.1159, 0.0522
+L1: 0.2528, 0.1869 0.2137, 0.1750
+
+	n_layers = 2
+DP: 0.0590, 0.0077 0.0077, 0.0657
+L1: 0.0076, 0.0255 0.0136, 0.0257
+W/ 2 layers, L1 converges faster.
+
+	slightly more difficult task, lower snr. match-to-sample, random phase
+DP: 0.0809, 0.1166, 0.0470, 0.0443
+L1: 0.0310, 0.0131
+
+June 26 2023
+
+https://transformer-circuits.pub/2022/solu/index.html
+
+Almost Orthogonal Vectors:  
+Although it's only possible to have n orthogonal vectors in an n-dimensional space, it's possible to have \exp(n) many "almost orthogonal" (< \epsilon cosine similarity) vectors in high-dimensional spaces. 
+See the Johnson–Lindenstrauss lemma 
+
+I read through the Johnson-lindenstrauss lemma, and I don't immediately see how this applies.  Let's do some experiments. 
+
+Yeah, I think this statement is wrong: 
+see bio-inspired/cos_sim_test.py. 
+
+Most vectors in high-dimensional spaces are simply not orthogonal. 
+Their cosine similarity converges to something like dimension^(-0.4) .. 
+For 512-d space, this is ~ 0.0355
+
+It seems that, when eps > mean eps for a given distribution, 
+then, yes, you can get an large number of bases that 
+are discriminable based on dot product metric.
+with eps = 0.08 and d = 2048, get >19k bases. 
+	eps = 0.05 -> 500 bases
+with eps = 0.15 and d = 512, get ~11k bases.
+with eps = 0.15 and d = 128, get ~100 bases.
+
+More relevant links: 
+
+https://www.alignmentforum.org/posts/8mizBCm3dyc432nK8/residual-stream-norms-grow-exponentially-over-the-forward
+
+Exponential norm growth might be a way of getting around limits of cosine similarity -> pack more vectors into the space. 
+Their per-layer scaling of 1.045 could well be related to the cosine distance; to test this hypothesis, change the dimensionality of the attention (e.g. by doubling the number of heads) and see if it increases. 
+
+https://transformer-circuits.pub/2023/privileged-basis/index.html
+
+Makes me think that we just need more neurons (as in, many more than 4096), and much sparser or block-aligned linear layers.  
+This is significantly closer to what the brain is, of course.  87B neurons!
+
+Also makes me think that pulling apart axes of variation into 'labeled lines' is quite sensible, and what human engineering does all the time. 
+Great way to generalize beyond the training set. 
+And, most criticaly, form *algorithms* for abstracting and extracting information.
+	Algorithms need vector & metric spaces.
+BAck on task: need to get things working, damnit.
+
+http://arxiv.org/abs/2206.11990
+Equiformer: Equivariant Graph Attention Transformer for 3D Atomistic Graphs
+>  Vision Transformer (Dosovitskiy et al., 2021) 
+	shows that adopting a pure Transformer to image classification cannot generalize well and achieves worse results than CNNs when trained on only ImageNet (Russakovsky et al., 2015) since it lacks inductive biases like translational invariance
+
+How do we get a transformer to both learn and represent invariance and equivariance? 
+This is a problem that I've been thinking about for a long time (see all the text above, esp from Loyal days). 
+The obvious solution is to have vector spaces, where an axis of variation (e.g. translation, color) is accounted for. 
+Equivariance -> things like rotation, where rotating the representation rotates the image.  
 
 July 9 2023
 
@@ -4492,6 +4843,7 @@ GPT-4 can already learn from feedback!
 Market considerations: 
 
 [1] Open source software presently co-exists & has a vibrant community alongside closed-source software; reducing the friction for editing / fixing / improving open-source software will make it both better and a more valuable human asset.  It is also more democratic: OSS circumvents dark-patterns.  I’m convinced this will help human flourishing (insofar as software is involved in life)! 
+
 
 
 

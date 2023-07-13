@@ -9,7 +9,7 @@ plt.rcParams['toolbar'] = 'None'
 
 plot_rows = 2
 plot_cols = 4
-figsize = (22, 11)
+figsize = (16, 9)
 plt.ion()
 fig, ax = plt.subplots(plot_rows, plot_cols, figsize=figsize)
 initialized = False
@@ -26,7 +26,7 @@ while True:
 	ax[0,0].set(xlabel='iteration')
 	ax[0,0].set_title('log loss')
 
-	labels = ["vit","vit_to_prt","encoder","vxpx","prt","prt_to_edit"]
+	labels = ["VisionTransformer out","ViT_to_Prog (linear layer) output","ProgramTransformer in","cat ViT;PrT dim=1","ProgramTransformer out","edit output"]
 	for i in range(7): 
 		r = (i+1) // 4
 		c = (i+1) % 4
@@ -34,7 +34,7 @@ while True:
 		ax[r,c].plot(data[:,0], data[:,i+2], 'b')
 		if i < 6: 
 			lab = labels[i]
-			ax[r,c].set_title(f'st.dev {lab} output')
+			ax[r,c].set_title(f'st.dev {lab}')
 		else: 
 			ax[r,c].set_title(f'number of replacements')
 
