@@ -4811,3 +4811,47 @@ How do we get a transformer to both learn and represent invariance and equivaria
 This is a problem that I've been thinking about for a long time (see all the text above, esp from Loyal days). 
 The obvious solution is to have vector spaces, where an axis of variation (e.g. translation, color) is accounted for. 
 Equivariance -> things like rotation, where rotating the representation rotates the image.  
+
+July 9 2023
+
+Working on the pitch again, need to remove the "negative" critiques slide. 
+
+Here is a text copy for posterity, since I (at least) think the points are valid. 
+
+Critiques
+
+Inverse graphics has been solved, e.g. through Neural Radiance Fields. 
+	* Sure, this is a good method [1].  
+	* Our method should be better & more general. 
+GPT-4, StarCoder etc can already program remarkably well!
+	* Correct - and our approach will make it better through transfer learning [2].
+	* It will work in low-coverage and no-coverage programming environments. 
+		* For example, highly confidential code bases or very new libraries
+	* LLMs have limited knowledge of what a program is doing internally – they just regurgitate code. See: https://arxiv.org/abs/2108.07732 
+Visual perception, as seen in self driving, is solved.
+	* Sure, but at what engineering cost?  A proper bootstrapping model will be better & lighter. 
+	* A proper bootstrapping model will be portable to many other domains. 
+Why not start with a pre-trained LLM?
+	* Will do that as well, though it is expensive to sample from it. 
+	* Current models > 8000 edits/sec on my home computer; GPT4ALL < 1 token/sec. 
+GPT-4 can already learn from feedback! 
+	(1) Typically this is only done in-context: no information flows back to the ~1.7T weights. 
+	(2) You can finetune on self-play examples, but the sheer size of these models favors our approach
+
+[1]The general idea of taking a hard-to-manipulate data structure, projecting it into a higher-dimensional and/or SGD/chainrule/optimization- amenable representation, then operating / compressing that is fertile territory.  I think it’s ok to skip this step explicitly as that’s what transformers are doing internally anyway.  (As our brains are likely doing as well :-)
+
+Market considerations: 
+
+[1] Open source software presently co-exists & has a vibrant community alongside closed-source software; reducing the friction for editing / fixing / improving open-source software will make it both better and a more valuable human asset.  It is also more democratic: OSS circumvents dark-patterns.  I’m convinced this will help human flourishing (insofar as software is involved in life)! 
+
+
+
+
+
+
+
+
+
+
+
+

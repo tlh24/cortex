@@ -1,26 +1,45 @@
 # About
 
-This is a working repo of two ML projects: 
-1. Bio-inspired perceptual learning. 
-2. Dreamcoder-inspired bootstrapped program synthesis.  
+This is a working repo of two ML projects:  
+1. Dreamcoder-inspired bootstrapped program synthesis.  
+2. Bio-inspired perceptual learning.
 
-Of the two, the bio-inspired work started first during free time during the pandemic.  
-See subject heading below for a more complete description.  
+Most work in this repository is focused on (1).  
+(2) Began during the pandemic & remains of high interest as a means of improving sample and training efficiency.   
 
-## Bootstrapped program synthesis
+## EC3: Bootstrapped program synthesis
 
 *Hypothesis: Reasoning can emerge through directed search, memorization, and compression -- no human behavioral cloning required*
 
 This is directly inspired by the excellent, insightful [DreamCoder paper](http://arxiv.org/abs/2006.08381)[^1].   DreamCoder is a program synthesis tool that aims to approximate the posterior -- the probability of a program given a specification -- based on a perceptual **network** and a **library**.  The perceptual network seeks to take the specification + working hypothesis context and output a new program token; the library seeks to encapsulate useful program primitives such that the search space is smaller.  Library building enables the perceptual network to do more with fewer tokens; perceptual network refinement enables greater search depths.
 
-Here, our core modification is to replace the perceptual network (in DreamCoder a few-shot and relatively shallow prototypical network) with a complete vision transformer x token encoding transformer (presently lifted directly from OpenAI's CLIP model).  
+Here, our core modification is to replace the perceptual network (in DreamCoder a few-shot and relatively shallow prototypical network) with a complete vision transformer x token encoding transformer (presently a modified version of OpenAI's CLIP model).  
 Rather than outputting complete programs, the model edits the working program -- same as a human -- aiming for it to better meet the specification.  The model is trained in a fully supervised way, based on edits to programs it's already seen (stochastically generated) or created itself, ala the UDRL paradigm.  Directionality is imbued into the model by selecting program paths through the graph of possible edits to maximize the match to a specification.  
 
-The system, 'ec3' [^2] implements the perceptual network in Python & pytorch; the remaining functions (program graph, library building, supervised batch generation) are handled in Ocaml.  
+The system, 'ec3' [^2] implements the perceptual network in Python & pytorch; the remaining functions (program graph, library building, supervised batch generation) are handled by Ocaml.  
+
+Figure 1. 
+![overview schematic](./figures/overview2.png)
+<!--- regenerate png with: inkscape overview2.svg -w 2048 -o overview2.png --->
+<!--- Github does not render the line end arrows properly --->
 
 
-(Todo: graphical model.  ) Directionality is the next feature to be added. 
+### Program graph 
 
+Above, programs are stored in a graph database, in which nodes are (program,image) pairs (where the image is the result of running the program).  Nodes are connected through edges, which record the program edits required to move from one program to another. These edits are capped to a small length, for now.  The program database is randomly initialized based on sampling commands from the Logo DSL.  
+
+### Trainer
+During training edit-linked programs are sampled from the database.  These edits are presently selected from a minimum-spanning tree linking all programs, starting from the root (empty) node, and so constitute a progression of increasing complexity. 
+
+Initial program and its image, and the new program and image are presented to the recognizer model - a modified transformer - which is trained via supervised learning, via the Adam optimizer, to sequentially produce the edits that convert program A to program B, with program B hidden but image B provided. 
+
+### Solver
+
+The solver takes the transformer trained above, and uses it to try to solve target problems.  For testing, this consists of the ol' standby: MNIST digits.  Edit probabilities are produced by the transformer, which are put into an search tree; these edits are enumerated based on descending probability. 
+
+If the edits result in a working program (as triggered by an "done" edit token), and this program is closer to the target than the original, then the new program is added to the database and linked to existing nodes via edit edges. 
+
+Nodes are thereby 'colored' based on proximity to targets.  Because memory is limited, these labels are used to cull the graph database to remove useless nodes. 
 
 
 ## Bio-inspired perceptual learning
