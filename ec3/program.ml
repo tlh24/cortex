@@ -1145,16 +1145,16 @@ let init_batchd steak superv =
 	(* hallucinated batch of edits: python to ocaml *)
 	let fd_bedtd,bedtd = mmap_bigarray2 (mkfnam "bedtd") 
 			!batch_size e_indim in
-	(*let fd_posenc,posenc = mmap_bigarray2 (mkfnam "posenc")
-			p_ctx poslen in*)
+	let fd_posenc,posenc = mmap_bigarray2 (mkfnam "posenc")
+			p_ctx poslen in
 	let bea,fresh = reset_bea steak dreaming in
 	(* fill out the posenc matrix *)
 	(* just a diagonal matrix w one-hot! *)
-	(*for i = 0 to (poslen-1) do (
+	for i = 0 to (poslen-1) do (
 		for j = 0 to (poslen-1) do (
 			posenc.{i,j} <- if i = j then 1.0 else 0.0; 
 		) done
-	) done ;*)
+	) done ;
 	(*let device = Torch.Device.Cpu in
 	let posencn = tensor_of_bigarray2 posenc device |> normalize_tensor in*)
 	Bigarray.Array3.fill bpro 0.0 ;
