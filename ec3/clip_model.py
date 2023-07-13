@@ -7,6 +7,7 @@ import torch.nn.functional as F
 from torch import nn
 import math
 import pdb
+# source: 
 # https://raw.githubusercontent.com/openai/CLIP/main/clip/model.py 
 
 class Bottleneck(nn.Module):

@@ -39,11 +39,12 @@ eps = 1e-3
 # 	print(d, orth.sum(), c.abs().mean())
 
 torch_device = 0
-print("torch cuda devices", th.cuda.device_count())
-print("torch device", th.cuda.get_device_name(torch_device))
-th.cuda.set_device(torch_device)
-th.set_default_tensor_type('torch.cuda.FloatTensor')
-th.set_float32_matmul_precision('high') # desktop.
+print("torch cuda devices", torch.cuda.device_count())
+print("torch device", torch.cuda.get_device_name(torch_device))
+torch.cuda.set_device(torch_device)
+torch.set_default_device(torch_device)
+torch.set_default_dtype(torch.float32)
+torch.set_float32_matmul_precision('high') # desktop.
 
 n = 32000
 c = th.zeros(512)

@@ -6,7 +6,7 @@ import clip_model
 import pdb
 
 batch_size = 64
-n_ctx = 64
+n_ctx = 16
 n_symb = 10
 n_layers = 2
 n_heads = 4
@@ -17,6 +17,7 @@ clip_grad = 0.1
 
 doplot = False
 doperturb = False
+ringers = False
 
 torch_device = 0
 print("torch cuda devices", th.cuda.device_count())
@@ -33,25 +34,24 @@ else:
 def gen_data(): 
 	# task: select the two symbols that match
 	# subtract the difference between their position encodings
-	# symbol encodings -- random [0, 1)
+	# background symbol encodings -- random [0, 0.5)
 	x = th.zeros(batch_size, n_ctx, n_symb+5)
 	x[:,:,0:n_symb] = th.randn(batch_size, n_ctx, n_symb) / 2
-	# x = th.nn.functional.normalize(x, dim = 2)
-	# matches
+	# select matches
 	i = th.randint(n_ctx, [batch_size])
 	j = th.randint(n_ctx-1, [batch_size]) + 1
 	j = th.remainder(i + j, n_ctx)
 	k = th.arange(batch_size)
+	# set the i = j symbol match
 	x[k,i,:] = x[k,j,:]
-	ss = th.sin(th.arange(0, n_symb).unsqueeze(0).expand(batch_size,n_symb) + \
-		th.rand(batch_size).unsqueeze(-1).expand(batch_size,n_symb)*6.28)*1
-	cc = th.cos(th.arange(0, n_symb).unsqueeze(0).expand(batch_size,n_symb) + \
-		th.rand(batch_size).unsqueeze(-1).expand(batch_size,n_symb)*6.28)*1
-	s2 = ss.clone()
-	s2[:,:n_symb] = s2[:,:n_symb] + perturb
-	# cc = th.cos(th.arange(0,n_symb)).unsqueeze(0).expand([batch_size,n_symb])*1
-	x[k,i,0:n_symb] = ss[k,:]
-	x[k,j,0:n_symb] = s2[k,:]
+	# set 'special' symbols: sinusoids with random phase.
+	if(ringers):
+		ss = th.sin(th.arange(0, n_symb).unsqueeze(0).expand(batch_size,n_symb) + th.rand(batch_size).unsqueeze(-1).expand(batch_size,n_symb)*6.28)*1
+		cc = th.cos(th.arange(0, n_symb).unsqueeze(0).expand(batch_size,n_symb) + th.rand(batch_size).unsqueeze(-1).expand(batch_size,n_symb)*6.28)*1
+		s2 = ss.clone()
+		s2[:,:n_symb] = s2[:,:n_symb] + perturb
+		x[k,i,0:n_symb] = ss[k,:]
+		x[k,j,0:n_symb] = s2[k,:]
 	# pdb.set_trace()
 	# positions
 	x[:,:,-5] = th.randint(128, [batch_size, n_ctx]) / 16.0
@@ -68,12 +68,12 @@ def gen_data():
 def test_plot (): 
 	x,y = gen_data()
 	print(y)
-	plt.imshow(x[0,:,:].numpy())
+	plt.imshow(x[0,:,:].cpu().numpy())
 	plt.clim(0,2)
 	plt.colorbar()
 	plt.show()
 	
-#test_plot()
+test_plot()
 
 slowloss = 1.0
 
