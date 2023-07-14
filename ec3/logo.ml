@@ -458,10 +458,10 @@ let rec tag_pos g h =
 	| `Nop -> `Nenc
 	
 let rec untag_pos e = 
-	(* this is mostly for testing : flow is
+	(* this is primarily for testing : flow is
 		string -> (parser) -> AST -> tag tree -> tag array -> string -> 
 		then string -> (parser) -> AST
-		you never normally need to go tag tree -> AST *)
+		you never normally need to go from tag tree -> AST *)
 	match e with 
 	| `Node(`Leaf(t,_), l) -> (
 		let ut = dec_item t in

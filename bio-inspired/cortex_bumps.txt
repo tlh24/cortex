@@ -4800,7 +4800,83 @@ Probably will have to add in undo, cut copy and paste too.
 	Since those functions proved to be useful for humans... 
 	
 	
+July 13 2023
+
+OK, L1-attention is "done", it does work faster on some tasks, yet is not quite as computationally efficient as DP attention (no surprise, fused MAC etc).  
+
+Now back to the main task: figuring out what to get the Recognizer to do.  
+On the branch tlh-exp, seems I stopped on position decoding.  
+I think a reasonable and extensible way to proceed is to add a cursor, the same as what humans use, and move it around in the AST. 
+
+Can decode a series of moves, then: 
+	move to root (start editing here always)
+	move child
+		could be move child nth 
+			w/ pytorch indexing
+	move sibling right
+	move sibling left
+	move parent
+In addition to decoding a series of edits: 
+	add token
+	remove token
+	substitute token
+And while we are duplicating code-editor capabilities: 
+	select node
+	cut node
+	copy node
+Maybe even: 
+	Insert breakpoint
+	Inspect variable
 	
-	
-	
-	
+All seems eminently compatible with a DeepRL + UDRL framework. 
+	Hopefully no physical intuitions are required!
+		Or, if they are, they can safely be introduced via transfer-learning
+All can easily be encoded as one-hot fields: 
+	This allows the network to indicate both what it wants to select
+	and the weight / probability of selecting that move. 
+
+Adding in EfficientZero siamese state encoding makes sense, though definitely need to diagram out how:
+-- MCTS feeds back into problem-solving, 
+-- Dreaming factors into training
+-- We keep around directed context: 
+	If programs aren't connected by edits, but rather complex series of cursor movements, copy-paste, additions and deletions, refactoring, 
+	Then the graph database becomes much more of a replay buffer. 
+		This is probably good, since the edit graph is confusing for me to look at -- a priori, only a small subset of image pairs lead to a clear causative edit.  
+		Not too hard to think that the model would have a similar hard time. 
+			Gets back to data quality: 
+-- There needs to be a process which continually refines the training data! 
+	Criteria: 
+	1- Useful (moves closer to a goal, or to a proxy-goal)
+	2- Understandable (model can predict the effects)
+	3- Applicable (when that bit of training data is used, 
+		it results in a new datapoint that is 1 & 2 above).
+			This is akin to backprop through data.
+		
+Notably, the way that people program is much closer to transductive learning than inductive learning.  
+transductive = labelling new examples based on existing data
+inductive = learning the general rules of data labelling. 
+	labelling ~= mapping here.
+(Or, perhaps, it is a mix of transductive and inductive learning..
+	surprising that I only recently learned this term. )
+Probably for sample efficiency you want some mix of transductive and inductive learning. 
+Or, the inductive learning can be a layer on top of the transductive capability? 
+	E.g. copy-paste is basically a transductive operation: it's taking another datapoint and applying it.
+	Copy-paste can be embedded within a transformer, too. 
+	It can be a general learned operation ... 
+		but then the source material needs to be in-context. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
