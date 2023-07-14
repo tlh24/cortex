@@ -4803,6 +4803,7 @@ Probably will have to add in undo, cut copy and paste too.
 July 13 2023
 
 OK, L1-attention is "done", it does work faster on some tasks, yet is not quite as computationally efficient as DP attention (no surprise, fused MAC etc).  
+	Could certainly try to make more efficient in the future..
 
 Now back to the main task: figuring out what to get the Recognizer to do.  
 On the branch tlh-exp, seems I stopped on position decoding.  
