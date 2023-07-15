@@ -4866,14 +4866,75 @@ Or, the inductive learning can be a layer on top of the transductive capability?
 	It can be a general learned operation ... 
 		but then the source material needs to be in-context. 
 
+July 14 2023
+
+Looking at above, seems that we might need to move away from a graph embedding of programs - and just store a (large) replay buffer? 
+That is, make this a strictly RL task, rather than some the graph-learning aproach (which is confusing for me as well?)
+
+Right, so we have two options: 
+-- UDRL 
+	Issues: 
+	* Not enough directionality in the training data, 
+	hence network does not reliably predict edits.
+	* Not enough systematicity in the data, so the network does not learn structure.  
+	* No only a weak feedback loop to clean the data
+	* Network tends to memorize the training dataset.
+-- RL
+	Issues: 
+	* This is an open-ended task, not a game
+		Assigning reward to the change in the MSE and or change in the program length may lead to even more local minima. 
+	* Need to take multiple actions in a sequence in order to produce a valid program. 
+		Maybe can assign a 'reward' for producing a working program? 
+		Seems like this will require constant tweaking, 
+		but might be good enough to *get a demo together*
+		(Symmetric games avoid the problem of objective-pursuit: 
+			you build complexity competitively.)
+	* Just looking at replay buffers makes the system much less sample efficient than the graph. 
+		The program graph is ~quadratic in the number of programs (well, less); 
+		MCTS deals with this by braodening through search. 
+		This is kinda a moot point anyway, since presently we're training from the minimum-spanning tree of the program edits. 
+	* Need to think about history of edits: the agent needs to maintain a stable strategy over multiple interactions. 
+		This is also true in Go, of course
+		You can't have it switch strategy within a big refactor! 
+		MuZero deals with this problem as well. 
+		Another obvious solution is to keep around a record of past edits
+		(Which i sort-of did in terms of program annotation. Could be better). 
+	* You can start with totally random play in Go, and with selection against invaild moves, still play a game and have a winner scored.  
+		With programming, this is not true: most random assemblages of tokens simply are not valid programs. 
+		I guess you need to start with some set of valid programs, which is exactly what humans need too? 
+		Transductive vs inductive learning and all. 
+
+The UDRL paradigm is elegant and interesting for sure. 
+But in the current formulation, most of the trained edits are 'confusing'
+(This despite the fact that the loss can get close to zero .. memorization!)
+Seems like you'd actually want to progressively increase the size of the network as training progresses, same as how the brain allocates more cortex to important tasks.  
+	Shouldn't be a problem in the future.
+	
+Pure RL also does not take advantage of the inversion-through-memory effect: the present recognizer is supposed to learn what edits do to the output by observation, then 'recognize' instances of output in the specification, and generate said edits.  
+If edits do something different, then learn that, too.  
+
+This is a **very important distinction** between Go / Chess / Shogi and programming: 
+-- In the games, you can immediately observe the results of an action, 
+and this action maps to output (board state) in a trivial way. 
+-- In programming, the results of an action are not always immediately visible, and they are related to the output in a complex, stateful way.  
+	Frequently the determining the effects of an action requires other dependent actions: debugging or printfs.  
+
+Issue is (1) context: how do you learn what matters and what doesn't? 
+(2) local minima: very frequently the search gets stuck in local minima, where what's required islifting the pen up and starting a new stroke. 
+Current search can't handle this. 
+Maybe if I test 1600 moves, though ... 
+	1600 moves where each game state is valid! 
+	1600 edits samples a much smaller program space.
 
 
 
 
-
-
-
-
+		
+		
+		
+		
+		
+		
 
 
 
