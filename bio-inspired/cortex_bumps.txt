@@ -4918,6 +4918,8 @@ This is a **very important distinction** between Go / Chess / Shogi and programm
 and this action maps to output (board state) in a trivial way. 
 -- In programming, the results of an action are not always immediately visible, and they are related to the output in a complex, stateful way.  
 	Frequently the determining the effects of an action requires other dependent actions: debugging or printfs.  
+	-- Could be that we want both a forward and inverse model here ..
+		Or, could be that state-compression techniques like MuZero are sufficient. 
 
 Issue is (1) context: how do you learn what matters and what doesn't? 
 (2) local minima: very frequently the search gets stuck in local minima, where what's required islifting the pen up and starting a new stroke. 
