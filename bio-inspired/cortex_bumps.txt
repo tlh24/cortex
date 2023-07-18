@@ -4928,7 +4928,25 @@ Maybe if I test 1600 moves, though ...
 	1600 moves where each game state is valid! 
 	1600 edits samples a much smaller program space.
 
+July 17 2023
 
+Need to sketch out how to do transfer learning. 
+1 -- Tokens need labels, to cache computation + to make the AST searchable. 
+	Unclear if this needs to be full BPTT, in which case we need to keep around a substantial computation graph, 
+	or if it can be just with semi randomly-generated encodings.  
+	Either way! Unannotated or bare tokens will not work.  
+2 -- We want the core model to do the logic and heavy-lifting: it’s trained via active learning, and so has it’s own “understanding” of programming. 
+	It needs to learn to map this internal language to human language, rather than the other way around. 
+	This also frees it from the limitations of human language, e.g. Saper-Wharf hypothesis. 
+3 -- What’s needed then is to convert this “internal dialog” into human-readable text (variable names, function names, comments).  
+	The available data on the internet (“The Pile”) should be more than enough to do this, but how? 
+	This equates to a multi-step “neural translation” model:
+	3.1 -- Adjunct model learns to recreate masked internal labels on machine-generated ASTs.  This is a purely supervised task. 
+	3.2 -- This model is progressively extended to information-impoverished scenarios, eg. with a diffusion model, from the bare AST. 
+	3.3 -- Once it can generate internal annotations, annotate The Pile
+	3.4 -- Fine-tune a LLM, like Alpaca, to generate human names and comments from the internally-labeled AST, via adapter or the like.
+
+Good enough for a first pass, I think!
 
 
 		
