@@ -4813,7 +4813,7 @@ Can decode a series of moves, then:
 	move to root (start editing here always)
 	move child
 		could be move child nth 
-			w/ pytorch indexing
+			w/ pytorch +- indexing
 	move sibling right
 	move sibling left
 	move parent
@@ -4821,10 +4821,12 @@ In addition to decoding a series of edits:
 	add token
 	remove token
 	substitute token
+	add child (right)
 And while we are duplicating code-editor capabilities: 
 	select node
 	cut node
-	copy node
+	copy node (and children)
+		Might need deBruijn indexing? 
 Maybe even: 
 	Insert breakpoint
 	Inspect variable
@@ -4851,7 +4853,7 @@ Adding in EfficientZero siamese state encoding makes sense, though definitely ne
 	2- Understandable (model can predict the effects)
 	3- Applicable (when that bit of training data is used, 
 		it results in a new datapoint that is 1 & 2 above).
-			This is akin to backprop through data.
+			** This is akin to backprop through data.
 		
 Notably, the way that people program is much closer to transductive learning than inductive learning.  
 transductive = labelling new examples based on existing data
@@ -4947,18 +4949,118 @@ Need to sketch out how to do transfer learning.
 	3.4 -- Fine-tune a LLM, like Alpaca, to generate human names and comments from the internally-labeled AST, via adapter or the like.
 
 Good enough for a first pass, I think!
+	Though: there might be something better to do with aligning internal representations.. 
 
+July 18 2023
 
+Some thoughts following discussion today with Tim G: 
+1 -- Like games (perhaps Atari), programming is a POMDP, 
+	though the partically-observable can be *very* entangled-encrypted / nearly unobserbable. 
+	Therefore, any capable AI programmer will have to learn some form of the scientific method: to run experiments & learn hidden states of the system. 
+	This is expecially applicable to getting it to work on larger systems. 
+2 -- Programming is similarly *very* prone to getting into local minima, 
+	as the to-date experiments with Logo graphics show.  
+	Namely: one segment can capture a fair bit of the image, and to improve it, the progammer needs to learn to break a segment up into two, then wiggle them to fit the image better (perhaps by changing the pen width). 
+	
+Unlike games, programming requires something like a tree search itself: if you are truly stuck (local minima), the best action may be to revert changes and start from a different point.  
+
+This also emphasizes the ideas of variance / equivariance / invariance in programming execution space, which are nicely represented (and learnable) with the program graph, but have not been incorporated into RL thinking.  
+
+Equivariance allows the model to know what to change to get a given output.  E.g. pen width is equivariant, depending on where in the logo program it is inserted it will always do the same thing.  
+Invariance here refers to the fact that many different programs can produce the same output -- and that many different sub-progams can do the same thing. 
+Prototypical example here is loops or function calls vs series of segments. 
+To do a good refactoring, translation from the former to the latter will have to be lossy; unclear how this will arrive. 
+	We can probably make a heuristic for this later
+	and later yet solve in an elegant, aware way. 
+	
+Will the MuZero / EfficientZero approach be sample efficient? 
+I think so.  Ideally you'll learn to predict, through internal state, aligned state representations, based on actual observed forward graphics.  
+A solution: 
+-- Given the pair of (Specification, current output), generate a latent rep
+-- Latent rep is used to recursively generate a series of edits
+	(created, in turn, from raw (and later heuristic) search)
+-- When the program is executed, pull that latent rep closer to 
+	the rep derived from the new image .. ? 
+	
+This does not take advantage of the UDRL / memory-based inversion approach that I love so much. 
+Again: generate pairs of program or program + edit -> delta image
+Use this to train a model (inductive) or just save (transductive)
+image + program -> suggest edits -> apply edits -> new delta image
+
+Problem: it doesn't learn a systematic policy. 
+It can't tell useful edits from non-useful ones, because it is never trained on that information; 
+	It is only trained to approximate an inverse map, 
+	and even that doesn't involve planning: selecting what to do based on diverse context. 
+	I guess the network needs to be told if it's approximating an inverse map, or if it's responsible for planning
+		in a MCTS system...
+	* Games don't have this problem, because the action - effect map is usually trivial. 
+Which is why 
+
+OK, I will switch to a pure RL approach -- & keep around the edit-graph representation for later.  
+Almost seems like I have to tear things down & start afresh here! 
+	Moving from the simpler UDRL to RL you need more & different machinery. 
+	The model needs to be different too: MuZero / EfficientZero has a latent state space. 
+		Don't necessarily need to copy that? For now? 
+		
+Input to model: 
+	Specification image
+	Current image
+	Current program
+		with cursor position indicated
+	History of edits (!context!)
+Output of model: 
+	Input-conditional action policy
+	
+MCTS system (ocaml): 
+	Node tree
+		Each node includes everything above needed to reproduce model input
+		Plus:
+			List of children by action value
+			Cumulative reward
+			Cumulative visit count
+				From these: Q-value
+	Initial list of actions above, July 13.
 		
 		
+From notes: 
+Programming requires at least these three knowledge areas: 
+1 -- You need to know the generic effects of actions / generic sequences.
+	Space is much to big to search it unstructured. 
+		(Still wondering if a transformer has the sample efficiency to work on progressively larger levels.)
+2 -- You need to know the specifics of what a program in question is doing. 
+	In many cases, this requires at least internal simulation, 
+	and just as frequently debugging / tracing. 
+3 -- You need a direction: what to do, where to go. 
+	This can be internal, from higher-level planning (fine edits)
+	Or external, from a specification. 
 		
+
+July 24 2023
+
+Played around with GPT4 today.  
+It's really amazingly powerful.  
+Excerpt from email to Sid: 
+	I thought that LLMs lean heavily on variable names, so I plugged two examples from _Numerical Recipies in C_ (classic textbook, with rather terse coding style), and GPT4 recognized and explained both Gauss-Jordan elimination Legendere polynomial algorithms.  Since it may have memorized these common algos from the famous book, I added one example from my codebase implementing Dijkstra's algorithm in Ocaml (which it most definitely has not memorized.)
+	https://chat.openai.com/share/75f4111d-c1a4-4748-9897-48a1958e3be2
+	GPT4's understanding is formidable; it noticed errors in copying from the textbook, and that I omitted return values from the Ocaml function.  Definitely need to lean into this emergent capability!
+	(Ought to test versus the latest open-source models too..)
+
+(Hopefully that link stays active; if not, can easily re-create the experiment.). 
+
+GPT4 is clearly doing reasoning, even if it's responses might be canned.  
+If we were to neuter it / fine-tune only on code reasoning + math reasoning / textbooks (with fill-in-the middle training), I think it would likely still be extremely strong and have a lot fewer parameters. 
+
+Bard recognized Dijkstra's algorithm in Ocaml, but not Legendre polynomials for sperical harmonics (though it did provide a very useful github link at the end..)
+
+Back on topic: 
+I don't necessarily like the latent space compression idea, because it's not really how humans work.  
+They work much more like an auto-regressive model that can attend to all the tokens iteratively, rather than a system that reads everything, closes its eyes, and spits out a bunch of code. 
+	Well.  Might be that for small series of edits, this is what is happening & separating the models might significantly improve efficiency.
+		Not yet? 
 		
-		
-		
-
-
-
-
-
+Yet ... understanding the meaning of those edits, and learning the inverse transform from the forward transform via siamese networks.  
+That, makes sense -- we do some look-ahead planning in our heads, and this requires some forward modelling. 
+How does MuZero reinforce the paths, and not just the local policy, though? 
+Is it also part of the replay buffer? 
 
 
