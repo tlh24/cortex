@@ -12,7 +12,6 @@ dynamo.config.verbose=True
 # note: I can't seem to get this to work. tlh April 7 2023
 
 
-
 class Recognizer(nn.Module):
 	CHECKPOINT_SAVEPATH = CHECKPOINTS_ROOT / "recognizer_checkpoint.ptx"
 	
@@ -51,7 +50,8 @@ class Recognizer(nn.Module):
 			heads = 8, 
 			attn_mask = self.build_attention_mask(v_ctx, p_ctx))
 			
-		self.prt_to_edit = nn.Linear(prog_width * (p_ctx + v_ctx), e_indim)
+		# below should be just the first token, e.g. 
+		self.prt_to_edit = nn.Linear(prog_width * (p_ctx + v_ctx), e_indim) 
 		self.ln_post = clip_model.LayerNorm(e_indim)
 		self.gelu = clip_model.QuickGELU()
 		self.tok_softmax = nn.Softmax(dim = 1)

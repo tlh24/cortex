@@ -5063,4 +5063,18 @@ That, makes sense -- we do some look-ahead planning in our heads, and this requi
 How does MuZero reinforce the paths, and not just the local policy, though? 
 Is it also part of the replay buffer? 
 
+August 25 2023
 
+Some learnings from the precision neuro work: 
+An adaptive filter is much closer to a whitening filter than anything else -- it's goal is to make all frequencies have about the same energy. 
+Whitening in time, not whitening in space. 
+Linear in the same way as PCA. 
+(Or something ... not totally sure tbh!  
+have spent a good bit of time on this!)
+
+October 20 2023: 
+Some realizations given the perspective of distance (in time) for the lackluster performance so far: 
+    • Because the input data (images) are high-dimensional and the output data (edits) are low-dimensional, the transformer can simply memorize the input-output relationship without needing to learn an algorithm. 
+    • The position encoding scheme did not readily generalize to appending segments or editing internal segments. (Started fixing this, but realized that I needed a deeper understanding of the problem.) 
+    • As the transformer is used as a model  same as DreamCoder, memorization + broken position encoding made it completely useless for guiding heuristic search.  If OOD heuristic search is broken, then structure building is similarly crippled. 
+    • LOGO graphics has unobserved state in the form of turtle location and heading) which needs to be accounted for to understand the effects of program edits.  Might have fixed this by requiring the transformer to predict the new state following edits, same as EfficientZero. 
