@@ -5,7 +5,7 @@
 # commands for getting lambda labs up and running
 sudo chmod +rw /usr/bin
 sudo apt-get update
-sudo apt-get install -y make gcc unzip bubblewrap
+sudo apt-get install -y make gcc unzip bubblewrap libpcre2-dev menhir
 
 # Create and activate the Conda environment
 conda env create -f environment.yml
@@ -15,6 +15,7 @@ source activate ec3
 opam init
 opam update --confirm-level=unsafe-yes
 opam switch create myswitch ocaml-variants.5.0.0+options ocaml-option-flambda
+# flambda speeds up executution, at the cost of longer compilation.
 eval $(opam env --switch=myswitch)
 opam update --confirm-level=unsafe-yes
 
@@ -25,7 +26,7 @@ unzip ~/libtorch-cxx11-abi-shared-with-deps-1.13.1+cu116.zip
 mv libtorch ~
 export LIBTORCH=~/libtorch
 
-opam install --confirm-level=unsafe-yes vg cairo2 vector lwt logs pcre torch domainslib ocamlgraph psq ctypes utop
+opam install --confirm-level=unsafe-yes vg cairo2 vector lwt logs pcre2 torch domainslib ocamlgraph psq ctypes utop
 eval $(opam env --switch=myswitch)
 dune build
 
