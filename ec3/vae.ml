@@ -77,7 +77,7 @@ let train images device batch_size =
       train_loss := !train_loss +. Tensor.float_value loss;
       samples := !samples +. (Tensor.shape batch |> List.hd |> Float.of_int)
     done ; 
-    Caml.Gc.full_major () ; 
+    Gc.full_major () ; 
     Printf.printf "epoch %4d  loss: %12.6f\n%!" epoch_idx (!train_loss /. !samples);
     Tensor.randn [ 64; 20 ] ~device
     |> VAE.decode vae

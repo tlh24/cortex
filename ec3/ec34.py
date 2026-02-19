@@ -7,7 +7,7 @@ import os
 from data_exchange import SocketClient, MemmapOrchestrator
 from config import ModelConfig
 from recognizer.model import Recognizer
-import wandb
+# import wandb
 import torch._dynamo as dynamo
 dynamo.config.verbose=True
 # note: I can't seem to get dynamo to work. tlh April 7 2023
@@ -23,7 +23,7 @@ dreaming = args.dreaming
 
 mc = ModelConfig(dreaming=args.dreaming, batch_size=args.batch_size)
 
-run = wandb.init(entity='cortex-ec3', project="cortex", config=mc.dict(), mode="disabled")
+# run = wandb.init(entity='cortex-ec3', project="cortex", config=mc.dict(), mode="disabled")
 
 print(f"batch_size:{mc.batch_size}")
 print(f"dreaming:{mc.dreaming}")
@@ -52,7 +52,8 @@ torch_device = 0
 print("torch cuda devices", th.cuda.device_count())
 print("torch device", th.cuda.get_device_name(torch_device))
 th.cuda.set_device(torch_device)
-th.set_default_tensor_type('torch.cuda.FloatTensor')
+th.set_default_dtype('torch.float32')
+th.set_default_device('cuda')
 th.set_float32_matmul_precision('high') # desktop.
 
 
@@ -96,7 +97,7 @@ lossfunc_mse = nn.MSELoss(reduction='mean')
 optimizer = optim.Adam(model.parameters(), lr=mc.learning_rate)
 
 	
-scaler = torch.cuda.amp.GradScaler()
+scaler = torch.amp.GradScaler('cuda')
 slowloss = 1.0
 losslog = open("loss_log.txt", "w")
 tic = time.time()
@@ -171,7 +172,6 @@ for u in range(mc.train_iters):
 		lossflat = 0.0
   
 	slowloss = 0.99*slowloss + 0.01 * lossflat
-	wandb.log({"loss": lossflat, "slowloss": slowloss})
  
 	if mc.training: 
 		losslog.write(f"{u}\t{slowloss}")

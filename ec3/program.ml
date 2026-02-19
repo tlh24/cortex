@@ -971,7 +971,7 @@ let update_bea_mnist steak bd =
 	update_bea_parallel innerloop_bea_mnist steak "update_bea_mnist" 
 	(* mnist comparisons generate torch variables that need cleanup *)
 	(*Mutex.lock steak.mutex;
-	Caml.Gc.major (); (* clean up torch variables (slow..) *)
+	Gc.major (); (* clean up torch variables (slow..) *)
 	Mutex.unlock steak.mutex*)
 	;;
 
@@ -1122,7 +1122,7 @@ let reset_bea steak dreaming =
 	let fresh = Array.init !batch_size (fun _i -> true) in
 	(*Printf.printf "\n------- after new_batche:\n"; 
 	Gc.print_stat stdout; 
-	Caml.Gc.full_major(); 
+	Gc.full_major(); 
 	Printf.printf "\n------- after Gc.full_major ():\n"; 
 	Gc.print_stat stdout; 
 	flush stdout; *)
@@ -1659,7 +1659,7 @@ let servthread steak () = (* steak = thread state *)
 		List.iter (fun fd -> close fd) fdlist; 
 		save_database steak "db_improved.S"; 
 		Mutex.lock steak.mutex;
-		Caml.Gc.full_major (); (* clean up torch variables (slow..) *)
+		Gc.full_major (); (* clean up torch variables (slow..) *)
 		Mutex.unlock steak.mutex
 	) done; 
 	) (* )open Unix *)

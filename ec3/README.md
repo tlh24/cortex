@@ -42,5 +42,5 @@ Training: in a separate terminal, run `python ec34.py -b 512`
 Batch size needs to be the same.
 
 Dreaming: Once it writes out a model, you can start dreaming in yet another terminal:
-python ec33.py -b 512 -d
+python ec34.py -b 512 -d
 where -d : dreaming

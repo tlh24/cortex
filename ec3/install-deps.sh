@@ -26,7 +26,7 @@ unzip ~/libtorch-cxx11-abi-shared-with-deps-1.13.1+cu116.zip
 mv libtorch ~
 export LIBTORCH=~/libtorch
 
-opam install --confirm-level=unsafe-yes vg cairo2 vector lwt logs pcre2 torch domainslib ocamlgraph psq ctypes utop
+opam install --confirm-level=unsafe-yes vg cairo2 vector lwt logs torch domainslib ocamlgraph psq ctypes utop
 eval $(opam env --switch=myswitch)
 dune build
 
