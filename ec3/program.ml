@@ -1250,7 +1250,7 @@ let init_database steak count =
 			(*Logs.debug(fun m -> m
 				"%d: adding [%d] = %s" !iters !u s);*)
 			let added,y = db_add_uniq stk data img in
-			if not added then Logs.err (fun m->m "did not add %s to db" s);
+			if not added then Logs.err (fun m->m "dist %f did not add %s to db" dist s);
 			if added then (
 				Logo.segs_to_png data.segs 64
 					(Printf.sprintf "%s/db%05d_.png" root y);

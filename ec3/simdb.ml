@@ -106,9 +106,9 @@ let test () =
 	let dist, indx = query sdb ba in
 	let fin = Unix.gettimeofday () in
 	let duration = ((fin -. sta) /. 20.0) in
-	Logs.debug (fun m->m "simdb Time: %f; Bandwidth:%f GB/sec"
+	Logs.info (fun m->m "simdb Time: %f; Bandwidth:%f GB/sec"
 		 duration ((foi (dbSize * dbDim)) /. (duration *. 1e9))); 
-	Logs.debug (fun m->m "simdb Best match: %d, should be %d; Min dist: %f"
+	Logs.info (fun m->m "simdb Best match: %d, should be %d; Min dist: %f"
 				indx rand_indx dist ); 
 	
 	(* all done; free *)

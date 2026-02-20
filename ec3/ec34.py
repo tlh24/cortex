@@ -47,12 +47,11 @@ mo = MemmapOrchestrator(
 	e_indim=mc.e_indim,
 )
 
-
 torch_device = 0
 print("torch cuda devices", th.cuda.device_count())
 print("torch device", th.cuda.get_device_name(torch_device))
 th.cuda.set_device(torch_device)
-th.set_default_dtype('torch.float32')
+# th.set_default_dtype('torch.float32')
 th.set_default_device('cuda')
 th.set_float32_matmul_precision('high') # desktop.
 

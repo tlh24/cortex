@@ -48,15 +48,16 @@ let () =
 	Logs.info(fun m -> m "cudnn available: %b%!"
 				(Cuda.cudnn_is_available ()));
 				
-	(* check simdb *)
+	(* check similarity database, simdb *)
 	Simdb.test (); 
-	(*for _i = 0 to 4 do 
-		measure_torch_copy_speed device
-	done; *)
-	test_logo (); 
-	
+
 	(*let device = Torch.Device.Cpu in*) (* slower *)
 	let device = Torch.Device.cuda_if_available () in
+	for _i = 0 to 4 do
+		measure_torch_copy_speed device
+	done;
+	test_logo (); 
+	
 	
 	let mnistd = Mnist_helper.read_files ~prefix:"../otorch-test/data" () in
 	let mimg = Tensor.reshape mnistd.train_images 

@@ -13,6 +13,7 @@ This makes access fast and simple, but requires care to maintain the mapping
 Changing the representation of equivalents: they are still members of the same graph, which allows them to be nodes in a path (e.g. on the transition graph for refactors and such), only they don't possess image data.  
 The original implementation kept these separate. 
 *)
+
 let soi = string_of_int
 let ios = int_of_string
 let foi = float_of_int

@@ -23,7 +23,7 @@ This repository contains a setup script (`install-deps.sh`) to help you get star
 6. Builds the project using `dune`.
 7. Downloads and extracts the MNIST dataset.
 
-To run the setup script, run the following commands:
+To run the setup script on a new instance, run the following commands:
 
 ```bash
 cd ec3
